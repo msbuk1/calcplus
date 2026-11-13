@@ -1,6 +1,6 @@
 # 09 — Command system, keyboard parity, and undo/redo
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: 07
 
