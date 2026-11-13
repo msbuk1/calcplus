@@ -140,6 +140,18 @@ _Avoid_: Baseline, snapshot
 The fixed set of conformance, accessibility, performance and bug conditions that must pass before v1 is called faithful.
 _Avoid_: Quality bar, definition of done
 
+**Walking skeleton**:
+The first milestone: the real OOXML layer, canonical model, minimal grid, one edit and undo, integrated end to end.
+_Avoid_: Prototype, MVP
+
+**Milestone gate**:
+The exit criteria that must pass before a milestone is accepted; a good demo does not substitute for them.
+_Avoid_: Checkpoint, sign-off
+
+**Conformance reserve**:
+The contingency inside the final milestone for the long tail of Excel edge cases.
+_Avoid_: Buffer, slack
+
 **Tolerance**:
 The allowed numerical difference when comparing a calculated value to its golden, currently 1e-9 relative or 1e-12 absolute.
 _Avoid_: Epsilon, margin

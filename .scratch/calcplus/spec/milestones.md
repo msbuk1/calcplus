@@ -1,0 +1,306 @@
+# calcplus v1 — milestones and phasing
+
+Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-11-13. It sequences the contracts in [feature matrix](feature-matrix.md), [workbook model](workbook-model.md), [formula semantics](formula-semantics.md), [file compatibility](file-compat.md), [performance](performance.md), [accessibility](accessibility.md) and [testing and conformance](testing-conformance.md).
+
+## 1. Principles
+
+- **Hybrid vertical slices.** The first two milestones build the foundation; every later milestone ends in a demoable user journey.
+- **Walking skeleton first.** The real OOXML package layer, the canonical model and a minimal grid are integrated in milestone 1. No interim lossy library.
+- **A demo and a gate per milestone.** A milestone is not done because the code merges; it is done when its exit criteria pass.
+- **Continuous quality.** Accessibility, performance and conformance tests are built with the features, not after them.
+- **Risk spikes are scheduled.** The five risks that can invalidate an architecture have explicit spikes, not hopes.
+- **The feature matrix is the scope fence.** Anything marked V2 or NEVER does not enter a milestone.
+
+## 2. Team and estimates
+
+- **Three engineers in parallel:** one on grid and rendering, one on model, engine and commands, one on file I/O and chrome. Part-time design and QA.
+- **Person-weeks, not calendar dates.** The plan stays useful whatever the start date. A range is a planning estimate, not a commitment.
+- **Total:** about **62-90 person-weeks**, plus a **20% contingency**, for roughly **75-108 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
+- The conformance tail is the largest uncertainty. Milestone 8 carries an explicit reserve.
+
+## 3. Overview
+
+| # | Milestone | Demoable outcome | Effort (pw) | Main risk |
+|---|---|---|---:|---|
+| 1 | Walking skeleton | Open a small `.xlsx`, see it, edit a cell, undo, save with untouched parts byte-identical | 4-6 | Package parsing and model shape |
+| 2 | Grid foundation | Keyboard and screen-reader navigation, editing, frozen panes, 1M-row scroll | 8-12 | Accessibility mirror |
+| 3 | Formula engine and model depth | Formulas recalculate, 52-function subset passes, undo/redo, dates and names | 8-12 | HyperFormula shims and fan-out |
+| 4 | Formatting and workbook | Format a report, number formats, merges, multiple sheets, find and Go To | 8-12 | Number-format seams |
+| 5 | Data tools | Sort, AutoFilter, conditional formatting, clipboard, fill, insert/delete | 8-12 | Range transforms and clipboard |
+| 6 | File fidelity | Charts, pivots and macros survive a round-trip; Excel opens without repair | 10-14 | Structural edits and preservation |
+| 7 | Output and hardening | Print/PDF, accessibility pass, 250k-cell performance, signed launcher | 10-14 | Print fidelity and signing |
+| 8 | Conformance and release | Release candidate with every gate green | 6-8 + reserve | The long tail |
+
+## 4. Milestones
+
+### M1 — Walking skeleton (4-6 pw)
+
+**Build**
+
+- Repo, build, lint, typecheck, Vitest and Playwright harnesses.
+- Canonical workbook model: workbook, sheet, sparse cells, minimal styles, stable IDs, snapshot.
+- OOXML package layer: ZIP via `fflate`, SAX via `saxes`, part store, content types and relationships, one worksheet mapped into the model.
+- No-op save returns the original bytes; untouched parts are copied.
+- Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
+- Minimal command registry and one undoable `cell.set`.
+- File open and save through the File System Access API with a download fallback.
+
+**Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical.
+
+**Exit criteria**
+
+1. The model opens a minimal `.xlsx` and renders it.
+2. No-op open → save is byte-identical.
+3. A cell edit is one undoable command; undo restores the prior value.
+4. The app opens in Chromium and saves through the file API or a download.
+5. Unit and smoke tests run in CI.
+
+### M2 — Grid foundation (8-12 pw)
+
+**Build**
+
+- 1,048,576 × 16,384 addressable canvas grid with viewport-sized panes.
+- Frozen rows and columns; four-pane geometry; custom scrollbars; virtual scroll.
+- Selection, active cell, fill handle, headers, merged-range rendering.
+- DOM in-cell editor with IME, formula bar, name box, commit/cancel.
+- Keyboard navigation, focus zones and the shortcut map's navigation subset.
+- Accessibility mirror: `role="grid"`, absolute indices, roving tabindex, live region.
+- Basic formatting rendering: font, fill, alignment and number formats from the style table.
+
+**Spike:** the accessibility mirror with NVDA/Chrome and VoiceOver/Safari. If it fails, build the DOM-cell renderer behind `RenderFrame` before the milestone gate.
+
+**Demo:** a keyboard-only user navigates, selects, edits and scrolls; a screen reader reads the address, value and selection; a 1M-row sheet scrolls at 60 fps.
+
+**Exit criteria**
+
+1. Selection, editing, formula bar, freeze panes and keyboard navigation work.
+2. Scroll holds the ticket 11 frame budget on a 250k-cell sheet.
+3. The mirror exposes rows, cells, headers, selection and the active cell.
+4. AT sign-off is recorded, or the DOM-cell fallback is in place and accepted.
+5. The focus model and Esc/F6 paths pass the keyboard suite.
+
+### M3 — Formula engine and model depth (8-12 pw)
+
+**Build**
+
+- `FormulaEngine` port and HyperFormula adapter with the required configuration.
+- The 52-function registry gate; unsupported functions return `#NAME?` or a stale cached value.
+- Shims: wildcard exact lookup, `INT`, `CHOOSE`, `#CYCLE!` → `#CIRC!`, error mapping, authored-text preservation.
+- Dependency graph and incremental recalculation; volatile `TODAY`/`NOW`; circular-reference warning.
+- 1900 and 1904 date systems; serial 60.
+- Defined names, cross-sheet references, whole-column and whole-row references.
+- Full command registry, transaction boundaries and undo/redo for cell edits and formatting.
+- Style table depth: fonts, fills, borders, alignment and number-format references.
+
+**Spikes:** HyperFormula fan-out, memory and worker behaviour at the ticket 11 sizes; a prototype of the OOXML range transform for insert/delete.
+
+**Demo:** enter formulas, watch dependents recalculate, undo and redo, switch between 1900 and 1904 workbooks, and run the 52-function golden subset.
+
+**Exit criteria**
+
+1. The 52-function golden subset passes within tolerance.
+2. The error/coercion/operator table passes.
+3. Date, reference, lookup and circular-reference tests pass.
+4. Every shim has a passing test.
+5. Undo/redo restores the exact prior state for cell and formatting commands.
+6. The range-transform prototype rewrites formulas, merges and names correctly.
+
+### M4 — Formatting and workbook (8-12 pw)
+
+**Build**
+
+- Full cell formatting: font family/size/bold/italic/underline/strike/colour, fills and patterns, borders, alignment, indent, wrap, shrink-to-fit and rotation (imported).
+- Number formats through `numfmt` plus the Excel seams: built-in IDs, 1904, width layout, colours, locale, invalid-format fallback.
+- Merges, row heights, column widths, autofit, hidden rows/columns (imported).
+- Multi-sheet insert, delete and rename; sheet tabs; tab order and visibility.
+- Zoom 10-400%, gridline and heading toggles, status-bar statistics.
+- Find & Replace and Go To; the Format Cells dialog; Format Painter.
+- Chrome: ribbon primary, compact bar below 900 px, dialogs, context menu, status bar.
+
+**Demo:** format a sales report end to end — fonts, fills, borders, currency and date formats, merged headers, column widths, three sheets, find and replace, Go To, zoom.
+
+**Exit criteria**
+
+1. Every formatting feature in the matrix renders and round-trips.
+2. The number-format conformance corpus passes.
+3. Multi-sheet insert/delete/rename and undo work.
+4. Find/Replace, Go To and the Format Cells dialog pass the interaction suite.
+5. The ribbon and compact bar meet the UI chrome contract.
+6. Visual baselines for the formatted sheet pass.
+
+### M5 — Data tools (8-12 pw)
+
+**Build**
+
+- Sort: selected range, header detection, up to 64 keys, Excel comparator, formula rewriting, hidden-row behaviour, merges and undo.
+- AutoFilter: value checklist, two AND/OR conditions, text/number/date, blanks, hidden layers, dropdown UI, round-trip.
+- Conditional formatting: cell-value, text, date/time-period, top/bottom, duplicate/unique, colour scales, data bars and icon sets; priority and stop-if-true; unsupported rules reported.
+- Clipboard: HTML Excel dialect and TSV fallback; in-app copy/cut/paste; Excel interop where the OS allows.
+- Fill handle drag and double-click; Ctrl+D/R; insert/delete cells, rows and columns with full reference rewriting.
+- Context menu, Clear, Format Painter.
+
+**Spike:** Excel clipboard interop for values, formulas, formats and merges.
+
+**Demo:** sort and filter a 100k-row table, show conditional formatting, copy a range to Excel and back, fill a series with the handle, insert a row and watch references update.
+
+**Exit criteria**
+
+1. The 15 sort and 18 filter fixtures pass.
+2. The 20 conditional-formatting fixtures pass.
+3. Clipboard round-trips values, formulas, formats and merges with Excel.
+4. Fill and insert/delete are one undo transaction each.
+5. 100k-row sort and filter meet the performance budgets.
+
+### M6 — File fidelity (10-14 pw)
+
+**Build**
+
+- Full `.xlsx` round-trip: styles and shared strings append-only; cached results; shared and array formulas; comments and threaded comments; hyperlinks; validation; conditional formatting; names; protection; print setup.
+- Preserved parts: charts, images, shapes, pivots and caches, external links, VBA, signatures, tables, slicers, sparklines, custom XML and custom properties.
+- Structural-edit range transforms across formulas, merges, names, validation, CF, comment/hyperlink positions and drawing anchors; block when an anchor cannot be transformed.
+- Compatibility report and export report; Tier C rejection for encrypted, corrupt, zip-bomb and Strict files.
+- Producer matrix: Excel 365/2019, LibreOffice, Google Sheets, openpyxl, SheetJS, xlsx-populate.
+- Hostile-input caps and XXE-safe parsing.
+
+**Demo:** open a workbook with a chart, a pivot, an external link and a macro; edit cells and insert rows; save; Excel opens without repair; the reports list what was preserved and what went stale.
+
+**Exit criteria**
+
+1. All 24 file-compat fixtures pass.
+2. No-op save is byte-identical; untouched parts survive with identical bytes.
+3. Excel 365 opens every output without a repair prompt.
+4. The producer matrix passes.
+5. Structural edits transform or block correctly; no silent stale anchors.
+6. `.xlsm` macros survive; `.xlsm` → `.xlsx` requires confirmation.
+7. Hostile inputs fail safely within the caps.
+
+### M7 — Output and hardening (10-14 pw)
+
+**Build**
+
+- Print/PDF: `PrintPlanner`/`PrintPlan`, print area, orientation, fit-to-width, margins; SVG preview; PDFKit vector export; 300 DPI canvas fallback.
+- Accessibility hardening: full mirror, live regions, forced colours, zoom, target sizes, the AT matrix.
+- Performance hardening: corpus, fan-out, memory, worker queue, degradation ladder.
+- Persistence: autosave recovery copy, recent list, external-edit conflict, close prompt, stable origin.
+- Launcher: Go static server on `127.0.0.1:47823`, Windows signed `.exe`, macOS notarized universal `.app` in a DMG, Linux tarball.
+- Documentation skeleton: PRD, technical design, ADR index, known deviations.
+
+**Spike:** vector print/PDF fidelity and font embedding.
+
+**Demo:** print preview and PDF of a formatted report; NVDA and VoiceOver pass; a 250k-cell workbook scrolls at 60 fps; the launcher opens the app offline.
+
+**Exit criteria**
+
+1. Print and PDF match the preview and honour the page setup.
+2. The accessibility contract passes, including the manual AT matrix.
+3. The performance budgets hold on the reference machine.
+4. Recovery, conflict and close prompts work.
+5. Launcher artifacts build, sign/notarize and run on all three OSes.
+
+### M8 — Conformance and release (6-8 pw + reserve)
+
+**Build**
+
+- Full 52-function golden suite and generated cases.
+- Error/coercion/operator, date, reference, lookup and circular-reference suites.
+- Full file corpus, producer matrix, visual baselines, axe and keyboard suites.
+- Manual Excel repair check; manual AT sign-off.
+- Known-deviations list with a pinning test for each.
+- PRD, technical design, milestone record and release notes.
+- Release gate review.
+
+**Demo:** a release candidate where every gate in [testing and conformance §13](testing-conformance.md) is green.
+
+**Exit criteria**
+
+1. The ticket 13 release gate passes in full.
+2. No P0, P1 or data-loss bug remains.
+3. Every known deviation is documented and pinned by a test.
+4. The launcher artifacts and checksums are published.
+5. The spec package is complete and internally consistent.
+
+## 5. Dependency graph
+
+```
+M1 walking skeleton
+ ├─ M2 grid foundation ──────────────┐
+ ├─ M3 engine + model depth ─────────┤
+ │    └─ range-transform prototype   │
+ ├─ M4 formatting + workbook ────────┤
+ │         └─ M5 data tools ─────────┤
+ └─ M6 file fidelity ────────────────┤
+              └─ M7 output + hardening
+                        └─ M8 conformance + release
+```
+
+Parallel tracks:
+
+- **Grid and rendering:** M1 minimal grid → M2 → M4 rendering → M5 CF and clipboard UI → M7 performance.
+- **Model, engine and commands:** M1 model and commands → M3 engine → M4 styles and number formats → M5 sort/filter → M6 range transforms.
+- **File I/O and chrome:** M1 package layer → M4 chrome → M6 full fidelity → M7 print and launcher.
+
+Integration points are the end of every milestone. Tracks may overlap inside a milestone, but a milestone gate is not skipped. The model, command and file contracts are frozen before M4; changes after that need a spec ticket.
+
+## 6. Milestone gates and the feature matrix
+
+| Milestone | Feature-matrix sections |
+|---|---|
+| M1 | Workbook: new, open, save; grid basics |
+| M2 | Grid and editing: selection, editing, formula bar, keyboard; view: freeze; accessibility |
+| M3 | Formulas and names; undo/redo; dates |
+| M4 | Formatting; workbook and sheets; view; find and Go To |
+| M5 | Data: sort and AutoFilter; conditional formatting; clipboard; fill; insert/delete |
+| M6 | File I/O and read-only fidelity |
+| M7 | Print/PDF; persistence; distribution; performance; accessibility |
+| M8 | The full release gate |
+
+A milestone gate fails if any acceptance criterion in its section fails, even if the demo looks good.
+
+## 7. Risk register
+
+| Risk | Impact | Mitigation | Where |
+|---|---|---|---|
+| Accessibility mirror fails real screen readers | Grid architecture invalidated | Spike in M2; DOM-cell renderer behind `RenderFrame`; milestone blocked without a fallback | M2 |
+| OOXML range transforms corrupt references or anchors | Data loss; broken charts/pivots | Prototype in M3; full transform in M6; block unsafe edits; fixtures | M3, M6 |
+| HyperFormula shims or fan-out miss the contract | Wrong results or slow builds | Contract tests; 52-function gate; fan-out benchmark; worker | M3 |
+| Number-format seams diverge from Excel | Visible formatting errors | `ssf` differential oracle; conformance corpus; built-in ID table | M4 |
+| Clipboard interop with Excel is unreliable | Copy/paste loses formulas or formats | HTML-first dialect; TSV fallback; `.xlsx` is the fidelity channel | M5 |
+| Print/PDF vector fidelity or fonts fail | Output does not match preview | Spike in M7; SVG preview; PDFKit; 300 DPI fallback | M7 |
+| Performance at 250k/1M cells | Product misses its envelope | Continuous benchmarks; fan-out case; degradation ladder | M2-M7 |
+| Signing and notarization | Launcher blocked on Windows/macOS | Start certificates and notarization early in M7 | M7 |
+| Conformance tail | Release slips | Continuous golden suite; M8 reserve; no late scope | M8 |
+
+## 8. Definition of v1 done
+
+v1 is done when **all** of these are true:
+
+1. The [testing and conformance release gate](testing-conformance.md) passes in full.
+2. Every feature-matrix **IN** item is present and meets its acceptance criterion.
+3. The Windows, macOS and Linux launcher artifacts are built and signed or notarized as [distribution](distribution.md) requires.
+4. The PRD, technical design, ADRs and milestone record are complete and consistent.
+5. Every known deviation is documented and has a pinning test.
+6. Manual AT sign-off is recorded.
+7. No P0, P1 or data-loss bug remains.
+8. The hosted static build and launcher checksums are published.
+
+Store listings, auto-update and marketing are post-release.
+
+## 9. Out of the milestones
+
+- Everything marked V2 or NEVER in the feature matrix: charts, advanced data tools, tables, data validation authoring, CF authoring, comments/hyperlink authoring, split view, dark mode, localization, co-authoring, PivotTables, macros, Solver and the rest.
+- Hosted deployment, store listings, auto-update and marketing.
+- Mobile and touch.
+- Native desktop wrappers.
+
+## 10. Acceptance criteria
+
+1. Eight milestones, each with a demo and a gate.
+2. Milestone 1 is a walking skeleton with real OOXML, model, grid, edit and undo.
+3. The dependency graph keeps the model, command and file contracts frozen before M4.
+4. Every milestone's exit criteria are tied to the feature matrix.
+5. The five risk spikes are scheduled in M2, M3, M5 and M7.
+6. Estimates are person-week ranges with a 20% contingency and no calendar dates.
+7. The definition of v1 done includes the conformance gate, launcher artifacts, docs and AT sign-off.
+8. V2 and NEVER features are excluded from every milestone.
+9. Each milestone produces a demoable state, not only internal plumbing.
+10. The plan is build-ready: no milestone depends on an unresolved decision ticket.
