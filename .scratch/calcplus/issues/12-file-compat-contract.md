@@ -21,7 +21,7 @@ Output: a feature-by-feature matrix plus acceptance fixtures.
 
 ## Answer
 
-"High-fidelity round-trip" is defined as three tiers with a named guarantee for each. Full contract in [file-compat.md](../spec/file-compat.md).
+Accepted as written on 2026-11-13; no revisions requested. "High-fidelity round-trip" is defined as three tiers with a named guarantee for each. Full contract in [file-compat.md](../spec/file-compat.md).
 
 - **Tier A — modelled and editable:** cells, formulas plus cached results, styles and number formats, merges, dimensions, freeze panes, defined names, sheet metadata, comments, hyperlinks, validation, conditional formatting, AutoFilter, protection flags and print setup. Read, write and semantic round-trip.
 - **Tier B — preserved, not editable:** charts, images, shapes, pivots and caches, external links, VBA, signatures, tables, slicers, sparklines, custom XML and custom properties. Parts are byte-identical; not rendered. Structural edits transform anchors where possible, otherwise the specific edit is blocked.
