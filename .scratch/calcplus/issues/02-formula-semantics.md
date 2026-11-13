@@ -1,6 +1,6 @@
 # 02 — Define formula semantics and function coverage
 
-Status: claimed
+Status: resolved
 Type: grilling
 Blocked by: none
 
@@ -22,3 +22,16 @@ Decide, with a defensible line for each:
 - **Storage**: keep formulas as authored Excel syntax, or an internal AST — and how cached values are treated.
 
 Output: a semantics contract the formula engine and the conformance tests can be built against.
+
+## Answer
+
+The v1 formula contract is in [formula-semantics.md](../spec/formula-semantics.md).
+
+- **52 published functions** (maths 10, statistics 9, logic 6, lookup 5, position 3, text 8, dates 6, checks 5). Anything else shows `#NAME?`, or a stale cached result if the file already had one.
+- **Errors, type conversion, operator order and text comparison** match Excel exactly.
+- **References:** A1, absolute/mixed, cross-sheet, quoted sheet names, whole-column/row, and defined names. R1C1, 3D ranges, table references, union/intersection and external-link refresh are v2.
+- **Dates:** both the 1900 and 1904 systems, including Excel's fake 29 February 1900; serial dates and times.
+- **Arrays and loops:** no spill; legacy Ctrl+Shift+Enter arrays are preserved read-only; TODAY/NOW are volatile; circular references warn and show `#CIRC!` instead of iterating.
+- **Lookups:** exact and approximate matching, wildcards, text conditions, case-insensitive.
+- **Saving:** keep the formula exactly as written plus the cached result; recalculate when possible, otherwise mark it "not recalculated".
+- **Licence:** calcplus is GPLv3, so the free HyperFormula edition is used; this amends ticket 03.

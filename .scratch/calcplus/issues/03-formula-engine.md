@@ -32,3 +32,12 @@ Critical architectural rule: the workbook model must own **authored formula text
 If the quote is unacceptable, or ticket 02 requires full dynamic arrays/3D refs/`INDIRECT`/iteration in v1, use **Univer** (Apache-2.0, 528 functions, 1.75 MB gzip) as a platform bet — not SpreadJS and not a from-scratch engine. SpreadJS ($999/dev + $12,499/yr/domain) replaces the whole product.
 
 Full research: [03-formula-engine.md](../research/03-formula-engine.md)
+
+## Amendment (2026-11-13)
+
+Ticket 02 fixed two things that change this decision:
+
+- **calcplus is GPLv3.** Use HyperFormula's free GPLv3 edition, not the commercial licence. The written-quote gate is removed.
+- **The published contract is 52 functions**, listed in [formula-semantics.md](../spec/formula-semantics.md). The engine's extra functions are not exposed or promised; the registry is gated to the 52.
+
+The architectural rule stands: the workbook model owns authored formula text and cached values, and HyperFormula must never be the source of the saved formula text. Any supported construct the GPL edition cannot parse is a blocker for the engine choice, not a reason to drop the construct silently.

@@ -13,6 +13,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - **Fidelity reference**: Excel desktop / Microsoft 365. When Excel and "clean design" disagree, match Excel — the product's promise is familiarity.
 - **V1 scope cut**: core credible spreadsheet, fixed by the [feature matrix](spec/feature-matrix.md). Charts, advanced data tools and authoring of read-only fidelity features are v2; PivotTables and macros are never.
 - **Constraints**: browser app; single-user; no backend; high-fidelity `.xlsx` import and export; no pixel-perfect requirement, but near-identical chrome.
+- **Project licence**: GPLv3 (decided while resolving ticket 02). Dependencies must be GPLv3-compatible; the free HyperFormula edition is used.
 - **Execution carried into the map**: because the destination is an artifact, ticket 15 assembles the spec package. Every other ticket resolves a decision.
 - **Skills for sessions**: `grilling`, `domain-modeling`, `prototype`, `research`.
 - **Research artifacts**: `.scratch/calcplus/research/<slug>.md` (files rather than throwaway branches, so they travel with the map).
@@ -20,7 +21,8 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 ## Decisions so far
 
 - [Define the v1 feature matrix and acceptance criteria](issues/01-feature-matrix.md) — v1 scope contract in the [feature matrix](spec/feature-matrix.md): core editing, sort/AutoFilter, full cell and number formatting, render-only conditional formatting/comments/hyperlinks/protection; v2 and never classified per area.
-- [Formula engine: build vs buy](issues/03-formula-engine.md) — adopt HyperFormula 3.5 under a commercial licence behind a narrow `FormulaEngine` port; Univer (Apache-2.0) is the fallback if the quote fails or dynamic arrays/3D refs are required. Do not build a custom engine.
+- [Define formula semantics and function coverage](issues/02-formula-semantics.md) — 52 published functions with Excel-exact errors and coercion; A1/mixed/cross-sheet/names; 1900 and 1904 dates; no spill, read-only legacy arrays, volatile TODAY/NOW; circular references warn and show `#CIRC!`. Contract: [formula semantics](spec/formula-semantics.md).
+- [Formula engine: build vs buy](issues/03-formula-engine.md) — HyperFormula behind a narrow `FormulaEngine` port; **amended by ticket 02**: calcplus is GPLv3, so use the free GPLv3 edition, and the published contract is the 52-function set. Univer remains the fallback if the GPL edition cannot meet the contract.
 - [`.xlsx` import/export approach](issues/04-xlsx-io.md) — preservation-first in-house OOXML layer (JSZip/fflate + saxes): model v1 features, copy unmodelled parts verbatim, patch only dirty parts, append-only style/shared-string tables; SheetJS/ExcelJS are extractors, not storage engines.
 - [Grid rendering approach](issues/05-grid-rendering.md) — custom hybrid grid: Canvas 2D surface (cells, gridlines, headers, selection, fill handle, frozen/split panes) + DOM overlays for editing/focus and an ARIA grid mirror; no third-party grid foundation. **Provisional:** GenOffice's Univer experience reopened the buy option — stress-test in [Stress-test the grid decision](issues/17-grid-spike-univer.md).
 - [Clipboard and Excel interop](issues/06-clipboard-interop.md) — HTML-first (`text/html` Excel dialect) with TSV fallback; formulas best-effort, `.xlsx` is the fidelity channel, and clipboard is never a dependency for correctness.
@@ -43,5 +45,6 @@ Everything marked **V2** or **NEVER** in the [feature matrix](spec/feature-matri
 - **Advanced data tools**: tables, data validation, advanced/colour/Top-10 filters. (Sort and AutoFilter are in v1.)
 - **Authoring of read-only fidelity features**: conditional formatting, comments, hyperlinks, defined names, protection, themes and named styles.
 - **Paste Special, fill series, split view, full page setup, localization, dark mode.**
+- **Formula features deferred to v2**: R1C1 notation, 3D ranges, structured table references, external-link refresh, dynamic arrays/spill, iterative calculation, manual calculation mode, union/intersection operators, localized function names.
 - **Native desktop and mobile/touch apps.**
 - **Legacy `.xls` binary and ODS formats.**
