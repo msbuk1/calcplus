@@ -1,6 +1,6 @@
 # 07 — Workbook data model
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
