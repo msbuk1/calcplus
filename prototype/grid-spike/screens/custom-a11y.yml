@@ -1,0 +1,456 @@
+- generic [ref=f23e1]:
+  - generic [ref=f23e2]: PROTOTYPE — custom canvas grid spike, throwaway code. Not production.
+  - generic [ref=f23e3]:
+    - generic [ref=f23e4]: ▣
+    - generic [ref=f23e5]: custom-canvas.xlsx — calcplus grid spike
+    - generic [ref=f23e6]: — □ ×
+  - generic [ref=f23e7]:
+    - textbox "Name box" [ref=f23e8]: A1
+    - button "fx" [ref=f23e9]
+    - textbox "Formula bar" [ref=f23e10]:
+      - /placeholder: Select a cell
+      - text: Region
+  - generic [active] [ref=f23e11]:
+    - grid "Sheet1":
+      - row "1,150 1,263 1,376 1,489 =SUM(B2:E2) -9% Ben":
+        - gridcell "1,150"
+        - gridcell "1,263"
+        - gridcell "1,376"
+        - gridcell "1,489"
+        - gridcell "=SUM(B2:E2)"
+        - gridcell "-9%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,187 1,300 1,413 1,526 =SUM(B3:E3) -8% Chloe":
+        - gridcell "1,187"
+        - gridcell "1,300"
+        - gridcell "1,413"
+        - gridcell "1,526"
+        - gridcell "=SUM(B3:E3)"
+        - gridcell "-8%"
+        - gridcell "Chloe"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,224 1,337 1,450 1,563 5,574 -7% Dev":
+        - gridcell "1,224"
+        - gridcell "1,337"
+        - gridcell "1,450"
+        - gridcell "1,563"
+        - gridcell "5,574"
+        - gridcell "-7%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,261 1,374 1,487 1,600 5,722 -6% Eli":
+        - gridcell "1,261"
+        - gridcell "1,374"
+        - gridcell "1,487"
+        - gridcell "1,600"
+        - gridcell "5,722"
+        - gridcell "-6%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,298 1,411 1,524 1,637 5,870 -5% Ana":
+        - gridcell "1,298"
+        - gridcell "1,411"
+        - gridcell "1,524"
+        - gridcell "1,637"
+        - gridcell "5,870"
+        - gridcell "-5%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,335 1,448 1,561 1,674 6,018 -4% Ben":
+        - gridcell "1,335"
+        - gridcell "1,448"
+        - gridcell "1,561"
+        - gridcell "1,674"
+        - gridcell "6,018"
+        - gridcell "-4%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,372 1,485 1,598 1,711 6,166 -3% Chloe":
+        - gridcell "1,372"
+        - gridcell "1,485"
+        - gridcell "1,598"
+        - gridcell "1,711"
+        - gridcell "6,166"
+        - gridcell "-3%"
+        - gridcell "Chloe"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,409 1,522 1,635 1,748 6,314 -2% Dev":
+        - gridcell "1,409"
+        - gridcell "1,522"
+        - gridcell "1,635"
+        - gridcell "1,748"
+        - gridcell "6,314"
+        - gridcell "-2%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,446 1,559 1,672 1,785 6,462 -1% Eli":
+        - gridcell "1,446"
+        - gridcell "1,559"
+        - gridcell "1,672"
+        - gridcell "1,785"
+        - gridcell "6,462"
+        - gridcell "-1%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,483 1,596 1,709 1,822 6,610 0% Ana":
+        - gridcell "1,483"
+        - gridcell "1,596"
+        - gridcell "1,709"
+        - gridcell "1,822"
+        - gridcell "6,610"
+        - gridcell "0%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,520 1,633 1,746 1,859 6,758 1% Ben":
+        - gridcell "1,520"
+        - gridcell "1,633"
+        - gridcell "1,746"
+        - gridcell "1,859"
+        - gridcell "6,758"
+        - gridcell "1%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,557 1,670 1,783 1,896 6,906 2% Chloe":
+        - gridcell "1,557"
+        - gridcell "1,670"
+        - gridcell "1,783"
+        - gridcell "1,896"
+        - gridcell "6,906"
+        - gridcell "2%"
+        - gridcell "Chloe"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,594 1,707 1,820 1,933 7,054 3% Dev":
+        - gridcell "1,594"
+        - gridcell "1,707"
+        - gridcell "1,820"
+        - gridcell "1,933"
+        - gridcell "7,054"
+        - gridcell "3%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,631 1,744 1,857 1,970 7,202 4% Eli":
+        - gridcell "1,631"
+        - gridcell "1,744"
+        - gridcell "1,857"
+        - gridcell "1,970"
+        - gridcell "7,202"
+        - gridcell "4%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,668 1,781 1,894 2,007 7,350 5% Ana":
+        - gridcell "1,668"
+        - gridcell "1,781"
+        - gridcell "1,894"
+        - gridcell "2,007"
+        - gridcell "7,350"
+        - gridcell "5%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,705 1,818 1,931 2,044 7,498 6% Ben":
+        - gridcell "1,705"
+        - gridcell "1,818"
+        - gridcell "1,931"
+        - gridcell "2,044"
+        - gridcell "7,498"
+        - gridcell "6%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,742 1,855 1,968 2,081 7,646 7% Chloe Reviewed":
+        - gridcell "1,742"
+        - gridcell "1,855"
+        - gridcell "1,968"
+        - gridcell "2,081"
+        - gridcell "7,646"
+        - gridcell "7%"
+        - gridcell "Chloe"
+        - gridcell "Reviewed"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,779 1,892 2,005 2,118 7,794 8% Dev":
+        - gridcell "1,779"
+        - gridcell "1,892"
+        - gridcell "2,005"
+        - gridcell "2,118"
+        - gridcell "7,794"
+        - gridcell "8%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,816 1,929 2,042 2,155 7,942 9% Eli":
+        - gridcell "1,816"
+        - gridcell "1,929"
+        - gridcell "2,042"
+        - gridcell "2,155"
+        - gridcell "7,942"
+        - gridcell "9%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,853 1,966 2,079 2,192 8,090 10% Ana":
+        - gridcell "1,853"
+        - gridcell "1,966"
+        - gridcell "2,079"
+        - gridcell "2,192"
+        - gridcell "8,090"
+        - gridcell "10%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,890 2,003 2,116 2,229 8,238 -10% Ben":
+        - gridcell "1,890"
+        - gridcell "2,003"
+        - gridcell "2,116"
+        - gridcell "2,229"
+        - gridcell "8,238"
+        - gridcell "-10%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,927 2,040 2,153 2,266 8,386 -9% Chloe":
+        - gridcell "1,927"
+        - gridcell "2,040"
+        - gridcell "2,153"
+        - gridcell "2,266"
+        - gridcell "8,386"
+        - gridcell "-9%"
+        - gridcell "Chloe"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "1,964 2,077 2,190 2,303 8,534 -8% Dev":
+        - gridcell "1,964"
+        - gridcell "2,077"
+        - gridcell "2,190"
+        - gridcell "2,303"
+        - gridcell "8,534"
+        - gridcell "-8%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,001 2,114 2,227 2,340 8,682 -7% Eli":
+        - gridcell "2,001"
+        - gridcell "2,114"
+        - gridcell "2,227"
+        - gridcell "2,340"
+        - gridcell "8,682"
+        - gridcell "-7%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,038 2,151 2,264 2,377 8,830 -6% Ana":
+        - gridcell "2,038"
+        - gridcell "2,151"
+        - gridcell "2,264"
+        - gridcell "2,377"
+        - gridcell "8,830"
+        - gridcell "-6%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,075 2,188 2,301 2,414 8,978 -5% Ben":
+        - gridcell "2,075"
+        - gridcell "2,188"
+        - gridcell "2,301"
+        - gridcell "2,414"
+        - gridcell "8,978"
+        - gridcell "-5%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,112 2,225 2,338 2,451 9,126 -4% Chloe":
+        - gridcell "2,112"
+        - gridcell "2,225"
+        - gridcell "2,338"
+        - gridcell "2,451"
+        - gridcell "9,126"
+        - gridcell "-4%"
+        - gridcell "Chloe"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,149 2,262 2,375 2,488 9,274 -3% Dev":
+        - gridcell "2,149"
+        - gridcell "2,262"
+        - gridcell "2,375"
+        - gridcell "2,488"
+        - gridcell "9,274"
+        - gridcell "-3%"
+        - gridcell "Dev"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,186 2,299 2,412 2,525 9,422 -2% Eli":
+        - gridcell "2,186"
+        - gridcell "2,299"
+        - gridcell "2,412"
+        - gridcell "2,525"
+        - gridcell "9,422"
+        - gridcell "-2%"
+        - gridcell "Eli"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,223 2,336 2,449 2,562 9,570 -1% Ana":
+        - gridcell "2,223"
+        - gridcell "2,336"
+        - gridcell "2,449"
+        - gridcell "2,562"
+        - gridcell "9,570"
+        - gridcell "-1%"
+        - gridcell "Ana"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+      - row "2,260 2,373 2,486 2,599 9,718 0% Ben":
+        - gridcell "2,260"
+        - gridcell "2,373"
+        - gridcell "2,486"
+        - gridcell "2,599"
+        - gridcell "9,718"
+        - gridcell "0%"
+        - gridcell "Ben"
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+        - gridcell
+  - generic [ref=f23e13]:
+    - generic [ref=f23e14]: paint 3.6 ms · frame p95 0.0 ms · 31×13
+    - generic [ref=f23e15]: A1
+    - generic [ref=f23e16]: used 999995 rows · 12,892 cells
+    - generic [ref=f23e17]:
+      - text: a11y mirror
+      - button "on" [ref=f23e18] [cursor=pointer]
+    - generic [ref=f23e19]: zoom 100%

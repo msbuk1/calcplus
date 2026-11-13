@@ -1,0 +1,112 @@
+- generic [ref=f22e1]:
+  - generic [ref=f22e2]: PROTOTYPE — stock Univer 1.4 sheets preset, throwaway code. Not production.
+  - generic [ref=f22e3]:
+    - generic [ref=f22e4]: ▣
+    - generic [ref=f22e5]: univer.xlsx — calcplus grid spike
+    - generic [ref=f22e6]: — □ ×
+  - generic [ref=f22e7]:
+    - generic [ref=f22e9]:
+      - banner [ref=f22e10]:
+        - tablist [ref=f22e12]:
+          - tab "Start" [selected] [ref=f22e13] [cursor=pointer]
+          - tab "Formulas" [ref=f22e309] [cursor=pointer]
+          - tab "View" [ref=f22e14] [cursor=pointer]
+        - toolbar "Start" [ref=f22e16]:
+          - generic [ref=f22e17]:
+            - button "Undo" [ref=f22e20] [cursor=pointer]
+            - button "Redo" [disabled] [ref=f22e25]
+            - button "Format Painter" [disabled] [ref=f22e30]
+            - button "Clear formatting" [disabled] [ref=f22e35]
+            - button "Paste" [ref=f22e40] [cursor=pointer]
+          - generic [ref=f22e50]:
+            - generic [ref=f22e53] [cursor=pointer]:
+              - textbox "Font" [ref=f22e55]: Arial
+              - button "Font" [ref=f22e56]
+            - generic [ref=f22e61] [cursor=pointer]:
+              - textbox "Font size" [ref=f22e66]: "11"
+              - button "Font size" [ref=f22e67]
+            - button "Increase font size" [ref=f22e72] [cursor=pointer]
+            - button "Decrease font size" [ref=f22e78] [cursor=pointer]
+            - button "Bold" [pressed] [ref=f22e84] [cursor=pointer]
+            - button "Italic" [ref=f22e89] [cursor=pointer]
+            - button "Underline" [ref=f22e94] [cursor=pointer]
+            - button "Strikethrough" [ref=f22e100] [cursor=pointer]
+            - generic [ref=f22e106] [cursor=pointer]:
+              - button "Text color" [ref=f22e107]
+              - button "Text color More" [ref=f22e111]
+            - generic [ref=f22e116] [cursor=pointer]:
+              - button "Fill color" [ref=f22e117]
+              - button "Fill color More" [ref=f22e122]
+            - generic [ref=f22e127] [cursor=pointer]:
+              - button "Border" [ref=f22e128]
+              - button "Border More" [ref=f22e131]
+          - generic [ref=f22e134]:
+            - button "Horizontal align" [ref=f22e137] [cursor=pointer]
+            - button "Vertical align" [ref=f22e148] [cursor=pointer]
+            - button "Text wrap" [ref=f22e158] [cursor=pointer]
+            - button "Shrink to fit" [ref=f22e169] [cursor=pointer]
+            - button "Text rotate" [ref=f22e175] [cursor=pointer]
+            - button "Merge cells" [ref=f22e184] [cursor=pointer]
+          - generic [ref=f22e310]:
+            - generic [ref=f22e314] [cursor=pointer]:
+              - generic [ref=f22e315]: General
+              - button "Number format" [ref=f22e316]
+            - button "Percentage" [ref=f22e321] [cursor=pointer]
+            - button "Currency" [ref=f22e328] [cursor=pointer]
+          - button "More" [ref=f22e332] [cursor=pointer]
+      - generic [ref=f22e220]:
+        - generic [ref=f22e221]:
+          - complementary
+          - generic [ref=f22e224]:
+            - generic [ref=f22e226]:
+              - textbox [ref=f22e227]: A1
+              - generic [ref=f22e228] [cursor=pointer]
+            - generic [ref=f22e231]:
+              - generic [ref=f22e240] [cursor=pointer]
+              - generic [ref=f22e250] [cursor=pointer]
+          - complementary
+        - generic [ref=f22e255]:
+          - generic [ref=f22e256]:
+            - generic [ref=f22e257]:
+              - button [ref=f22e258] [cursor=pointer]
+              - button [ref=f22e260] [cursor=pointer]
+            - tablist "Sheet tabs" [ref=f22e262]:
+              - tab "Sales" [selected] [ref=f22e263] [cursor=pointer]
+          - button "Toggle Gridlines" [pressed] [ref=f22e269] [cursor=pointer]
+          - generic [ref=f22e275]:
+            - button "Zoom out" [ref=f22e276] [cursor=pointer]
+            - generic [ref=f22e279]:
+              - button "Reset zoom" [ref=f22e283] [cursor=pointer]
+              - slider "Zoom" [ref=f22e285] [cursor=pointer]
+            - button "Zoom in" [ref=f22e286] [cursor=pointer]
+            - generic [ref=f22e287]:
+              - textbox "Zoom" [ref=f22e289]: 100%
+              - button "Menu" [ref=f22e290] [cursor=pointer]
+    - generic:
+      - region "Notifications alt+T"
+      - region "Notifications alt+T"
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - button "Delete" [disabled]
+            - generic:
+              - button "Copy"
+            - generic:
+              - button "Rename"
+            - generic:
+              - button "Change color"
+            - generic:
+              - button "Hide" [disabled]
+            - generic:
+              - button "Unhide" [disabled]
+            - generic:
+              - button "Protect Worksheet"
+            - generic:
+              - button "Unprotect Worksheet" [disabled]
+            - generic:
+              - button "Change Worksheet Permissions" [disabled]
+            - generic:
+              - button "View All Protection Ranges"

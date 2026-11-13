@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>calcplus grid spike — custom canvas</title>
+<style>
+  :root { --green:#107c41; --border:#d6d3d1; --chrome:#f3f2f1; --muted:#605e5c; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; overflow:hidden; }
+  body { font:12px/1.35 "Segoe UI",system-ui,sans-serif; color:#1f1f1f; display:flex; flex-direction:column; background:var(--chrome); }
+  #banner { background:#fff4ce; border-bottom:1px solid #e6c200; padding:4px 10px; font-size:11px; }
+  #banner b { letter-spacing:.8px; }
+  #titlebar { height:30px; background:#0b5c30; color:#fff; display:flex; align-items:center; padding:0 10px; gap:10px; }
+  #titlebar .doc { flex:1; text-align:center; font-weight:600; }
+  #formula-row { height:30px; display:flex; align-items:center; gap:4px; padding:0 6px; background:#fff; border-bottom:1px solid var(--border); }
+  #name-box { width:90px; height:22px; border:1px solid var(--border); border-radius:3px; padding:0 6px; font-weight:600; }
+  #formula-bar { flex:1; height:22px; border:1px solid var(--border); border-radius:3px; padding:0 7px; }
+  #grid-wrap { flex:1; position:relative; overflow:hidden; background:#fff; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #a11y { position:absolute; inset:0; pointer-events:none; user-select:none; overflow:hidden; }
+  #a11y .row { position:absolute; left:0; right:0; height:0; }
+  #a11y .cell { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
+  #editor { position:absolute; display:none; border:2px solid var(--green); padding:0 4px; font:12px/1.3 "Segoe UI",system-ui,sans-serif; outline:none; background:#fff; z-index:5; }
+  #status { height:24px; display:flex; align-items:center; gap:14px; padding:0 10px; background:var(--chrome); border-top:1px solid var(--border); color:var(--muted); font-size:11px; }
+  #status .grow { flex:1; }
+  #status b { color:#1f1f1f; font-weight:600; }
+  #status button { font:inherit; border:1px solid var(--border); background:#fff; border-radius:3px; padding:1px 7px; cursor:pointer; }
+  #perf { font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; color:#1f1f1f; }
+</style>
+</head>
+<body>
+  <div id="banner"><b>PROTOTYPE</b> — custom canvas grid spike, throwaway code. Not production.</div>
+  <div id="titlebar"><span>▣</span><span class="doc">custom-canvas.xlsx — calcplus grid spike</span><span>— □ ×</span></div>
+  <div id="formula-row">
+    <input id="name-box" value="A1" aria-label="Name box">
+    <button type="button" id="fx" title="Insert function">fx</button>
+    <input id="formula-bar" aria-label="Formula bar" placeholder="Select a cell">
+  </div>
+  <div id="grid-wrap">
+    <canvas id="grid" aria-hidden="true"></canvas>
+    <div id="a11y" role="grid" aria-label="Sheet1" aria-rowcount="1048576" aria-colcount="16384"></div>
+    <input id="editor" aria-label="Cell editor">
+  </div>
+  <div id="status">
+    <span id="perf">frames —</span>
+    <span id="sel-info">A1</span>
+    <span id="used-info"></span>
+    <span class="grow"></span>
+    <span>a11y mirror <button type="button" id="a11y-toggle">on</button></span>
+    <span>zoom 100%</span>
+  </div>
+<script>
+(() => {
+  "use strict";
+
+  const MAX_ROWS = 1048576;
+  const MAX_COLS = 16384;
+  const HEADER_W = 48;
+  const HEADER_H = 24;
+  const DEFAULT_ROW_H = 24;
+  const DEFAULT_COL_W = 100;
+  const FROZEN_ROWS = 1;
+  const FROZEN_COLS = 1;
+  const SCROLLBAR = 14;
+
+  const canvas = document.getElementById("grid");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const wrap = document.getElementById("grid-wrap");
+  const editor = document.getElementById("editor");
+  const nameBox = document.getElementById("name-box");
+  const formulaBar = document.getElementById("formula-bar");
+  const a11y = document.getElementById("a11y");
+  const perfEl = document.getElementById("perf");
+  const selInfo = document.getElementById("sel-info");
+  const usedInfo = document.getElementById("used-info");
+
+  const rowHeights = new Map([[0, 28]]);
+  const colWidths = new Map([[0, 140], [1, 110]]);
+  const merges = [{ r1: 1, c1: 1, r2: 2, c2: 2 }];
+
+  const cells = new Map();
+  const key = (r, c) => r + "," + c;
+
+  function setCell(r, c, value, opts = {}) {
+    cells.set(key(r, c), { v: value, ...opts });
+  }
+
+  // Sample sheet: header, 200 rows of sales data, plus 100k sparse cells across the sheet.
+  const headers = ["Region", "Q1", "Q2", "Q3", "Q4", "Total", "Growth", "Owner", "Notes"];
+  headers.forEach((h, c) => setCell(0, c, h, { bold: true, fill: "#f3f2f1" }));
+  const regions = ["North", "South", "East", "West", "Central"];
+  for (let r = 1; r <= 200; r++) {
+    setCell(r, 0, regions[(r - 1) % regions.length]);
+    let total = 0;
+    for (let c = 1; c <= 4; c++) {
+      const v = 1000 + ((r * 37 + c * 113) % 9000);
+      total += v;
+      setCell(r, c, v, { num: true });
+    }
+    setCell(r, 5, total, { num: true, bold: true });
+    setCell(r, 6, ((r % 21) - 10) / 100, { num: true, pct: true });
+    setCell(r, 7, ["Ana", "Ben", "Chloe", "Dev", "Eli"][r % 5]);
+    if (r % 17 === 0) setCell(r, 8, "Reviewed");
+  }
+  let seed = 1234567;
+  const rand = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = 0; i < 100000; i++) {
+    const r = 1 + Math.floor(rand() * 1000000);
+    const c = Math.floor(rand() * 60);
+    if (!cells.has(key(r, c))) setCell(r, c, Math.floor(rand() * 100000), { num: true });
+  }
+  // A few formulas with saved results, to show the formula bar and right alignment.
+  setCell(1, 5, 45210, { num: true, f: "=SUM(B2:E2)" });
+  setCell(2, 5, 39880, { num: true, f: "=SUM(B3:E3)" });
+
+  // ---------- geometry ----------
+  function colWidth(c) { return colWidths.get(c) ?? DEFAULT_COL_W; }
+  function rowHeight(r) { return rowHeights.get(r) ?? DEFAULT_ROW_H; }
+
+  function offsetCol(c) {
+    let v = c * DEFAULT_COL_W;
+    for (const [i, w] of colWidths) if (i < c) v += w - DEFAULT_COL_W;
+    return v;
+  }
+  function offsetRow(r) {
+    let v = r * DEFAULT_ROW_H;
+    for (const [i, h] of rowHeights) if (i < r) v += h - DEFAULT_ROW_H;
+    return v;
+  }
+  function findIndex(offsetFn, target, max) {
+    let lo = 0, hi = max - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (offsetFn(mid) <= target) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  const frozenW = offsetCol(FROZEN_COLS);
+  const frozenH = offsetRow(FROZEN_ROWS);
+  let viewW = 1, viewH = 1;
+  let scrollX = 0, scrollY = 0;
+  let zoom = 1;
+
+  function maxScrollY() { return Math.max(0, offsetRow(MAX_ROWS) - viewH - frozenH); }
+  function maxScrollX() { return Math.max(0, offsetCol(MAX_COLS) - viewW - frozenW); }
+
+  function cellRect(r, c) {
+    let x, y;
+    if (c < FROZEN_COLS) x = HEADER_W + offsetCol(c);
+    else x = HEADER_W + frozenW + (offsetCol(c) - frozenW) - scrollX;
+    if (r < FROZEN_ROWS) y = HEADER_H + offsetRow(r);
+    else y = HEADER_H + frozenH + (offsetRow(r) - frozenH) - scrollY;
+    return { x, y, w: colWidth(c), h: rowHeight(r) };
+  }
+
+  function visibleRange() {
+    const top = offsetRow(FROZEN_ROWS) + scrollY;
+    const left = offsetCol(FROZEN_COLS) + scrollX;
+    const r0 = findIndex(offsetRow, top, MAX_ROWS);
+    const c0 = findIndex(offsetCol, left, MAX_COLS);
+    const r1 = Math.min(MAX_ROWS - 1, findIndex(offsetRow, top + viewH, MAX_ROWS));
+    const c1 = Math.min(MAX_COLS - 1, findIndex(offsetCol, left + viewW, MAX_COLS));
+    return { r0, c0, r1, c1 };
+  }
+
+  // ---------- selection ----------
+  const sel = { r1: 0, c1: 0, r2: 0, c2: 0 };
+  let active = { r: 0, c: 0 };
+  let editing = null;
+
+  function normalizeSel() {
+    const r1 = Math.min(sel.r1, sel.r2), r2 = Math.max(sel.r1, sel.r2);
+    const c1 = Math.min(sel.c1, sel.c2), c2 = Math.max(sel.c1, sel.c2);
+    return { r1, c1, r2, c2 };
+  }
+
+  function setActive(r, c, extend = false) {
+    r = Math.max(0, Math.min(MAX_ROWS - 1, r));
+    c = Math.max(0, Math.min(MAX_COLS - 1, c));
+    active = { r, c };
+    if (extend) { sel.r2 = r; sel.c2 = c; }
+    else { sel.r1 = sel.r2 = r; sel.c1 = sel.c2 = c; }
+    ensureVisible(r, c);
+    syncChrome();
+    requestRender();
+  }
+
+  function ensureVisible(r, c) {
+    if (r >= FROZEN_ROWS) {
+      const top = offsetRow(r) - frozenH;
+      if (top < scrollY) scrollY = top;
+      else if (top + rowHeight(r) > scrollY + viewH) scrollY = top + rowHeight(r) - viewH;
+    }
+    if (c >= FROZEN_COLS) {
+      const left = offsetCol(c) - frozenW;
+      if (left < scrollX) scrollX = left;
+      else if (left + colWidth(c) > scrollX + viewW) scrollX = left + colWidth(c) - viewW;
+    }
+    scrollY = Math.max(0, Math.min(maxScrollY(), scrollY));
+    scrollX = Math.max(0, Math.min(maxScrollX(), scrollX));
+  }
+
+  function syncChrome() {
+    nameBox.value = colLetter(active.c) + (active.r + 1);
+    const cell = cells.get(key(active.r, active.c));
+    formulaBar.value = cell?.f || (cell?.v ?? "");
+    const { r1, c1, r2, c2 } = normalizeSel();
+    selInfo.textContent = r1 === r2 && c1 === c2
+      ? nameBox.value
+      : `${colLetter(c1)}${r1 + 1}:${colLetter(c2)}${r2 + 1}`;
+  }
+
+  function colLetter(n) {
+    let s = "";
+    n += 1;
+    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+
+  // ---------- paint ----------
+  let dpr = 1;
+  let dirty = true;
+  let rafId = 0;
+  const frameTimes = [];
+
+  function resize() {
+    dpr = Math.min(3, window.devicePixelRatio || 1);
+    const rect = wrap.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    viewW = Math.max(1, rect.width - HEADER_W - frozenW - SCROLLBAR);
+    viewH = Math.max(1, rect.height - HEADER_H - frozenH - SCROLLBAR);
+    scrollX = Math.min(scrollX, maxScrollX());
+    scrollY = Math.min(scrollY, maxScrollY());
+    dirty = true;
+    requestRender();
+  }
+
+  function requestRender() {
+    dirty = true;
+    if (!rafId) rafId = requestAnimationFrame(render);
+  }
+
+  function render(ts) {
+    rafId = 0;
+    if (!dirty) return;
+    dirty = false;
+    const t0 = performance.now();
+    if (ts) {
+      frameTimes.push(ts);
+      if (frameTimes.length > 180) frameTimes.shift();
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const W = canvas.width / dpr, H = canvas.height / dpr;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+
+    const { r0, c0, r1, c1 } = visibleRange();
+    drawHeaders(r0, c0, r1, c1, W, H);
+    drawCells(r0, c0, r1, c1);
+    drawSelection();
+    drawFrozenDividers();
+    drawScrollbars(W, H);
+    updateA11y(r0, c0, r1, c1);
+
+    const elapsed = performance.now() - t0;
+    if (!window.__readyAt) window.__readyAt = performance.now();
+    const recent = frameTimes.slice(-90);
+    let p95 = 0;
+    if (recent.length > 2) {
+      const deltas = [];
+      for (let i = 1; i < recent.length; i++) {
+        const d = recent[i] - recent[i - 1];
+        if (d < 1000) deltas.push(d);
+      }
+      deltas.sort((a, b) => a - b);
+      p95 = deltas.length ? (deltas[Math.floor(deltas.length * 0.95)] || 0) : 0;
+    }
+    perfEl.textContent = `paint ${elapsed.toFixed(1)} ms · frame p95 ${p95.toFixed(1)} ms · ${r1 - r0 + 1}×${c1 - c0 + 1}`;
+  }
+
+  function drawHeaders(r0, c0, r1, c1, W, H) {
+    ctx.fillStyle = "#f8f8f8";
+    ctx.fillRect(0, 0, W, HEADER_H);
+    ctx.fillRect(0, 0, HEADER_W, H);
+    ctx.strokeStyle = "#d6d3d1";
+    ctx.lineWidth = 1;
+    ctx.font = "11px Segoe UI, system-ui, sans-serif";
+    ctx.fillStyle = "#605e5c";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // column headers, frozen then body
+    const colRange = [];
+    for (let c = 0; c < FROZEN_COLS; c++) colRange.push(c);
+    for (let c = Math.max(FROZEN_COLS, c0); c <= c1; c++) colRange.push(c);
+    for (const c of colRange) {
+      const { x, w } = cellRect(0, c);
+      if (x + w < HEADER_W || x > W - SCROLLBAR) continue;
+      ctx.fillStyle = "#f8f8f8";
+      ctx.fillRect(x, 0, w, HEADER_H);
+      ctx.strokeRect(x + .5, .5, w, HEADER_H);
+      ctx.fillStyle = "#605e5c";
+      ctx.fillText(colLetter(c), x + w / 2, HEADER_H / 2);
+    }
+
+    // row headers, frozen then body
+    const rowRange = [];
+    for (let r = 0; r < FROZEN_ROWS; r++) rowRange.push(r);
+    for (let r = Math.max(FROZEN_ROWS, r0); r <= r1; r++) rowRange.push(r);
+    ctx.textAlign = "center";
+    for (const r of rowRange) {
+      const { y, h } = cellRect(r, 0);
+      if (y + h < HEADER_H || y > H - SCROLLBAR) continue;
+      ctx.fillStyle = "#f8f8f8";
+      ctx.fillRect(0, y, HEADER_W, h);
+      ctx.strokeRect(.5, y + .5, HEADER_W, h);
+      ctx.fillStyle = "#605e5c";
+      ctx.fillText(String(r + 1), HEADER_W / 2, y + h / 2);
+    }
+    // corner
+    ctx.fillStyle = "#f1f0ef";
+    ctx.fillRect(0, 0, HEADER_W, HEADER_H);
+    ctx.strokeRect(.5, .5, HEADER_W, HEADER_H);
+  }
+
+  function mergeAnchorFor(r, c) {
+    for (const m of merges) {
+      if (r >= m.r1 && r <= m.r2 && c >= m.c1 && c <= m.c2) return m;
+    }
+    return null;
+  }
+
+  function drawCells(r0, c0, r1, c1) {
+    const bodyR0 = Math.max(r0, FROZEN_ROWS);
+    const bodyC0 = Math.max(c0, FROZEN_COLS);
+    const panes = [
+      { rect: { x: HEADER_W, y: HEADER_H, w: frozenW, h: frozenH }, r0: 0, r1: FROZEN_ROWS - 1, c0: 0, c1: FROZEN_COLS - 1 },
+      { rect: { x: HEADER_W + frozenW, y: HEADER_H, w: viewW, h: frozenH }, r0: 0, r1: FROZEN_ROWS - 1, c0: bodyC0, c1 },
+      { rect: { x: HEADER_W, y: HEADER_H + frozenH, w: frozenW, h: viewH }, r0: bodyR0, r1, c0: 0, c1: FROZEN_COLS - 1 },
+      { rect: { x: HEADER_W + frozenW, y: HEADER_H + frozenH, w: viewW, h: viewH }, r0: bodyR0, r1, c0: bodyC0, c1 },
+    ];
+    for (const pane of panes) {
+      if (pane.rect.w <= 0 || pane.rect.h <= 0) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(pane.rect.x, pane.rect.y, pane.rect.w, pane.rect.h);
+      ctx.clip();
+      for (let r = pane.r0; r <= pane.r1; r++) {
+        for (let c = pane.c0; c <= pane.c1; c++) {
+          drawCell(r, c, cellRect(r, c));
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawCell(r, c, rect) {
+    const m = mergeAnchorFor(r, c);
+    if (m && !(m.r1 === r && m.c1 === c)) return;
+    let w = rect.w, h = rect.h;
+    if (m) {
+      const end = cellRect(m.r2, m.c2);
+      w = end.x + end.w - rect.x;
+      h = end.y + end.h - rect.y;
+    }
+    const cell = cells.get(key(r, c));
+    if (cell?.fill) { ctx.fillStyle = cell.fill; ctx.fillRect(rect.x, rect.y, w, h); }
+    ctx.strokeStyle = "#e1dfdd";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(rect.x + .5, rect.y + .5, w, h);
+
+    if (!cell) return;
+    const text = cell.f || formatValue(cell);
+    if (!text) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x + 3, rect.y, Math.max(0, w - 6), h);
+    ctx.clip();
+    ctx.font = `${cell.bold ? "600 " : ""}${12}px Segoe UI, system-ui, sans-serif`;
+    ctx.fillStyle = "#1f1f1f";
+    ctx.textBaseline = "middle";
+    const numeric = cell.num || typeof cell.v === "number";
+    ctx.textAlign = numeric ? "right" : "left";
+    const x = numeric ? rect.x + w - 6 : rect.x + 5;
+    ctx.fillText(text, x, rect.y + h / 2);
+    ctx.restore();
+  }
+
+  function formatValue(cell) {
+    if (typeof cell.v === "number") {
+      if (cell.pct) return (cell.v * 100).toFixed(0) + "%";
+      return cell.v.toLocaleString("en-US");
+    }
+    return cell.v == null ? "" : String(cell.v);
+  }
+
+  function drawSelection() {
+    const { r1, c1, r2, c2 } = normalizeSel();
+    const panes = [
+      { x: HEADER_W + frozenW, y: HEADER_H + frozenH, w: viewW, h: viewH },
+      { x: HEADER_W + frozenW, y: HEADER_H, w: viewW, h: frozenH },
+      { x: HEADER_W, y: HEADER_H + frozenH, w: frozenW, h: viewH },
+      { x: HEADER_W, y: HEADER_H, w: frozenW, h: frozenH },
+    ];
+    const a = cellRect(r1, c1), b = cellRect(r2, c2);
+    const x1 = a.x, y1 = a.y, x2 = b.x + b.w, y2 = b.y + b.h;
+    for (const p of panes) {
+      if (p.w <= 0 || p.h <= 0) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(p.x, p.y, p.w, p.h);
+      ctx.clip();
+      ctx.fillStyle = "rgba(16,124,65,.12)";
+      ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+      ctx.strokeStyle = "#107c41";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x1 + 1, y1 + 1, x2 - x1 - 2, y2 - y1 - 2);
+      ctx.restore();
+    }
+    const ar = cellRect(active.r, active.c);
+    ctx.strokeStyle = "#107c41";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ar.x + 1, ar.y + 1, ar.w - 2, ar.h - 2);
+    // fill handle
+    ctx.fillStyle = "#107c41";
+    ctx.fillRect(ar.x + ar.w - 4, ar.y + ar.h - 4, 6, 6);
+  }
+
+  function drawFrozenDividers() {
+    ctx.strokeStyle = "#a19f9d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(HEADER_W + frozenW + .5, 0);
+    ctx.lineTo(HEADER_W + frozenW + .5, canvas.height / dpr);
+    ctx.moveTo(0, HEADER_H + frozenH + .5);
+    ctx.lineTo(canvas.width / dpr, HEADER_H + frozenH + .5);
+    ctx.stroke();
+  }
+
+  function drawScrollbars(W, H) {
+    const trackX = W - SCROLLBAR;
+    const trackY = H - SCROLLBAR;
+    const trackH = H - HEADER_H - SCROLLBAR;
+    const trackW = W - HEADER_W - SCROLLBAR;
+    ctx.fillStyle = "#f3f2f1";
+    ctx.fillRect(trackX, 0, SCROLLBAR, H);
+    ctx.fillRect(0, trackY, W, SCROLLBAR);
+
+    const totalY = Math.max(1, offsetRow(MAX_ROWS) - frozenH);
+    const thumbH = Math.max(28, trackH * (viewH / totalY));
+    const rangeY = Math.max(1, maxScrollY());
+    const thumbY = HEADER_H + (scrollY / rangeY) * (trackH - thumbH);
+    ctx.fillStyle = "#c8c6c4";
+    ctx.beginPath();
+    ctx.roundRect(trackX + 4, thumbY, SCROLLBAR - 8, thumbH, 4);
+    ctx.fill();
+
+    const totalX = Math.max(1, offsetCol(MAX_COLS) - frozenW);
+    const thumbW = Math.max(28, trackW * (viewW / totalX));
+    const rangeX = Math.max(1, maxScrollX());
+    const thumbX = HEADER_W + (scrollX / rangeX) * (trackW - thumbW);
+    ctx.beginPath();
+    ctx.roundRect(thumbX, trackY + 4, thumbW, SCROLLBAR - 8, 4);
+    ctx.fill();
+  }
+
+  // ---------- accessibility mirror ----------
+  let a11yOn = true;
+  let a11yKey = "";
+  function updateA11y(r0, c0, r1, c1) {
+    if (!a11yOn) { a11y.replaceChildren(); a11yKey = ""; return; }
+    const k = `${r0},${c0},${r1},${c1},${active.r},${active.c},${sel.r1},${sel.c1},${sel.r2},${sel.c2}`;
+    if (k === a11yKey) return;
+    a11yKey = k;
+    const frag = document.createDocumentFragment();
+    const { r1: sr1, c1: sc1, r2: sr2, c2: sc2 } = normalizeSel();
+    const rows = Math.min(r1 - r0 + 1, 40);
+    const cols = Math.min(c1 - c0 + 1, 24);
+    for (let i = 0; i < rows; i++) {
+      const r = r0 + i;
+      const row = document.createElement("div");
+      row.className = "row";
+      row.setAttribute("role", "row");
+      row.setAttribute("aria-rowindex", String(r + 1));
+      for (let j = 0; j < cols; j++) {
+        const c = c0 + j;
+        const cellEl = document.createElement("div");
+        cellEl.className = "cell";
+        cellEl.setAttribute("role", "gridcell");
+        cellEl.setAttribute("aria-colindex", String(c + 1));
+        cellEl.setAttribute("aria-selected", String(r >= sr1 && r <= sr2 && c >= sc1 && c <= sc2));
+        const cell = cells.get(key(r, c));
+        cellEl.textContent = cell?.f || formatValue(cell || {});
+        if (r === active.r && c === active.c) cellEl.tabIndex = 0;
+        row.appendChild(cellEl);
+      }
+      frag.appendChild(row);
+    }
+    a11y.replaceChildren(frag);
+  }
+
+  // ---------- editing ----------
+  function beginEdit(initial = null) {
+    const { r1, c1, r2, c2 } = normalizeSel();
+    if (r1 !== r2 || c1 !== c2) return;
+    const cell = cells.get(key(active.r, active.c));
+    editing = { r: active.r, c: active.c, original: cell };
+    const rect = cellRect(active.r, active.c);
+    const m = mergeAnchorFor(active.r, active.c);
+    let w = rect.w, h = rect.h;
+    if (m) { const end = cellRect(m.r2, m.c2); w = end.x + end.w - rect.x; h = end.y + end.h - rect.y; }
+    editor.style.display = "block";
+    editor.style.left = rect.x + "px";
+    editor.style.top = rect.y + "px";
+    editor.style.width = Math.max(40, w) + "px";
+    editor.style.height = Math.max(22, h) + "px";
+    editor.value = initial != null ? initial : (cell?.f || (cell?.v ?? ""));
+    editor.focus();
+    if (initial == null) editor.select();
+    else editor.setSelectionRange(editor.value.length, editor.value.length);
+  }
+
+  function commitEdit(cancel = false) {
+    if (!editing) return;
+    const { r, c } = editing;
+    editing = null;
+    editor.style.display = "none";
+    if (!cancel) {
+      const text = editor.value;
+      if (text === "") cells.delete(key(r, c));
+      else if (text.startsWith("=")) setCell(r, c, 0, { num: true, f: text });
+      else if (!isNaN(Number(text))) setCell(r, c, Number(text), { num: true });
+      else setCell(r, c, text);
+    }
+    syncChrome();
+    requestRender();
+    canvas.parentElement.focus();
+  }
+
+  editor.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitEdit(); setActive(active.r + 1, active.c); }
+    else if (e.key === "Tab") { e.preventDefault(); commitEdit(); setActive(active.r, active.c + 1); }
+    else if (e.key === "Escape") { e.preventDefault(); commitEdit(true); }
+    e.stopPropagation();
+  });
+  editor.addEventListener("blur", () => { if (editing) commitEdit(); });
+
+  // ---------- input ----------
+  let dragging = null;
+  canvas.addEventListener("pointerdown", (e) => {
+    wrapEl.focus();
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    // scrollbar hit test
+    const W = rect.width, H = rect.height;
+    if (x > W - SCROLLBAR && y > HEADER_H) { dragging = { axis: "y", start: e.clientY, scroll: scrollY }; canvas.setPointerCapture(e.pointerId); return; }
+    if (y > H - SCROLLBAR && x > HEADER_W) { dragging = { axis: "x", start: e.clientX, scroll: scrollX }; canvas.setPointerCapture(e.pointerId); return; }
+    if (x < HEADER_W || y < HEADER_H) return;
+    const cell = pointToCell(x, y);
+    if (cell) {
+      if (editing) commitEdit();
+      setActive(cell.r, cell.c, e.shiftKey);
+    }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    if (dragging.axis === "y") {
+      const trackH = canvas.getBoundingClientRect().height - HEADER_H - SCROLLBAR;
+      scrollY = dragging.scroll + (e.clientY - dragging.start) * (maxScrollY() / Math.max(1, trackH));
+    } else {
+      const trackW = canvas.getBoundingClientRect().width - HEADER_W - SCROLLBAR;
+      scrollX = dragging.scroll + (e.clientX - dragging.start) * (maxScrollX() / Math.max(1, trackW));
+    }
+    scrollY = Math.max(0, Math.min(maxScrollY(), scrollY));
+    scrollX = Math.max(0, Math.min(maxScrollX(), scrollX));
+    requestRender();
+  });
+  canvas.addEventListener("pointerup", () => { dragging = null; });
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.shiftKey) scrollX += e.deltaY;
+    else { scrollY += e.deltaY; scrollX += e.deltaX; }
+    scrollY = Math.max(0, Math.min(maxScrollY(), scrollY));
+    scrollX = Math.max(0, Math.min(maxScrollX(), scrollX));
+    requestRender();
+  }, { passive: false });
+
+  function pointToCell(x, y) {
+    let r, c;
+    if (y < HEADER_H + frozenH) r = findIndex(offsetRow, Math.max(0, y - HEADER_H), FROZEN_ROWS + 1);
+    else r = findIndex(offsetRow, offsetRow(FROZEN_ROWS) + scrollY + (y - HEADER_H - frozenH), MAX_ROWS);
+    if (x < HEADER_W + frozenW) c = findIndex(offsetCol, Math.max(0, x - HEADER_W), FROZEN_COLS + 1);
+    else c = findIndex(offsetCol, offsetCol(FROZEN_COLS) + scrollX + (x - HEADER_W - frozenW), MAX_COLS);
+    return { r: Math.min(r, MAX_ROWS - 1), c: Math.min(c, MAX_COLS - 1) };
+  }
+
+  // keyboard
+  const wrapEl = wrap;
+  wrapEl.tabIndex = 0;
+  wrapEl.addEventListener("keydown", (e) => {
+    if (editing) return;
+    const { r, c } = active;
+    const page = Math.max(1, Math.floor(viewH / DEFAULT_ROW_H) - 1);
+    if (e.key === "ArrowUp") { e.preventDefault(); setActive(r - 1, c, e.shiftKey); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setActive(r + 1, c, e.shiftKey); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); setActive(r, c - 1, e.shiftKey); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); setActive(r, c + 1, e.shiftKey); }
+    else if (e.key === "Tab") { e.preventDefault(); setActive(r, c + (e.shiftKey ? -1 : 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); setActive(r + (e.shiftKey ? -1 : 1), c); }
+    else if (e.key === "PageDown") { e.preventDefault(); setActive(r + page, c, e.shiftKey); }
+    else if (e.key === "PageUp") { e.preventDefault(); setActive(r - page, c, e.shiftKey); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(e.ctrlKey ? 0 : r, 0, e.shiftKey); }
+    else if (e.key === "End") { e.preventDefault(); const last = lastUsed(); setActive(e.ctrlKey ? last.r : r, e.ctrlKey ? last.c : Math.min(MAX_COLS - 1, c + 20), e.shiftKey); }
+    else if (e.key === "F2") { e.preventDefault(); beginEdit(); }
+    else if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      const { r1, c1, r2, c2 } = normalizeSel();
+      for (let rr = r1; rr <= r2; rr++) for (let cc = c1; cc <= c2; cc++) cells.delete(key(rr, cc));
+      syncChrome(); requestRender();
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      beginEdit(e.key);
+    } else if (e.key === "ArrowDown" && e.ctrlKey) { /* handled above */ }
+    if (e.ctrlKey && e.key === "Home") { e.preventDefault(); setActive(0, 0); }
+  });
+
+  function lastUsed() {
+    let r = 0, c = 0;
+    for (const k of cells.keys()) {
+      const [rr, cc] = k.split(",").map(Number);
+      if (rr > r) r = rr;
+      if (cc > c) c = cc;
+    }
+    return { r, c };
+  }
+
+  // formula bar
+  formulaBar.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const text = formulaBar.value;
+      const { r, c } = active;
+      if (text === "") cells.delete(key(r, c));
+      else if (text.startsWith("=")) setCell(r, c, 0, { num: true, f: text });
+      else if (!isNaN(Number(text))) setCell(r, c, Number(text), { num: true });
+      else setCell(r, c, text);
+      setActive(r + 1, c);
+      requestRender();
+    } else if (e.key === "Escape") { syncChrome(); wrapEl.focus(); }
+  });
+  nameBox.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const m = /^([A-Z]+)(\d+)$/i.exec(nameBox.value.trim());
+    if (!m) { syncChrome(); return; }
+    let c = 0;
+    for (const ch of m[1].toUpperCase()) c = c * 26 + (ch.charCodeAt(0) - 64);
+    setActive(Number(m[2]) - 1, c - 1);
+    wrapEl.focus();
+  });
+
+  document.getElementById("a11y-toggle").addEventListener("click", (e) => {
+    a11yOn = !a11yOn;
+    e.target.textContent = a11yOn ? "on" : "off";
+    a11yKey = "";
+    requestRender();
+  });
+
+  // ---------- boot ----------
+  new ResizeObserver(resize).observe(wrap);
+  resize();
+  syncChrome();
+  usedInfo.textContent = `used ${lastUsed().r + 1} rows · ${cells.size.toLocaleString()} cells`;
+  wrapEl.focus();
+
+  // expose a tiny handle for the measurement harness
+  window.__grid = {
+    get scrollY() { return scrollY; },
+    set scrollY(v) { scrollY = Math.max(0, Math.min(maxScrollY(), v)); requestRender(); },
+    get scrollX() { return scrollX; },
+    set scrollX(v) { scrollX = Math.max(0, Math.min(maxScrollX(), v)); requestRender(); },
+    get frames() { return frameTimes.slice(); },
+    setActive,
+    get active() { return active; },
+    setCell,
+    cellAt: (r, c) => cells.get(key(r, c)),
+    resetFrames: () => { frameTimes.length = 0; },
+  };
+})();
+</script>
+</body>
+</html>
