@@ -11,7 +11,8 @@ A local-first, AI-native office suite (Docs, Sheets, Slides, PDF, Markdown, HTML
 ## Architecture snapshot
 
 - **Shell**: Electron plus a separate React/Vite renderer per app (`apps/shell`, `apps/sheets`, ...). Not a single browser app.
-- **Grid and formula engine**: Univer 0.25 (`@univerjs/core`, `engine-render`, `preset-sheets-core`, plus table/sort/filter/CF/DV/note presets), Apache-2.0. The Sheets renderer has ~256 modules around it, many of them compatibility patches.
+- **Grid and interactive formula engine**: Univer 0.25 (`@univerjs/core`, `engine-render`, `preset-sheets-core`, plus table/sort/filter/CF/DV/note presets), Apache-2.0. The Sheets renderer has ~256 modules around it, many of them compatibility patches.
+- **Formula recalculation engine**: IronCalc 0.9.1 (Rust, MIT OR Apache-2.0) inside the native `xlsx-engine` sidecar. `recalc.rs` keeps a session-resident model cache and re-evaluates only changed edits; the sidecar is written to also build for WebAssembly (the `single-thread` feature). The renderer falls back to cached values if IronCalc cannot load or evaluate.
 - **`.xlsx` gateway**: `@genoffice/xlsx-gateway` reads and patches OOXML with JSZip + `fast-xml-parser` + `numfmt`. It does **not** use SheetJS or ExcelJS as the storage engine.
 - **Native sidecars (Rust)**: `apps/sheets/native/xlsx-engine` (streaming package patch, `.xls`/ODF conversion, shared formulas, cached values, charts/images) and `native/win-clipboard-helper` (Windows clipboard formats).
 - **Testing**: per-package Vitest, a large Playwright e2e suite with visual baselines, a byte-identical compatibility corpus, and benchmark scripts.
@@ -43,13 +44,16 @@ GenOffice did not build a grid; it adopted Univer. It still owns a large patch l
 GenOffice's streaming save, `.xls` conversion and Windows clipboard helper are native Rust sidecars. calcplus is a browser app, so those specific wins are unavailable; the equivalent is WASM or a pure-TS design. Do not copy the Electron/sidecar architecture.
 
 ### 7. Their conformance harness is a template (13)
-
 - Byte-identical untouched entries after a surgical edit.
 - A fixture corpus including a "kitchen sink" workbook.
 - Visual baselines for grid and chrome.
 - Per-package unit tests and benchmark scripts.
 
 This is close to the strategy ticket 13 needs to define.
+
+### 8. Two formula engines, split by role (03, 04)
+
+The renderer calculates with Univer's engine; the Rust sidecar recalculates with **IronCalc** and keeps a session-resident model. The split lets the interactive path stay responsive while authoritative recalculation and cached-value audits run elsewhere, and it is fail-soft: if IronCalc cannot load or evaluate, the renderer keeps the cached value. For calcplus, the analogue is a WASM engine (IronCalc is MIT/Apache-2.0 and the sidecar already has a WebAssembly build mode) or a worker-hosted engine — keep interactive and authoritative calculation separable.
 
 ## What not to copy
 
@@ -60,7 +64,7 @@ This is close to the strategy ticket 13 needs to define.
 
 ## Open questions
 
-- Is Univer's formula engine good enough to be the whole answer, or only the fallback? Ticket 03 recommends HyperFormula with Univer as fallback.
+- Is Univer's formula engine good enough to be the whole answer? Ticket 03 chose HyperFormula (GPLv3) for the 52-function contract; IronCalc/WASM is an unevaluated alternative.
 - How much of GenOffice's patch layer is Univer-specific versus inherent Excel edge cases? That determines the true cost of the buy path.
 - What is Univer's browser bundle/startup cost at calcplus's target workbook sizes?
 
@@ -73,5 +77,9 @@ This is close to the strategy ticket 13 needs to define.
 - `apps/sheets/scripts/verify-compatibility.ts` — byte-identical preservation corpus
 - `apps/sheets/native/xlsx-engine/src/shared_formulas.rs` — shared formulas
 - `apps/sheets/src/renderer/formula-cached-fallback.ts` — cached-value fallback
+- `apps/sheets/native/xlsx-engine/Cargo.toml` — IronCalc 0.9.1 dependency
+- `apps/sheets/native/xlsx-engine/src/recalc.rs` — IronCalc-backed recalculation and model cache
+- `apps/sheets/src/renderer/formula-settle.ts` — Univer calculation settle
+- IronCalc licence: https://crates.io/crates/ironcalc (MIT OR Apache-2.0)
 - Univer license: https://github.com/dream-num/univer/blob/dev/LICENSE (Apache-2.0)
 - GenOffice license: https://github.com/genspark-ai/genoffice/blob/main/LICENSE (Apache-2.0)
