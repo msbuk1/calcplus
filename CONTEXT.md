@@ -128,6 +128,22 @@ _Avoid_: Dependency breadth, spread
 The fixed set of synthetic shapes and anonymised real workbooks that every performance budget is measured against.
 _Avoid_: Test files, sample data
 
+**Conformance oracle**:
+The authoritative source of expected Excel behaviour: real Excel 365 on a Windows runner, captured into stored goldens.
+_Avoid_: Reference implementation, baseline
+
+**Golden file**:
+A committed expected result — a value, error, display string, saved workbook or screenshot — produced by the oracle or a pinned runner and compared in CI.
+_Avoid_: Baseline, snapshot
+
+**Release gate**:
+The fixed set of conformance, accessibility, performance and bug conditions that must pass before v1 is called faithful.
+_Avoid_: Quality bar, definition of done
+
+**Tolerance**:
+The allowed numerical difference when comparing a calculated value to its golden, currently 1e-9 relative or 1e-12 absolute.
+_Avoid_: Epsilon, margin
+
 **Preserved feature**:
 A construct calcplus keeps byte-for-byte but does not model, render or edit, such as a chart, pivot cache or macro project.
 _Avoid_: Unsupported feature, opaque blob
