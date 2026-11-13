@@ -20,3 +20,7 @@ Decide:
 - How the command log stays compatible with a future co-authoring operation log
 
 Depends on the workbook data model (07); do not lock a model that contradicts it.
+
+## Notes
+
+- The model is in [workbook-model.md](../spec/workbook-model.md). Its command shape is the starting point for this ticket.

@@ -17,6 +17,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - **Distribution**: static host plus a bundled per-OS launcher; no backend. See the [distribution contract](spec/distribution.md).
 - **Execution carried into the map**: because the destination is an artifact, ticket 15 assembles the spec package. Every other ticket resolves a decision.
 - **Skills for sessions**: `grilling`, `domain-modeling`, `prototype`, `research`.
+- **Domain vocabulary**: [CONTEXT.md](../../CONTEXT.md).
 - **Research artifacts**: `.scratch/calcplus/research/<slug>.md` (files rather than throwaway branches, so they travel with the map).
 
 ## Decisions so far
@@ -27,6 +28,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - [`.xlsx` import/export approach](issues/04-xlsx-io.md) — preservation-first in-house OOXML layer (JSZip/fflate + saxes): model v1 features, copy unmodelled parts verbatim, patch only dirty parts, append-only style/shared-string tables; SheetJS/ExcelJS are extractors, not storage engines.
 - [Grid rendering approach](issues/05-grid-rendering.md) — custom hybrid grid: Canvas 2D surface (cells, gridlines, headers, selection, fill handle, frozen/split panes) + DOM overlays for editing/focus and an ARIA grid mirror; no third-party grid foundation. **Provisional:** GenOffice's Univer experience reopened the buy option — stress-test in [Stress-test the grid decision](issues/17-grid-spike-univer.md).
 - [Clipboard and Excel interop](issues/06-clipboard-interop.md) — HTML-first (`text/html` Excel dialect) with TSV fallback; formulas best-effort, `.xlsx` is the fidelity channel, and clipboard is never a dependency for correctness.
+- [Workbook data model](issues/07-workbook-model.md) — canonical workbook model as the source of truth; sparse typed cells, shared append-only style table, stable IDs, document/view split, engine-derived dependency graph, JSON snapshot + opaque bytes, command log for undo and co-authoring, anchor index for preserved parts. Spec: [workbook model](spec/workbook-model.md); [ADR 0001](../../docs/adr/0001-canonical-workbook-model.md).
 - [Prior art: what calcplus can learn from GenOffice](issues/16-prior-art-genoffice.md) — validates preservation-first `.xlsx`; shared formulas, structural-edit reference rewriting and the edge-case tail are the real cost; the Univer buy path deserves a stress test.
 - [Number-format engine: build vs buy](issues/18-number-format-engine.md) — `numfmt` 4.1.3 (MIT) behind an internal interface, plus owned Excel seams: built-in ID table, 1904 adapter, width layout, colour/palette, locale grouping, invalid-format fallback and style-table round-trip. `ssf` is a differential test oracle only.
 - [Print and PDF pipeline](issues/21-print-pdf.md) — own pagination in a pure `PrintPlanner`/`PrintPlan`; render pages as inline SVG for preview and paper, PDFKit for vector PDF export, and 300 DPI canvas only as a font/script fallback.
