@@ -64,6 +64,18 @@ _Avoid_: Merge, merged cell
 A recorded document edit with enough before/after information to undo, redo or replay it.
 _Avoid_: Action, mutation, event
 
+**Command registry**:
+The single catalogue of commands that every UI surface dispatches through.
+_Avoid_: Action list, handler map
+
+**Transaction**:
+One undoable unit, made of one or more changes.
+_Avoid_: Batch, operation
+
+**Focus zone**:
+A region that owns keyboard input: the grid, formula bar, name box, ribbon, dialog or panel.
+_Avoid_: Context, widget
+
 **Anchor index**:
 The cell range or drawing anchor recorded for an opaque part so structural edits can move it.
 _Avoid_: Position, bounds

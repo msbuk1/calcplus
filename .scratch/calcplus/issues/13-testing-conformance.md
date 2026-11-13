@@ -22,3 +22,4 @@ Depends on the semantics contract (02), the engine choice (03), and the I/O appr
 ## Notes
 
 - Include a 1900/1904 fixture pair (date system, fake 29 February 1900) and conformance tests for the HyperFormula shims listed in [03 — Formula engine](03-formula-engine.md): wildcard lookup, `INT`, `CHOOSE`, and `#CYCLE!` → `#CIRC!`.
+- Include tests for the command registry, undo/redo transaction boundaries, the shortcut map and the focus model in [command-system](spec/command-system.md).
