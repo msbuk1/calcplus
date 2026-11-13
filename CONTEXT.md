@@ -152,6 +152,22 @@ _Avoid_: Checkpoint, sign-off
 The contingency inside the final milestone for the long tail of Excel edge cases.
 _Avoid_: Buffer, slack
 
+**Corresponding source**:
+All source, build scripts and dependency source needed to rebuild and modify a released calcplus binary, as GPLv3 requires.
+_Avoid_: Source dump, code drop
+
+**Appropriate legal notices**:
+The copyright, no-warranty statement, licence and source link that the app's About dialog must display.
+_Avoid_: Licence page, legal footer
+
+**DCO**:
+The Developer Certificate of Origin sign-off on every commit, certifying the right to submit the contribution under GPL-3.0-only.
+_Avoid_: CLA, contributor agreement
+
+**SBOM**:
+The machine-readable software bill of materials attached to each release, listing every component and its licence.
+_Avoid_: Dependency list, manifest
+
 **Tolerance**:
 The allowed numerical difference when comparing a calculated value to its golden, currently 1e-9 relative or 1e-12 absolute.
 _Avoid_: Epsilon, margin
