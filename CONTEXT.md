@@ -163,3 +163,19 @@ _Avoid_: Filter list, value list
 **Filter-hidden row**:
 A row hidden because it fails the active filter, as distinct from a row the user hid manually.
 _Avoid_: Filtered row, invisible row
+
+**Conditional formatting rule**:
+A rule attached to one or more ranges that overrides cell formatting while its condition is true; it never changes stored values or styles.
+_Avoid_: CF, conditional format
+
+**dxf**:
+The differential format record a conditional-formatting rule points to, holding only the properties that rule changes.
+_Avoid_: CF style, rule format
+
+**Rule priority**:
+The evaluation order of conditional-formatting rules; priority 1 is highest and lower numbers win.
+_Avoid_: Rule order, z-index
+
+**Range-statistic rule**:
+A rule whose result depends on a whole range — top/bottom, duplicate/unique, colour scale, data bar or icon set — as opposed to a per-cell rule.
+_Avoid_: Aggregate rule, range rule
