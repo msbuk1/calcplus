@@ -139,3 +139,11 @@ _Avoid_: Warning dialog, import log
 **Export report**:
 The list shown on save of what changed, what was preserved, what went stale and what needs a warning.
 _Avoid_: Save log, error list
+
+**Accessibility mirror**:
+The transparent DOM copy of the visible cells that exposes the canvas grid to assistive technology, using absolute row and column indices.
+_Avoid_: Screen-reader layer, a11y overlay
+
+**DOM-cell renderer**:
+The fallback grid renderer that draws real DOM cells behind the same frame seam, used if the canvas plus mirror fails accessibility or performance testing.
+_Avoid_: HTML grid, fallback table
