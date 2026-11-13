@@ -76,6 +76,18 @@ _Avoid_: Batch, operation
 A region that owns keyboard input: the grid, formula bar, name box, ribbon, dialog or panel.
 _Avoid_: Context, widget
 
+**Chrome**:
+The non-grid UI around the sheet: app header, ribbon or compact bar, formula row, sheet tabs and status bar.
+_Avoid_: Shell, frame
+
+**Ribbon**:
+The tabbed command surface used as the primary chrome.
+_Avoid_: Toolbar, command bar
+
+**Compact bar**:
+The one-row responsive command surface used below roughly 900 px.
+_Avoid_: Mobile bar, mini ribbon
+
 **Anchor index**:
 The cell range or drawing anchor recorded for an opaque part so structural edits can move it.
 _Avoid_: Position, bounds
