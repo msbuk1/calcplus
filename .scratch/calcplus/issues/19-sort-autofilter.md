@@ -1,6 +1,6 @@
 # 19 — Sort and AutoFilter semantics
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
