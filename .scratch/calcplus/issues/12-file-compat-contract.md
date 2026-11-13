@@ -18,3 +18,7 @@ Using the chosen import/export approach (04) and the v1 feature matrix (01), def
 - How unsupported content is surfaced to the user
 
 Output: a feature-by-feature matrix plus acceptance fixtures.
+
+## Notes
+
+- The compatibility report and unsafe-anchor warnings described in [persistence](spec/persistence.md) depend on this ticket's matrix.

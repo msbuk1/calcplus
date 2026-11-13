@@ -67,3 +67,15 @@ _Avoid_: Action, mutation, event
 **Anchor index**:
 The cell range or drawing anchor recorded for an opaque part so structural edits can move it.
 _Avoid_: Position, bounds
+
+**Recovery copy**:
+A local JSON snapshot of unsaved work, kept in browser storage. It is never written over the user's file.
+_Avoid_: Autosave file, backup
+
+**File handle**:
+The browser's permissioned reference to a file on disk, available through the File System Access API.
+_Avoid_: Path, file reference
+
+**Recent list**:
+The local list of previously opened workbooks, with file handles where the browser allows them.
+_Avoid_: History, recents
