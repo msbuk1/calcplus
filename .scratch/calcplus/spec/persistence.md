@@ -35,6 +35,7 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 - Delete the recovery copy after a successful save.
 - Request persistent storage (`navigator.storage.persist()`) and handle quota errors by warning and keeping the last good snapshot.
 - Recovery copies are local only; nothing is uploaded.
+- **Origin stability:** the launcher must keep a stable scheme, host and port. Recovery copies, recent entries and file handles are origin-scoped; a random port would look like data loss. `--port N` creates a separate storage area and must say so.
 
 ## 3. Recent files
 
@@ -86,3 +87,4 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 8. Two tabs hold two workbooks; closing one leaves the other intact.
 9. No workbook data leaves the machine.
 10. Snapshot and command log use stable IDs; a future sync layer can replay them without a schema change.
+11. Recovery copies, recent entries and file handles survive a launcher restart because the origin is stable; `--port N` is documented as separate storage.

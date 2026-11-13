@@ -14,7 +14,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 ## 2. Launcher
 
 - One executable per OS: Windows, macOS (Intel + Apple Silicon, or universal) and Linux.
-- Starts a static HTTP server bound to `127.0.0.1` on a free port; never binds to a LAN interface.
+- Starts a static HTTP server bound to the literal `127.0.0.1` on a **stable preferred port** (default `47823`); never binds to a LAN interface. Reuse an existing instance if one is already running; if another program owns the port, fail with an actionable message instead of silently choosing a random port. `--port N` is an escape hatch and uses a separate browser origin and storage.
 - Serves the bundled static build and opens the default browser at `http://127.0.0.1:<port>`.
 - No runtime dependency; portable executable unless the launcher research decides an installer is better.
 - Version shown in the app and/or launcher. Updating means replacing the launcher with a newer release.
@@ -54,7 +54,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 ## 7. Acceptance criteria
 
 1. A user can download one file for their OS, run it, and the app opens in the default browser without installing Node, Python or another runtime.
-2. The launcher binds only to `127.0.0.1`; the server is not reachable from the LAN.
+2. The launcher binds only to `127.0.0.1` on a stable preferred port; the server is not reachable from the LAN.
 3. The launcher works with no network connection.
 4. The hosted URL serves the latest build and requires no install.
 5. Chrome/Edge can open and save a workbook in place; Safari/Firefox can upload and download it.
@@ -62,7 +62,13 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 7. No workbook data is transmitted anywhere; the launcher makes no outbound calls.
 8. The app shows its version; replacing the launcher updates it.
 9. A Tauri/Electron desktop app is not shipped in v1; the architecture keeps it possible.
+10. The launcher reuses the same origin across restarts, so IndexedDB, recent files and file handles survive. `--port N` creates a separate origin and warns about it.
 
-## 8. Open decision
+## 8. Launcher technology and release packaging
 
-Launcher technology and release packaging — [26 — Launcher technology and release packaging](../issues/26-launcher-technology.md): Go vs Rust vs Bun vs Tauri, code signing and notarization, release artifacts and checksums.
+Resolved by [26 — Launcher technology and release packaging](../issues/26-launcher-technology.md).
+
+- **Technology:** a stdlib-only Go launcher, embedding the static build (`//go:embed` + `http.FileServerFS`), bound to `127.0.0.1`. Measured 6.9 MB, ~2 ms startup, ~9 MB RSS.
+- **Release matrix:** Windows x64 portable `.exe` (Authenticode); macOS universal `.app` in a notarized and stapled `.dmg`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases.
+- **Signing cost:** about US$220/year (Apple Developer Program + Microsoft Artifact Signing), or about US$630/year with an OV certificate. Unsigned builds hit Gatekeeper/SmartScreen.
+- **Desktop wrapper** is only justified by native menus, file associations, a guaranteed browser engine, lifecycle control, or a blocked-loopback environment.

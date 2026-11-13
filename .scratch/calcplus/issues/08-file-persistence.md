@@ -30,3 +30,4 @@ The persistence contract is in [persistence.md](../spec/persistence.md).
 - **Unsupported parts:** preserve byte-for-byte; show a compatibility report; warn or block only when an anchor cannot be transformed (ticket 12).
 - **Multiple documents:** one workbook per tab.
 - **Future cloud:** local-first; stable IDs, the snapshot and the command log are the sync surface.
+- **Origin stability:** the launcher must keep a stable port and origin; IndexedDB, recent files and file handles are origin-scoped (ticket 26).
