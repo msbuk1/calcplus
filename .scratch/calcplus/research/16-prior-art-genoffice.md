@@ -6,6 +6,8 @@ Researched 2026-11-13 against `main` at commit `d751696` (2026-11-13), https://g
 
 A local-first, AI-native office suite (Docs, Sheets, Slides, PDF, Markdown, HTML) shipped as an Electron desktop app, with a CLI and agent skill. Sheets is the relevant app: a spreadsheet that opens, edits and saves real `.xlsx`/`.xlsm` with live formulas, charts, pivots, slicers, filters, conditional formatting and data validation.
 
+**Licence:** Apache-2.0, except the `ee/` directory, which is under a separate proprietary GenOffice Enterprise License and must not be reused. Apache-2.0 is compatible with GPLv3, so the open-source parts can be reused in calcplus with notices and attribution.
+
 ## Architecture snapshot
 
 - **Shell**: Electron plus a separate React/Vite renderer per app (`apps/shell`, `apps/sheets`, ...). Not a single browser app.

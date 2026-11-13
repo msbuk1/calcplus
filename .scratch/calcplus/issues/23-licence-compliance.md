@@ -15,3 +15,9 @@ Make the GPLv3 decision real and keep the dependency set compatible.
 - Confirm the choice with all contributors before the spec is finalised.
 
 This is a task, not a decision: it unblocks the spec package. The result is a licence file plus a dependency-compliance note.
+
+## Notes
+
+- **GenOffice prior art is Apache-2.0, not GPLv3.** Its top-level `LICENSE` is Apache-2.0; the `ee/` directory is under a separate proprietary GenOffice Enterprise License and must not be reused. Apache-2.0 is compatible with GPLv3, so the open-source parts may be reused with notices and attribution.
+- **Univer** (the grid engine GenOffice uses) is Apache-2.0 and GPLv3-compatible.
+- **HyperFormula** is used under its GPLv3 edition, which is what makes calcplus GPLv3.
