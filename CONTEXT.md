@@ -148,6 +148,18 @@ _Avoid_: Screen-reader layer, a11y overlay
 The fallback grid renderer that draws real DOM cells behind the same frame seam, used if the canvas plus mirror fails accessibility or performance testing.
 _Avoid_: HTML grid, fallback table
 
+**Live region**:
+The visually hidden `aria-live` element that announces edits, structural changes, sort, filter, save and errors without moving focus.
+_Avoid_: Announcer, screen-reader toast
+
+**Roving tabindex**:
+The focus model where one cell has `tabindex="0"` and every other mirrored cell has `tabindex="-1"`, so focus stays on a real cell as the active cell moves.
+_Avoid_: Focus grid, active descendant
+
+**Forced colours**:
+The operating-system high-contrast mode exposed through `forced-colors: active`, where the canvas must repaint with system colours because it cannot inherit them.
+_Avoid_: High-contrast mode, dark mode
+
 **Sort key**:
 A column whose values determine the row order, with a direction; multi-key sorts apply keys in order.
 _Avoid_: Sort column, sort level
