@@ -1,6 +1,6 @@
 # 01 — Define the v1 feature matrix and acceptance criteria
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
