@@ -1,7 +1,7 @@
 # calcplus — Excel desktop clone spec
 
 Type: map
-Status: open
+Status: resolved
 
 ## Destination
 
@@ -47,8 +47,11 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - [Testing and Excel-conformance strategy](issues/13-testing-conformance.md) — Excel 365 on a Windows runner is the authoritative oracle; stored goldens run on pull requests, and LibreOffice and `ssf` are differential aids only. Exact types; numbers within 1e-9 relative / 1e-12 absolute. Vitest + Playwright + fast-check + axe; fakes only at the clock, file, clipboard and Excel boundaries. Full 52-function, file, sort/filter/CF, grid, visual, accessibility and performance gates; pull requests under 15 minutes, nightly full, oracle on a schedule. Spec: [testing and conformance](spec/testing-conformance.md).
 - [Milestones and phasing](issues/14-milestones.md) — eight hybrid vertical-slice milestones: walking skeleton, grid foundation, formula/model, formatting/workbook, data tools, file fidelity, output/hardening, conformance/release. Three engineers, 62-90 person-weeks plus 20% contingency, no calendar dates. Five scheduled risk spikes; a demo and gate per milestone. v1 done requires the ticket 13 release gate, launcher artifacts, complete docs, AT sign-off and no P0/P1/data-loss bugs. Plan: [milestones](spec/milestones.md).
 - [Project licence: GPLv3 and dependency compliance](issues/23-licence-compliance.md) — GPL-3.0-only made real with `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md` and `README.md`. HyperFormula GPL-3.0-only is the binding constraint; every distributed dependency is compatible. Distribution obligations, font and trademark rules, DCO sign-off and the CI licence gate are recorded. Note: [licensing](spec/licensing.md).
+- [Assemble the build-ready spec package](issues/15-spec-assembly.md) — PRD, technical design, eight milestones, the full contract set (including new clipboard, number-format and print/PDF contracts), ADRs 0001-0005 and a package index assembled in [spec/README.md](spec/README.md); every map decision reflected, links checked, and three items deliberately deferred. **Destination reached.**
 
-## Not yet specified
+## Deferred after v1
+
+These are recorded so they are not lost; none blocks the v1 build:
 
 - Localization of the UI and of function names.
 - Formula-bar and name-box edge behaviours.

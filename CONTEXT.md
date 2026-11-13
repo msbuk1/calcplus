@@ -168,6 +168,18 @@ _Avoid_: CLA, contributor agreement
 The machine-readable software bill of materials attached to each release, listing every component and its licence.
 _Avoid_: Dependency list, manifest
 
+**Spec package**:
+The PRD, technical design, milestones, contracts and ADRs that together define v1; its index is `.scratch/calcplus/spec/README.md`.
+_Avoid_: Docs, binder
+
+**Contract**:
+A normative spec file with acceptance criteria and fixtures; where a summary disagrees with a contract, the contract wins.
+_Avoid_: Guide, notes
+
+**Architecture decision record**:
+A short record of an irreversible choice, the options considered and its consequences, stored in `docs/adr/`.
+_Avoid_: Design doc, decision log
+
 **Tolerance**:
 The allowed numerical difference when comparing a calculated value to its golden, currently 1e-9 relative or 1e-12 absolute.
 _Avoid_: Epsilon, margin

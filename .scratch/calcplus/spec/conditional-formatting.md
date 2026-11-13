@@ -181,7 +181,7 @@ CF fill covers gridlines. The formula bar always shows the raw value, not the CF
 
 ### 5.5 Print, PDF and accessibility
 
-- Print preview and PDF render CF exactly as on screen, including bars, scales and icons. The [print pipeline](../issues/21-print-pdf.md) must consume the same CF layer.
+- Print preview and PDF render CF exactly as on screen, including bars, scales and icons. The [print pipeline](print-pdf.md) must consume the same CF layer.
 - Unsupported rules are not painted in print either; the export report notes them.
 - The accessibility mirror exposes the effective display text after a CF number format. CF colours are not announced in v1; ticket 22 may add a description.
 - Rich text displays as plain text; CF applies uniformly to the cell.

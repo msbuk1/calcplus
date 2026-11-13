@@ -5,11 +5,14 @@ credible spreadsheet with grid editing, formatting, formulas, multi-sheet
 workbooks and high-fidelity `.xlsx` round-trip.
 
 **Status: specification.** This repository currently contains the build-ready
-spec package, not a working application. The map is the entry point:
+spec package, not a working application. Start here:
 
+- [Spec package](.scratch/calcplus/spec/README.md) — reading order and all contracts
+- [PRD](.scratch/calcplus/spec/prd.md) — goals, scope and non-goals
+- [Technical design](.scratch/calcplus/spec/technical-design.md) — architecture and components
+- [Milestones](.scratch/calcplus/spec/milestones.md) — the eight-phase build plan
 - [Spec map](.scratch/calcplus/map.md) — destination, decisions and open work
 - [Glossary](CONTEXT.md) — the project vocabulary
-- [Milestones](.scratch/calcplus/spec/milestones.md) — the eight-phase build plan
 - [Testing and conformance](.scratch/calcplus/spec/testing-conformance.md) — how
   "faithful" is proved
 
