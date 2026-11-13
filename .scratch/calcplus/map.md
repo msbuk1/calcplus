@@ -27,6 +27,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - [Grid rendering approach](issues/05-grid-rendering.md) — custom hybrid grid: Canvas 2D surface (cells, gridlines, headers, selection, fill handle, frozen/split panes) + DOM overlays for editing/focus and an ARIA grid mirror; no third-party grid foundation. **Provisional:** GenOffice's Univer experience reopened the buy option — stress-test in [Stress-test the grid decision](issues/17-grid-spike-univer.md).
 - [Clipboard and Excel interop](issues/06-clipboard-interop.md) — HTML-first (`text/html` Excel dialect) with TSV fallback; formulas best-effort, `.xlsx` is the fidelity channel, and clipboard is never a dependency for correctness.
 - [Prior art: what calcplus can learn from GenOffice](issues/16-prior-art-genoffice.md) — validates preservation-first `.xlsx`; shared formulas, structural-edit reference rewriting and the edge-case tail are the real cost; the Univer buy path deserves a stress test.
+- [Print and PDF pipeline](issues/21-print-pdf.md) — own pagination in a pure `PrintPlanner`/`PrintPlan`; render pages as inline SVG for preview and paper, PDFKit for vector PDF export, and 300 DPI canvas only as a font/script fallback.
 
 ## Not yet specified
 
