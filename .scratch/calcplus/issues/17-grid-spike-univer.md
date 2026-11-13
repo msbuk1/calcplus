@@ -1,6 +1,6 @@
 # 17 — Stress-test the grid decision: custom vs Univer
 
-Status: open
+Status: claimed
 Type: prototype
 Blocked by: none
 
