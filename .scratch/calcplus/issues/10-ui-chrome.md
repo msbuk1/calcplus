@@ -1,6 +1,6 @@
 # 10 — UI chrome architecture and ribbon shell prototype
 
-Status: open
+Status: claimed
 Type: prototype
 Blocked by: none
 
