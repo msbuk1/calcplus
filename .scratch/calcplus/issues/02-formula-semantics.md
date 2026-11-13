@@ -1,6 +1,6 @@
 # 02 — Define formula semantics and function coverage
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
