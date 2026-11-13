@@ -42,4 +42,16 @@ Ticket 02 fixed two things that change this decision:
 
 The architectural rule stands: the workbook model owns authored formula text and cached values, and HyperFormula must never be the source of the saved formula text. Any supported construct the GPL edition cannot parse is a blocker for the engine choice, not a reason to drop the construct silently.
 
-**Engine choice under review (2026-11-13):** IronCalc 0.9.1 (Rust/WASM, MIT OR Apache-2.0) is an unevaluated alternative for the 52-function contract. See [24 — IronCalc/WASM vs HyperFormula](24-ironcalc-vs-hyperformula.md).
+**Engine choice re-evaluated (2026-11-13).** [24 — IronCalc/WASM vs HyperFormula](24-ironcalc-vs-hyperformula.md) tested IronCalc 0.9.1 and rejected it for v1: it has no 1904 date-system support, gets the fake 29 February 1900 wrong, and its `.xlsx` layer rewrites the package instead of preserving it. HyperFormula stays, with the configuration profile and shims below.
+
+**Required configuration:** build per workbook with `licenseKey: 'gpl-v3'`, `leapYear1900: true`, `nullDate` 1899-12-31 (or 1904-01-01 for 1904 workbooks), `useArrayArithmetic: false`, `ignoreWhiteSpace: 'any'`, `evaluateNullToZero: true`, `caseSensitive: false`, `useWildcards: true`, `matchWholeCell: true`, `functionArgSeparator: ','`, `decimalSeparator: '.'`; add `TRUE`/`FALSE` named expressions.
+
+**Required shims before v1:**
+
+- Gate the registry to the 52 published functions; everything else is `#NAME?`.
+- Exact-mode `VLOOKUP`/`HLOOKUP` must return the first wildcard match; add wildcard support to `MATCH`.
+- `INT` floors toward negative infinity; `CHOOSE` out-of-range maps to `#VALUE!`.
+- Map `#CYCLE!` to `#CIRC!`; never let `#ERROR!`, `#SPILL!`, `#CALC!` or `#LIC!` reach the model or the file.
+- Feed a normalised internal formula; never read formula text back from the engine; preserve `OFFSET`, `_xlfn.` and structured references as authored text plus cached value.
+- Reconfigure the engine when opening a 1904 workbook; add a 1900/1904 fixture pair to ticket 13.
+- Browser memory at target sheet sizes is still unproven; benchmark in ticket 11 before declaring the engine fit.

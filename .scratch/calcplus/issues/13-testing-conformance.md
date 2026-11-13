@@ -18,3 +18,7 @@ Define:
 - The minimum bar before v1 can be called "faithful", and what is explicitly not tested
 
 Depends on the semantics contract (02), the engine choice (03), and the I/O approach (04).
+
+## Notes
+
+- Include a 1900/1904 fixture pair (date system, fake 29 February 1900) and conformance tests for the HyperFormula shims listed in [03 — Formula engine](03-formula-engine.md): wildcard lookup, `INT`, `CHOOSE`, and `#CYCLE!` → `#CIRC!`.

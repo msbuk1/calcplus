@@ -19,3 +19,7 @@ Set measurable targets for:
 - Desktop-browser-only assumption (state the cut explicitly)
 
 Define the benchmark corpus (synthetic and real-world shapes), the measurement harness, and the CI regression gate.
+
+## Notes
+
+- Benchmark HyperFormula's browser memory at the target sheet sizes. If memory is the constraint, move the engine to a Web Worker; do not switch to IronCalc (see ticket 24).
