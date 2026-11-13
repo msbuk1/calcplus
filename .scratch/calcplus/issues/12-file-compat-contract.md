@@ -1,6 +1,6 @@
 # 12 — .xlsx file-compatibility contract
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: 01, 04
 
