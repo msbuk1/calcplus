@@ -1,6 +1,6 @@
 # 11 — Performance targets and benchmarks
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
