@@ -15,7 +15,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - **Constraints**: browser app; single-user; no backend; high-fidelity `.xlsx` import and export; no pixel-perfect requirement, but near-identical chrome.
 - **Execution carried into the map**: because the destination is an artifact, ticket 15 assembles the spec package. Every other ticket resolves a decision.
 - **Skills for sessions**: `grilling`, `domain-modeling`, `prototype`, `research`.
-- **Research artifacts**: `.scratch/calcplus/research/<slug>.md`. The repo is not yet a git repo, so research is captured as files rather than throwaway branches.
+- **Research artifacts**: `.scratch/calcplus/research/<slug>.md` (files rather than throwaway branches, so they travel with the map).
 
 ## Decisions so far
 
