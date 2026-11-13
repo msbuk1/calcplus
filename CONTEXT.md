@@ -127,3 +127,15 @@ _Avoid_: Dependency breadth, spread
 **Benchmark corpus**:
 The fixed set of synthetic shapes and anonymised real workbooks that every performance budget is measured against.
 _Avoid_: Test files, sample data
+
+**Preserved feature**:
+A construct calcplus keeps byte-for-byte but does not model, render or edit, such as a chart, pivot cache or macro project.
+_Avoid_: Unsupported feature, opaque blob
+
+**Compatibility report**:
+The read-only list shown on open of preserved, stale or unenforced content, with what calcplus will and will not do with it.
+_Avoid_: Warning dialog, import log
+
+**Export report**:
+The list shown on save of what changed, what was preserved, what went stale and what needs a warning.
+_Avoid_: Save log, error list
