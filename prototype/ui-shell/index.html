@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>calcplus UI shell — PROTOTYPE</title>
+<style>
+  :root {
+    --green: #107c41;
+    --green-dark: #0b5c30;
+    --green-soft: #e6f4ea;
+    --chrome: #f3f2f1;
+    --chrome-2: #faf9f8;
+    --border: #d6d3d1;
+    --text: #1f1f1f;
+    --muted: #605e5c;
+    --grid: #e1dfdd;
+    --header: #f8f8f8;
+    --white: #fff;
+    --shadow: 0 8px 28px rgba(0,0,0,.18);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: flex; flex-direction: column; overflow: hidden;
+    font: 12px/1.35 "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--text); background: var(--chrome);
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  #prototype-banner {
+    background: #fff4ce; color: #3b3000; border-bottom: 1px solid #e6c200;
+    padding: 4px 10px; font-size: 11px; letter-spacing: .2px; flex: 0 0 auto;
+  }
+  #prototype-banner b { letter-spacing: .8px; }
+
+  #titlebar {
+    height: 32px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    background: var(--green-dark); color: #fff; padding: 0 10px;
+  }
+  #titlebar .quick { display: flex; gap: 2px; opacity: .9; }
+  #titlebar .quick span {
+    width: 22px; height: 22px; display: grid; place-items: center;
+    border-radius: 3px; font-size: 12px;
+  }
+  #titlebar .quick span:hover { background: rgba(255,255,255,.14); }
+  #titlebar .doc { flex: 1; text-align: center; font-weight: 600; font-size: 12px; }
+  #titlebar .win { display: flex; gap: 14px; opacity: .9; font-size: 13px; }
+
+  #chrome { flex: 0 0 auto; background: var(--chrome); border-bottom: 1px solid var(--border); }
+  #chrome.variant-a { height: 132px; }
+  #chrome.variant-b { height: 44px; }
+  #chrome.variant-c { height: 72px; }
+
+  /* ---------- Variant A: ribbon ---------- */
+  .ribbon-tabs { display: flex; align-items: flex-end; height: 30px; padding: 0 6px; gap: 1px; border-bottom: 1px solid var(--border); background: var(--chrome); }
+  .ribbon-tab {
+    border: 0; background: transparent; padding: 6px 12px 7px; border-radius: 4px 4px 0 0;
+    color: var(--muted); font-size: 12px;
+  }
+  .ribbon-tab:hover { background: #e9e7e6; color: var(--text); }
+  .ribbon-tab.active { background: var(--white); color: var(--text); font-weight: 600; border: 1px solid var(--border); border-bottom-color: var(--white); margin-bottom: -1px; }
+  .ribbon-tab.file { background: var(--green); color: #fff; font-weight: 600; margin-right: 6px; }
+  .ribbon-body { height: 102px; display: flex; align-items: stretch; gap: 0; padding: 4px 6px; background: var(--white); overflow-x: auto; }
+  .group { display: flex; flex-direction: column; justify-content: space-between; padding: 2px 7px 0; border-right: 1px solid #e7e5e4; min-width: max-content; }
+  .group:last-child { border-right: 0; }
+  .group-body { display: flex; align-items: flex-start; gap: 3px; flex: 1; }
+  .group-label { text-align: center; color: var(--muted); font-size: 10px; padding: 2px 0 3px; white-space: nowrap; }
+  .rb {
+    min-width: 24px; height: 24px; border: 1px solid transparent; background: transparent;
+    border-radius: 3px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center;
+    gap: 4px; font-size: 12px; white-space: nowrap;
+  }
+  .rb:hover { background: #eceae8; border-color: #d6d3d1; }
+  .rb:active { background: #e0dedc; }
+  .rb.pressed { background: #dcefe2; border-color: #a9d3b8; }
+  .rb.wide { padding: 0 7px; }
+  .rb.big { flex-direction: column; height: 44px; min-width: 40px; font-size: 11px; gap: 1px; }
+  .rb.big .glyph { font-size: 16px; line-height: 1; }
+  .rb .v2 { font-size: 8px; background: #eee; color: #777; border-radius: 2px; padding: 0 3px; margin-left: 2px; }
+  .stack { display: flex; flex-direction: column; gap: 1px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, auto); grid-auto-rows: 24px; gap: 1px; align-content: start; }
+  .row { display: flex; gap: 1px; align-items: center; }
+  .font-select { height: 24px; border: 1px solid var(--border); border-radius: 3px; background: #fff; padding: 0 4px; }
+  .font-name { width: 108px; }
+  .font-size { width: 46px; }
+  .color-a { border-bottom: 3px solid #c00; line-height: 14px; }
+  .rb[data-command="format.fontColor"] { color: #c00; font-weight: 700; border-bottom: 2px solid #c00; border-radius: 2px; }
+  .fill-a { border-bottom: 3px solid #ffd966; line-height: 14px; }
+  .sep { width: 1px; align-self: stretch; background: #e7e5e4; margin: 3px 5px; }
+
+  /* ---------- Variant B: compact ---------- */
+  .compact-bar { height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--white); }
+  .compact-home { height: 28px; border: 1px solid var(--border); background: var(--chrome); border-radius: 4px; padding: 0 9px; font-weight: 600; }
+  .tell-me { flex: 1; max-width: 280px; height: 28px; border: 1px solid var(--border); border-radius: 4px; padding: 0 9px; background: var(--chrome-2); color: var(--muted); }
+  .compact-actions { display: flex; align-items: center; gap: 2px; flex: 1; overflow: hidden; }
+  .compact-actions .rb { height: 26px; }
+  .compact-more { height: 28px; width: 30px; border: 1px solid var(--border); background: var(--chrome); border-radius: 4px; font-size: 16px; }
+  .compact-dropdown { position: absolute; top: 76px; left: 8px; z-index: 20; background: #fff; border: 1px solid var(--border); border-radius: 4px; box-shadow: var(--shadow); padding: 4px; min-width: 180px; }
+  .compact-dropdown button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 3px; }
+  .compact-dropdown button:hover { background: var(--green-soft); }
+
+  /* ---------- Variant C: classic ---------- */
+  .classic-menubar { height: 26px; display: flex; align-items: center; gap: 0; padding: 0 4px; background: var(--chrome); border-bottom: 1px solid var(--border); position: relative; }
+  .menu-wrap { position: relative; }
+  .menu-wrap > button { border: 0; background: transparent; padding: 5px 9px; border-radius: 3px; }
+  .menu-wrap > button:hover, .menu-wrap > button.open { background: #e6e4e2; }
+  .menu-pop { position: absolute; top: 26px; left: 0; z-index: 30; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 3px; min-width: 190px; padding: 4px; }
+  .menu-pop button { display: flex; justify-content: space-between; gap: 20px; width: 100%; border: 0; background: transparent; text-align: left; padding: 6px 9px; border-radius: 3px; }
+  .menu-pop button:hover { background: var(--green-soft); }
+  .menu-pop .hint { color: var(--muted); font-size: 11px; }
+  .classic-toolbar { height: 44px; display: flex; align-items: center; gap: 3px; padding: 0 8px; background: var(--white); overflow-x: auto; }
+
+  /* ---------- Formula row ---------- */
+  #formula-row { height: 30px; flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 0 6px; background: var(--white); border-bottom: 1px solid var(--border); }
+  #name-box { width: 92px; height: 22px; border: 1px solid var(--border); border-radius: 3px; padding: 0 6px; background: #fff; font-weight: 600; }
+  #fx { width: 24px; height: 22px; border: 1px solid transparent; background: transparent; color: var(--muted); font-style: italic; font-weight: 700; }
+  #fx:hover { background: #eceae8; border-color: var(--border); }
+  #formula-bar { flex: 1; height: 22px; border: 1px solid var(--border); border-radius: 3px; padding: 0 7px; background: #fff; }
+  .formula-actions { display: flex; gap: 2px; }
+  .formula-actions button { width: 22px; height: 22px; border: 1px solid transparent; background: transparent; border-radius: 3px; }
+  .formula-actions button:hover { background: #eceae8; border-color: var(--border); }
+
+  /* ---------- Sheet ---------- */
+  #sheet { flex: 1; overflow: auto; background: var(--white); position: relative; }
+  #grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; min-width: 760px; }
+  #grid th, #grid td { border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); height: 22px; padding: 0 5px; font-weight: 400; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #grid thead th { position: sticky; top: 0; z-index: 3; background: var(--header); text-align: center; color: var(--muted); font-size: 11px; }
+  #grid tbody th { position: sticky; left: 0; z-index: 2; background: var(--header); text-align: center; color: var(--muted); font-size: 11px; width: 42px; min-width: 42px; }
+  #grid thead th.corner { left: 0; z-index: 4; }
+  #grid thead th:first-child { width: 42px; min-width: 42px; }
+  #grid td { background: #fff; cursor: cell; }
+  #grid td.num { text-align: right; }
+  #grid td.header { font-weight: 600; background: #fbfbfb; }
+  #grid td.active { outline: 2px solid var(--green); outline-offset: -2px; position: relative; z-index: 1; }
+  #grid td.active::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 6px; height: 6px; background: var(--green); border: 1px solid #fff; }
+  #grid td.range { background: var(--green-soft); }
+
+  #sheet-tabs { height: 28px; flex: 0 0 auto; display: flex; align-items: flex-end; gap: 1px; padding: 0 8px; background: var(--chrome); border-top: 1px solid var(--border); }
+  .sheet-tab { border: 1px solid transparent; border-bottom: 0; background: transparent; padding: 4px 14px 5px; border-radius: 4px 4px 0 0; color: var(--muted); }
+  .sheet-tab:hover { background: #e9e7e6; }
+  .sheet-tab.active { background: var(--white); color: var(--text); font-weight: 600; border-color: var(--border); }
+  .sheet-add { border: 1px solid transparent; background: transparent; width: 26px; height: 22px; border-radius: 3px; font-size: 15px; color: var(--muted); }
+  .sheet-add:hover { background: #e9e7e6; }
+  .sheet-tabs-spacer { flex: 1; }
+
+  #status-bar { height: 24px; flex: 0 0 auto; display: flex; align-items: center; gap: 16px; padding: 0 10px; background: var(--chrome); border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+  #status-bar .grow { flex: 1; }
+  #status-bar .stat { white-space: nowrap; }
+  #status-bar button { border: 0; background: transparent; color: var(--muted); padding: 2px 6px; border-radius: 3px; }
+  #status-bar button:hover { background: #e6e4e2; }
+  #zoom { width: 90px; accent-color: var(--green); }
+
+  /* ---------- Overlays ---------- */
+  #toast { position: fixed; left: 14px; bottom: 38px; z-index: 60; background: #1f1f1f; color: #fff; padding: 7px 11px; border-radius: 4px; font-size: 11px; opacity: 0; transform: translateY(6px); transition: .18s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: none; }
+
+  #context-menu { position: fixed; z-index: 70; min-width: 210px; background: #fff; border: 1px solid var(--border); border-radius: 4px; box-shadow: var(--shadow); padding: 4px; }
+  #context-menu button { display: flex; justify-content: space-between; width: 100%; border: 0; background: transparent; text-align: left; padding: 6px 9px; border-radius: 3px; }
+  #context-menu button:hover { background: var(--green-soft); }
+  #context-menu .divider { height: 1px; background: #eceae8; margin: 4px 2px; }
+  #context-menu .hint { color: var(--muted); font-size: 11px; }
+
+  #dialog-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.28); display: grid; place-items: center; }
+  .dialog { width: min(540px, 92vw); background: #fff; border-radius: 6px; box-shadow: 0 18px 60px rgba(0,0,0,.32); overflow: hidden; }
+  .dialog-title { background: var(--chrome); padding: 9px 12px; font-weight: 600; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .dialog-title button { border: 0; background: transparent; font-size: 16px; }
+  .dialog-tabs { display: flex; gap: 2px; padding: 8px 12px 0; border-bottom: 1px solid var(--border); }
+  .dialog-tabs button { border: 1px solid transparent; border-bottom: 0; background: transparent; padding: 5px 10px; border-radius: 3px 3px 0 0; color: var(--muted); }
+  .dialog-tabs button.active { background: #fff; border-color: var(--border); color: var(--text); font-weight: 600; }
+  .dialog-body { padding: 16px; min-height: 150px; color: var(--muted); }
+  .dialog-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .dialog-row label { width: 100px; color: var(--text); }
+  .dialog-row input, .dialog-row select { height: 26px; border: 1px solid var(--border); border-radius: 3px; padding: 0 6px; background: #fff; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; background: var(--chrome); border-top: 1px solid var(--border); }
+  .dialog-actions button { height: 28px; padding: 0 16px; border-radius: 4px; border: 1px solid var(--border); background: #fff; }
+  .dialog-actions button.primary { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; }
+
+  #state-panel { position: fixed; right: 12px; bottom: 36px; z-index: 55; width: 250px; background: #1f1f1f; color: #e8e8e8; border-radius: 5px; padding: 9px 11px; font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; box-shadow: var(--shadow); }
+  #state-panel b { color: #9fe0b5; font-weight: 600; }
+
+  #prototype-switcher { position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 8px; background: #1f1f1f; color: #fff; border-radius: 999px; padding: 5px 7px; box-shadow: 0 8px 24px rgba(0,0,0,.3); font-size: 11px; }
+  #prototype-switcher button { border: 0; background: rgba(255,255,255,.12); color: #fff; width: 26px; height: 26px; border-radius: 999px; }
+  #prototype-switcher button:hover { background: rgba(255,255,255,.24); }
+  #variant-label { min-width: 150px; text-align: center; letter-spacing: .2px; }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 1100px) {
+    .group-label { display: none; }
+    .rb.wide { display: none; }
+    #chrome.variant-a { height: 96px; }
+    .ribbon-body { height: 66px; }
+  }
+  @media (max-width: 820px) {
+    .tell-me { display: none; }
+    .compact-actions .rb:nth-child(n+9) { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="prototype-banner"><b>PROTOTYPE</b> — throwaway UI shell, not production. Compare variants with the floating bar. `?variant=A|B|C`.</div>
+
+  <div id="titlebar">
+    <div class="quick" aria-hidden="true"><span>▣</span><span>↺</span><span>↻</span><span>⌕</span></div>
+    <div class="doc">Q1 Sales.xlsx — calcplus</div>
+    <div class="win" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
+  </div>
+
+  <div id="chrome" class="variant-a" aria-label="Application chrome"></div>
+
+  <div id="formula-row">
+    <input id="name-box" value="B4" aria-label="Name box">
+    <button id="fx" type="button" title="Insert function">fx</button>
+    <input id="formula-bar" value="" aria-label="Formula bar">
+    <div class="formula-actions">
+      <button type="button" title="Cancel" id="formula-cancel">✕</button>
+      <button type="button" title="Enter" id="formula-enter">✓</button>
+    </div>
+  </div>
+
+  <div id="sheet"><table id="grid" aria-label="Spreadsheet grid"></table></div>
+
+  <div id="sheet-tabs">
+    <button class="sheet-tab active" type="button">Sales</button>
+    <button class="sheet-tab" type="button">Summary</button>
+    <button class="sheet-tab" type="button">Notes</button>
+    <button class="sheet-add" type="button" title="New sheet">+</button>
+    <span class="sheet-tabs-spacer"></span>
+  </div>
+
+  <div id="status-bar">
+    <span class="stat">Ready</span>
+    <span class="stat" id="selection-stats">Average: 12,000 · Count: 4 · Sum: 43,000</span>
+    <span class="grow"></span>
+    <button type="button" id="state-toggle">state</button>
+    <span class="stat">Zoom</span>
+    <input id="zoom" type="range" min="50" max="200" value="100" aria-label="Zoom">
+    <span class="stat" id="zoom-label">100%</span>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <div id="context-menu" hidden></div>
+
+  <div id="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <div class="dialog-title" id="dialog-title">Format Cells <button type="button" id="dialog-x" aria-label="Close">×</button></div>
+      <div class="dialog-tabs" id="dialog-tabs">
+        <button type="button" class="active" data-dialog-tab="Number">Number</button>
+        <button type="button" data-dialog-tab="Alignment">Alignment</button>
+        <button type="button" data-dialog-tab="Font">Font</button>
+        <button type="button" data-dialog-tab="Border">Border</button>
+        <button type="button" data-dialog-tab="Fill">Fill</button>
+      </div>
+      <div class="dialog-body" id="dialog-body"></div>
+      <div class="dialog-actions">
+        <button type="button" id="dialog-cancel">Cancel</button>
+        <button type="button" class="primary" id="dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="state-panel" hidden></div>
+
+  <div id="prototype-switcher" role="group" aria-label="Prototype variant switcher">
+    <button type="button" id="prev-variant" aria-label="Previous variant">◀</button>
+    <span id="variant-label">A — Ribbon</span>
+    <button type="button" id="next-variant" aria-label="Next variant">▶</button>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  const VARIANTS = [
+    { key: "A", name: "Ribbon" },
+    { key: "B", name: "Compact" },
+    { key: "C", name: "Classic" },
+  ];
+
+  const state = {
+    variant: (new URLSearchParams(location.search).get("variant") || "A").toUpperCase(),
+    tab: "Home",
+    active: { row: 4, col: 2 },
+    toggles: { bold: false, italic: false, underline: false },
+    lastCommand: "—",
+    menu: null,
+    dialogTab: "Number",
+    statePanel: false,
+  };
+  if (!VARIANTS.some(v => v.key === state.variant)) state.variant = "A";
+
+  const CELLS = {
+    A1: { v: "Region", h: true }, B1: { v: "Q1", h: true }, C1: { v: "Q2", h: true }, D1: { v: "Total", h: true }, E1: { v: "Growth", h: true },
+    A2: { v: "North" }, B2: { v: 12000 }, C2: { v: 15000 }, D2: { v: 27000, f: "=SUM(B2:C2)" }, E2: { v: "25%" },
+    A3: { v: "South" }, B3: { v: 9000 }, C3: { v: 11000 }, D3: { v: 20000, f: "=SUM(B3:C3)" }, E3: { v: "22%" },
+    A4: { v: "East" }, B4: { v: 15000 }, C4: { v: 14000 }, D4: { v: 29000, f: "=SUM(B4:C4)" }, E4: { v: "-7%" },
+    A5: { v: "West" }, B5: { v: 7000 }, C5: { v: 9500 }, D5: { v: 16500, f: "=SUM(B5:C5)" }, E5: { v: "36%" },
+    A6: { v: "Total", h: true }, B6: { v: 43000, f: "=SUM(B2:B5)" }, C6: { v: 49500, f: "=SUM(C2:C5)" }, D6: { v: 92500, f: "=SUM(D2:D5)" }, E6: { v: "19%", f: "=AVERAGE(E2:E5)" },
+    A8: { v: "Notes", h: true }, A9: { v: "Prototype data only. The grid is a shell, not a working engine." },
+  };
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  const chrome = $("#chrome");
+  const grid = $("#grid");
+  const nameBox = $("#name-box");
+  const formulaBar = $("#formula-bar");
+  const contextMenu = $("#context-menu");
+  const dialogBackdrop = $("#dialog-backdrop");
+  const statePanel = $("#state-panel");
+  const toastEl = $("#toast");
+
+  const colLetter = (n) => {
+    let s = "";
+    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  };
+  const cellKey = (row, col) => colLetter(col) + row;
+  const parseKey = (text) => {
+    const m = /^\s*([A-Z]+)(\d+)\s*$/i.exec(text || "");
+    if (!m) return null;
+    let col = 0;
+    for (const ch of m[1].toUpperCase()) col = col * 26 + (ch.charCodeAt(0) - 64);
+    return { row: Number(m[2]), col };
+  };
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = (v) => typeof v === "number" ? v.toLocaleString("en-US") : (v == null ? "" : String(v));
+
+  function getCell(row, col) { return CELLS[cellKey(row, col)] || null; }
+
+  function toast(message) {
+    toastEl.textContent = message;
+    toastEl.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  function dispatch(id, label) {
+    state.lastCommand = id + (label ? " — " + label : "");
+    if (id === "cells.format" || id === "number.format") openDialog();
+    if (id === "edit.find") toast("Find & Replace panel would open");
+    if (id === "file.save") toast("Save command dispatched");
+    if (id === "ui.more") toast("Overflow menu would open");
+    updateStatePanel();
+    toast(id);
+  }
+
+  // ---------- chrome ----------
+  const btn = (label, command, opts = {}) => {
+    const { toggle = null, wide = false, big = false, glyph = null, badge = null, title = null } = opts;
+    const pressed = toggle && state.toggles[toggle];
+    const cls = ["rb", wide && "wide", big && "big", pressed && "pressed"].filter(Boolean).join(" ");
+    const content = big && glyph
+      ? `<span class="glyph">${glyph}</span><span>${escapeHtml(label)}</span>`
+      : `${escapeHtml(label)}${badge ? `<span class="v2">${escapeHtml(badge)}</span>` : ""}`;
+    return `<button type="button" class="${cls}" data-command="${command}" data-label="${escapeHtml(label)}"${toggle ? ` data-toggle="${toggle}"` : ""}${pressed ? ' aria-pressed="true"' : ""} title="${escapeHtml(title || label)}">${content}</button>`;
+  };
+
+  const group = (label, body) => `<div class="group"><div class="group-body">${body}</div><div class="group-label">${escapeHtml(label)}</div></div>`;
+  const sep = '<div class="sep"></div>';
+
+  function homeGroups() {
+    return [
+      group("Clipboard", `
+        ${btn("Paste", "clipboard.paste", { big: true, glyph: "📋" })}
+        <div class="stack">
+          ${btn("Cut", "clipboard.cut", { wide: true })}
+          ${btn("Copy", "clipboard.copy", { wide: true })}
+          ${btn("Painter", "clipboard.formatPainter", { wide: true })}
+        </div>`),
+      group("Font", `
+        <div class="stack">
+          <div class="row">
+            <select class="font-select font-name" aria-label="Font family"><option>Segoe UI</option><option>Aptos</option><option>Calibri</option><option>Arial</option></select>
+            <select class="font-select font-size" aria-label="Font size"><option>11</option><option>12</option><option>14</option><option>18</option></select>
+          </div>
+          <div class="row">
+            ${btn("B", "format.bold", { toggle: "bold", title: "Bold" })}
+            ${btn("I", "format.italic", { toggle: "italic", title: "Italic" })}
+            ${btn("U", "format.underline", { toggle: "underline", title: "Underline" })}
+            ${btn("Borders", "format.borders")}
+            ${btn("Fill", "format.fill")}
+            ${btn("A", "format.fontColor", { title: "Font colour" })}
+          </div>
+        </div>`),
+      group("Alignment", `
+        <div class="stack">
+          <div class="row">
+            ${btn("L", "align.left", { title: "Align left" })}
+            ${btn("C", "align.center", { title: "Centre" })}
+            ${btn("R", "align.right", { title: "Align right" })}
+            ${btn("Wrap", "align.wrap")}
+            ${btn("Merge", "align.merge")}
+          </div>
+          <div class="row">
+            ${btn("Top", "align.top")}
+            ${btn("Middle", "align.middle")}
+            ${btn("Bottom", "align.bottom")}
+            ${btn("Indent", "align.indent", { badge: "v2" })}
+          </div>
+        </div>`),
+      group("Number", `
+        <div class="stack">
+          <div class="row">
+            <select class="font-select" aria-label="Number format" style="width:108px">
+              <option>General</option><option>Number</option><option>Currency</option><option>Accounting</option><option>Short Date</option><option>Long Date</option><option>Percentage</option><option>Text</option>
+            </select>
+            ${btn("$", "number.currency")}
+            ${btn("%", "number.percent")}
+            ${btn(",", "number.comma")}
+          </div>
+          <div class="row">
+            ${btn(".00→", "number.decimals")}
+            ${btn(".00←", "number.decimalsLess")}
+            ${btn("Format…", "number.format", { wide: true })}
+          </div>
+        </div>`),
+      group("Styles", `
+        <div class="stack">
+          ${btn("Conditional", "styles.conditional", { wide: true })}
+          ${btn("Table", "styles.table", { wide: true, badge: "v2" })}
+          ${btn("Cell styles", "styles.cellStyles", { wide: true, badge: "v2" })}
+        </div>`),
+      group("Cells", `
+        <div class="stack">
+          ${btn("Insert", "cells.insert", { wide: true })}
+          ${btn("Delete", "cells.delete", { wide: true })}
+          ${btn("Format", "cells.format", { wide: true })}
+        </div>`),
+      group("Editing", `
+        <div class="grid2">
+          ${btn("Σ AutoSum", "edit.autosum", { wide: true })}
+          ${btn("Sort/Filter", "data.sortFilter", { wide: true })}
+          ${btn("Fill", "edit.fill", { wide: true })}
+          ${btn("Find", "edit.find", { wide: true })}
+          ${btn("Clear", "edit.clear", { wide: true })}
+        </div>`),
+    ].join(sep);
+  }
+
+  function tabGroups(tab) {
+    if (tab === "Home") return homeGroups();
+    const map = {
+      "Insert": [
+        group("Tables", `${btn("Table", "insert.table", { badge: "v2" })} ${btn("PivotTable", "insert.pivot", { badge: "v2" })}`),
+        group("Illustrations", `${btn("Pictures", "insert.picture", { badge: "v2" })} ${btn("Shapes", "insert.shape", { badge: "v2" })} ${btn("Charts", "insert.chart", { badge: "v2" })}`),
+        group("Links", btn("Hyperlink", "insert.hyperlink")),
+        group("Text", btn("Header & Footer", "insert.header", { badge: "v2" })),
+      ],
+      "Page Layout": [
+        group("Themes", `${btn("Themes", "layout.themes", { badge: "v2" })} ${btn("Colours", "layout.colours", { badge: "v2" })}`),
+        group("Page Setup", `${btn("Margins", "layout.margins")} ${btn("Orientation", "layout.orientation")} ${btn("Print Area", "layout.printArea")}`),
+        group("Scale to Fit", `${btn("Width", "layout.fitWidth")} ${btn("Height", "layout.fitHeight")}`),
+        group("Sheet Options", `${btn("Gridlines", "layout.gridlines")} ${btn("Headings", "layout.headings")}`),
+      ],
+      "Formulas": [
+        group("Function Library", `${btn("AutoSum", "edit.autosum")} ${btn("Insert Function", "formula.insert", { badge: "v2" })} ${btn("More Functions", "formula.more", { badge: "v2" })}`),
+        group("Defined Names", `${btn("Name Manager", "formula.names", { badge: "v2" })} ${btn("Define Name", "formula.define", { badge: "v2" })}`),
+        group("Formula Auditing", `${btn("Trace Precedents", "formula.trace", { badge: "v2" })} ${btn("Watch Window", "formula.watch", { badge: "v2" })}`),
+        group("Calculation", `${btn("Calculate Now", "formula.calc")} ${btn("Calculation Options", "formula.calcOptions", { badge: "v2" })}`),
+      ],
+      "Data": [
+        group("Sort & Filter", `${btn("Sort A→Z", "data.sortAsc")} ${btn("Sort Z→A", "data.sortDesc")} ${btn("Filter", "data.filter")} ${btn("Clear", "data.clearFilter")}`),
+        group("Data Tools", `${btn("Text to Columns", "data.textToColumns", { badge: "v2" })} ${btn("Remove Duplicates", "data.removeDuplicates", { badge: "v2" })} ${btn("Validation", "data.validation", { badge: "v2" })}`),
+        group("Outline", `${btn("Group", "data.group", { badge: "v2" })} ${btn("Subtotal", "data.subtotal", { badge: "v2" })}`),
+      ],
+      "Review": [
+        group("Proofing", btn("Spelling", "review.spelling", { badge: "v2" })),
+        group("Comments", `${btn("New Comment", "review.comment", { badge: "v2" })} ${btn("Show Comments", "review.showComments")}`),
+        group("Protect", `${btn("Protect Sheet", "review.protect", { badge: "v2" })} ${btn("Protect Workbook", "review.protectBook", { badge: "v2" })}`),
+      ],
+      "View": [
+        group("Workbook Views", `${btn("Normal", "view.normal")} ${btn("Page Break", "view.pageBreak", { badge: "v2" })}`),
+        group("Show", `${btn("Gridlines", "view.gridlines")} ${btn("Headings", "view.headings")} ${btn("Formula Bar", "view.formulaBar")}`),
+        group("Zoom", `${btn("Zoom", "view.zoom")} ${btn("100%", "view.zoom100")}`),
+        group("Window", `${btn("Freeze Panes", "view.freeze")} ${btn("Split", "view.split", { badge: "v2" })}`),
+      ],
+    };
+    return (map[tab] || homeGroups()).join(sep);
+  }
+
+  function renderRibbon() {
+    const tabs = ["File", "Home", "Insert", "Page Layout", "Formulas", "Data", "Review", "View"];
+    return `
+      <div class="ribbon-tabs" role="tablist">
+        ${tabs.map(t => `<button type="button" role="tab" class="ribbon-tab ${t === "File" ? "file" : ""} ${state.tab === t ? "active" : ""}" data-tab="${t}" aria-selected="${state.tab === t}">${t}</button>`).join("")}
+      </div>
+      <div class="ribbon-body" role="tabpanel">${tabGroups(state.tab)}</div>`;
+  }
+
+  function renderCompact() {
+    return `
+      <div class="compact-bar">
+        <button type="button" class="compact-home" data-menu="tabs">${state.tab} ▾</button>
+        <input class="tell-me" placeholder="Search commands (prototype)" aria-label="Search commands">
+        <div class="compact-actions">
+          ${btn("Paste", "clipboard.paste")}
+          ${btn("B", "format.bold", { toggle: "bold" })}
+          ${btn("I", "format.italic", { toggle: "italic" })}
+          ${btn("U", "format.underline", { toggle: "underline" })}
+          ${btn("Borders", "format.borders")}
+          ${btn("Fill", "format.fill")}
+          ${btn("L", "align.left")}
+          ${btn("C", "align.center")}
+          ${btn("R", "align.right")}
+          ${btn("$", "number.currency")}
+          ${btn("%", "number.percent")}
+          ${btn("Σ", "edit.autosum")}
+          ${btn("Sort/Filter", "data.sortFilter")}
+        </div>
+        <button type="button" class="compact-more" data-command="ui.more" data-label="More">⋯</button>
+      </div>
+      ${state.menu === "tabs" ? `<div class="compact-dropdown">${["Home","Insert","Page Layout","Formulas","Data","Review","View"].map(t => `<button type="button" data-tab="${t}">${t}</button>`).join("")}</div>` : ""}`;
+  }
+
+  const CLASSIC_MENUS = {
+    File: [["New", "file.new", "Ctrl+N"], ["Open…", "file.open", "Ctrl+O"], ["Save", "file.save", "Ctrl+S"], ["Save As…", "file.saveAs", "Ctrl+Shift+S"], ["Print…", "file.print", "Ctrl+P"]],
+    Edit: [["Undo", "edit.undo", "Ctrl+Z"], ["Redo", "edit.redo", "Ctrl+Y"], ["Cut", "clipboard.cut", "Ctrl+X"], ["Copy", "clipboard.copy", "Ctrl+C"], ["Paste", "clipboard.paste", "Ctrl+V"], ["Find…", "edit.find", "Ctrl+F"]],
+    View: [["Freeze Panes", "view.freeze", ""], ["Gridlines", "view.gridlines", ""], ["Formula Bar", "view.formulaBar", ""], ["Zoom", "view.zoom", ""]],
+    Insert: [["Rows", "cells.insertRows", ""], ["Columns", "cells.insertColumns", ""], ["Sheet", "sheet.insert", "Shift+F11"], ["Hyperlink", "insert.hyperlink", ""]],
+    Format: [["Cells…", "cells.format", "Ctrl+1"], ["Row Height", "format.rowHeight", ""], ["Column Width", "format.columnWidth", ""], ["Conditional Formatting", "styles.conditional", ""]],
+    Tools: [["AutoSum", "edit.autosum", "Alt+="], ["Spelling", "review.spelling", ""], ["Options…", "tools.options", ""]],
+    Data: [["Sort A→Z", "data.sortAsc", ""], ["Sort Z→A", "data.sortDesc", ""], ["Filter", "data.filter", "Ctrl+Shift+L"], ["Validation…", "data.validation", ""]],
+    Window: [["New Window", "window.new", ""], ["Arrange", "window.arrange", ""]],
+    Help: [["About calcplus", "help.about", ""]],
+  };
+
+  function renderClassic() {
+    const menus = Object.keys(CLASSIC_MENUS);
+    return `
+      <div class="classic-menubar">
+        ${menus.map(m => `
+          <div class="menu-wrap">
+            <button type="button" data-menu="${m}" class="${state.menu === m ? "open" : ""}">${m}</button>
+            ${state.menu === m ? `<div class="menu-pop">${CLASSIC_MENUS[m].map(([label, cmd, hint]) => `<button type="button" data-command="${cmd}" data-label="${escapeHtml(label)}"><span>${escapeHtml(label)}</span><span class="hint">${escapeHtml(hint)}</span></button>`).join("")}</div>` : ""}
+          </div>`).join("")}
+      </div>
+      <div class="classic-toolbar">
+        ${btn("Paste", "clipboard.paste")}
+        ${btn("Cut", "clipboard.cut")}
+        ${btn("Copy", "clipboard.copy")}
+        ${sep}
+        ${btn("B", "format.bold", { toggle: "bold" })}
+        ${btn("I", "format.italic", { toggle: "italic" })}
+        ${btn("U", "format.underline", { toggle: "underline" })}
+        ${btn("Borders", "format.borders")}
+        ${btn("Fill", "format.fill")}
+        ${sep}
+        ${btn("L", "align.left")}
+        ${btn("C", "align.center")}
+        ${btn("R", "align.right")}
+        ${sep}
+        ${btn("$", "number.currency")}
+        ${btn("%", "number.percent")}
+        ${btn(",", "number.comma")}
+        ${sep}
+        ${btn("Σ", "edit.autosum")}
+        ${btn("Sort/Filter", "data.sortFilter")}
+        ${btn("Find", "edit.find")}
+      </div>`;
+  }
+
+  function renderChrome() {
+    chrome.className = "variant-" + state.variant.toLowerCase();
+    chrome.innerHTML = state.variant === "A" ? renderRibbon() : state.variant === "B" ? renderCompact() : renderClassic();
+    updateStatePanel();
+  }
+
+  // ---------- grid ----------
+  function initGrid() {
+    const COLS = 8, ROWS = 20;
+    let html = "<thead><tr><th class='corner'></th>";
+    for (let c = 1; c <= COLS; c++) html += `<th>${colLetter(c)}</th>`;
+    html += "</tr></thead><tbody>";
+    for (let r = 1; r <= ROWS; r++) {
+      html += `<tr><th>${r}</th>`;
+      for (let c = 1; c <= COLS; c++) {
+        const cell = getCell(r, c);
+        const cls = [cell?.h && "header", typeof cell?.v === "number" && "num"].filter(Boolean).join(" ");
+        html += `<td data-row="${r}" data-col="${c}" class="${cls}" tabindex="-1">${cell ? fmt(cell.v) : ""}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    grid.innerHTML = html;
+    updateSelection();
+  }
+
+  function activeCellEl() { return grid.querySelector(`td[data-row="${state.active.row}"][data-col="${state.active.col}"]`); }
+
+  function updateSelection() {
+    $$("td.active", grid).forEach(el => el.classList.remove("active"));
+    const el = activeCellEl();
+    if (el) { el.classList.add("active"); el.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+    nameBox.value = cellKey(state.active.row, state.active.col);
+    const cell = getCell(state.active.row, state.active.col);
+    formulaBar.value = cell ? (cell.f || cell.v || "") : "";
+    updateStats();
+  }
+
+  function updateStats() {
+    const nums = [];
+    for (let r = 1; r <= 20; r++) { const c = getCell(r, state.active.col); if (c && typeof c.v === "number") nums.push(c.v); }
+    const sum = nums.reduce((a, b) => a + b, 0);
+    const avg = nums.length ? Math.round(sum / nums.length) : 0;
+    $("#selection-stats").textContent = `Average: ${fmt(avg)} · Count: ${nums.length} · Sum: ${fmt(sum)}`;
+  }
+
+  function setActive(row, col) {
+    state.active.row = Math.max(1, Math.min(20, row));
+    state.active.col = Math.max(1, Math.min(8, col));
+    updateSelection();
+  }
+
+  function updateStatePanel() {
+    statePanel.hidden = !state.statePanel;
+    if (!state.statePanel) return;
+    statePanel.innerHTML = [
+      `<div><b>variant</b> ${state.variant} — ${VARIANTS.find(v => v.key === state.variant)?.name}</div>`,
+      `<div><b>active</b> ${cellKey(state.active.row, state.active.col)}</div>`,
+      `<div><b>last</b> ${escapeHtml(state.lastCommand)}</div>`,
+      `<div><b>toggles</b> bold=${state.toggles.bold} italic=${state.toggles.italic} underline=${state.toggles.underline}</div>`,
+    ].join("");
+  }
+
+  // ---------- overlays ----------
+  const CONTEXT_ITEMS = [
+    ["Cut", "clipboard.cut", "Ctrl+X"], ["Copy", "clipboard.copy", "Ctrl+C"], ["Paste", "clipboard.paste", "Ctrl+V"],
+    null,
+    ["Insert cells…", "cells.insert", ""], ["Delete cells…", "cells.delete", ""],
+    ["Format Cells…", "cells.format", "Ctrl+1"], ["Clear contents", "edit.clear", "Del"],
+  ];
+
+  function openContextMenu(x, y) {
+    contextMenu.innerHTML = CONTEXT_ITEMS.map(item => item
+      ? `<button type="button" data-command="${item[1]}" data-label="${escapeHtml(item[0])}"><span>${escapeHtml(item[0])}</span><span class="hint">${escapeHtml(item[2])}</span></button>`
+      : '<div class="divider"></div>').join("");
+    contextMenu.hidden = false;
+    const rect = contextMenu.getBoundingClientRect();
+    contextMenu.style.left = Math.min(x, innerWidth - rect.width - 8) + "px";
+    contextMenu.style.top = Math.min(y, innerHeight - rect.height - 8) + "px";
+  }
+  function closeContextMenu() { contextMenu.hidden = true; }
+
+  function openDialog() {
+    dialogBackdrop.hidden = false;
+    state.dialogTab = "Number";
+    renderDialog();
+    $("#dialog-tabs button.active")?.focus();
+  }
+  function closeDialog() { dialogBackdrop.hidden = true; }
+
+  function renderDialog() {
+    const body = {
+      Number: `<div class="dialog-row"><label>Category</label><select><option>General</option><option>Number</option><option>Currency</option><option>Percentage</option><option>Date</option><option>Custom</option></select></div>
+               <div class="dialog-row"><label>Decimal places</label><input type="number" value="2"></div>
+               <div class="dialog-row"><label>Sample</label><span style="color:#1f1f1f">12,000.00</span></div>`,
+      Alignment: `<div class="dialog-row"><label>Horizontal</label><select><option>General</option><option>Left</option><option>Centre</option><option>Right</option></select></div>
+                  <div class="dialog-row"><label>Vertical</label><select><option>Bottom</option><option>Middle</option><option>Top</option></select></div>
+                  <div class="dialog-row"><label>Wrap text</label><input type="checkbox"></div>`,
+      Font: `<div class="dialog-row"><label>Font</label><select><option>Segoe UI</option><option>Aptos</option><option>Calibri</option></select></div>
+             <div class="dialog-row"><label>Size</label><select><option>11</option><option>12</option><option>14</option></select></div>
+             <div class="dialog-row"><label>Style</label><select><option>Regular</option><option>Bold</option><option>Italic</option></select></div>`,
+      Border: `<div class="dialog-row"><label>Presets</label><select><option>None</option><option>Outline</option><option>Inside</option></select></div>
+               <div class="dialog-row"><label>Line style</label><select><option>Thin</option><option>Medium</option><option>Thick</option></select></div>`,
+      Fill: `<div class="dialog-row"><label>Background</label><input type="color" value="#ffffff"></div>
+             <div class="dialog-row"><label>Pattern</label><select><option>None</option><option>Light grid</option></select></div>`,
+    };
+    $("#dialog-body").innerHTML = body[state.dialogTab] || "";
+    $$("#dialog-tabs button").forEach(b => b.classList.toggle("active", b.dataset.dialogTab === state.dialogTab));
+  }
+
+  // ---------- switcher ----------
+  function setVariant(key) {
+    state.variant = key;
+    const url = new URL(location.href);
+    url.searchParams.set("variant", key);
+    history.replaceState(null, "", url);
+    renderChrome();
+    updateStatePanel();
+    updateSwitcher();
+  }
+  function cycleVariant(delta) {
+    const i = VARIANTS.findIndex(v => v.key === state.variant);
+    setVariant(VARIANTS[(i + delta + VARIANTS.length) % VARIANTS.length].key);
+  }
+  function updateSwitcher() {
+    const v = VARIANTS.find(v => v.key === state.variant);
+    $("#variant-label").textContent = `${v.key} — ${v.name}`;
+  }
+
+  // ---------- events ----------
+  chrome.addEventListener("click", (e) => {
+    const cmd = e.target.closest("[data-command]");
+    if (cmd) {
+      if (cmd.dataset.toggle) state.toggles[cmd.dataset.toggle] = !state.toggles[cmd.dataset.toggle];
+      dispatch(cmd.dataset.command, cmd.dataset.label);
+      if (cmd.dataset.toggle) renderChrome();
+      return;
+    }
+    const tab = e.target.closest("[data-tab]");
+    if (tab) { state.tab = tab.dataset.tab; state.menu = null; renderChrome(); return; }
+    const menu = e.target.closest("[data-menu]");
+    if (menu) { state.menu = state.menu === menu.dataset.menu ? null : menu.dataset.menu; renderChrome(); return; }
+  });
+
+  grid.addEventListener("click", (e) => {
+    const td = e.target.closest("td");
+    if (!td) return;
+    setActive(Number(td.dataset.row), Number(td.dataset.col));
+    closeContextMenu();
+  });
+
+  grid.addEventListener("contextmenu", (e) => {
+    const td = e.target.closest("td");
+    if (!td) return;
+    e.preventDefault();
+    setActive(Number(td.dataset.row), Number(td.dataset.col));
+    openContextMenu(e.clientX, e.clientY);
+  });
+
+  contextMenu.addEventListener("click", (e) => {
+    const cmd = e.target.closest("[data-command]");
+    if (!cmd) return;
+    closeContextMenu();
+    dispatch(cmd.dataset.command, cmd.dataset.label);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!contextMenu.hidden && !contextMenu.contains(e.target)) closeContextMenu();
+    if (state.menu && !e.target.closest(".menu-wrap") && !e.target.closest(".compact-dropdown") && !e.target.closest(".compact-home")) {
+      state.menu = null;
+      if (state.variant === "C") renderChrome();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (!dialogBackdrop.hidden) { closeDialog(); return; }
+      if (!contextMenu.hidden) { closeContextMenu(); return; }
+      if (state.menu) { state.menu = null; renderChrome(); return; }
+    }
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "") || document.activeElement?.isContentEditable;
+    if (typing) return;
+
+    if (e.altKey && e.key === "ArrowLeft") { e.preventDefault(); cycleVariant(-1); return; }
+    if (e.altKey && e.key === "ArrowRight") { e.preventDefault(); cycleVariant(1); return; }
+
+    if (!dialogBackdrop.hidden) return;
+    const { row, col } = state.active;
+    if (e.key === "ArrowUp") { e.preventDefault(); setActive(row - 1, col); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setActive(row + 1, col); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); setActive(row, col - 1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); setActive(row, col + 1); }
+    else if (e.key === "Enter") { e.preventDefault(); setActive(row + 1, col); }
+    else if (e.key === "Tab") { e.preventDefault(); setActive(row, col + (e.shiftKey ? -1 : 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(e.ctrlKey ? 1 : row, 1); }
+    else if (e.key === "End") { e.preventDefault(); setActive(e.ctrlKey ? 20 : row, 8); }
+  });
+
+  nameBox.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const pos = parseKey(nameBox.value);
+    if (pos) { setActive(pos.row, pos.col); e.target.blur(); }
+    else { nameBox.value = cellKey(state.active.row, state.active.col); }
+  });
+
+  function commitFormula() {
+    const key = cellKey(state.active.row, state.active.col);
+    const text = formulaBar.value.trim();
+    if (!text) delete CELLS[key];
+    else if (text.startsWith("=")) CELLS[key] = { v: "…", f: text };
+    else CELLS[key] = { v: isNaN(Number(text)) ? text : Number(text) };
+    initGrid();
+    setActive(state.active.row + 1, state.active.col);
+    toast("cell.set — " + key);
+  }
+  formulaBar.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commitFormula(); }
+    if (e.key === "Escape") { e.preventDefault(); formulaBar.value = ""; formulaBar.blur(); }
+  });
+  $("#formula-enter").addEventListener("click", commitFormula);
+  $("#formula-cancel").addEventListener("click", () => { formulaBar.value = ""; formulaBar.blur(); });
+  $("#fx").addEventListener("click", () => toast("Insert Function dialog would open"));
+
+  $$("#dialog-tabs button").forEach(b => b.addEventListener("click", () => { state.dialogTab = b.dataset.dialogTab; renderDialog(); }));
+  $("#dialog-x").addEventListener("click", closeDialog);
+  $("#dialog-cancel").addEventListener("click", closeDialog);
+  $("#dialog-ok").addEventListener("click", () => { closeDialog(); dispatch("cells.format", "Format Cells"); });
+  dialogBackdrop.addEventListener("click", (e) => { if (e.target === dialogBackdrop) closeDialog(); });
+
+  $("#prev-variant").addEventListener("click", () => cycleVariant(-1));
+  $("#next-variant").addEventListener("click", () => cycleVariant(1));
+  $("#state-toggle").addEventListener("click", () => { state.statePanel = !state.statePanel; updateStatePanel(); });
+  $("#zoom").addEventListener("input", (e) => { $("#zoom-label").textContent = e.target.value + "%"; });
+
+  // sheet tabs
+  $$(".sheet-tab").forEach(tab => tab.addEventListener("click", () => {
+    $$(".sheet-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    toast("sheet.activate — " + tab.textContent);
+  }));
+
+  // ---------- boot ----------
+  initGrid();
+  renderChrome();
+  updateSwitcher();
+  updateStatePanel();
+})();
+</script>
+</body>
+</html>
