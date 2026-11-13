@@ -1,6 +1,6 @@
 # 08 — File handling and persistence
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: 25
 
