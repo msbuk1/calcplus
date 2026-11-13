@@ -41,3 +41,5 @@ Ticket 02 fixed two things that change this decision:
 - **The published contract is 52 functions**, listed in [formula-semantics.md](../spec/formula-semantics.md). The engine's extra functions are not exposed or promised; the registry is gated to the 52.
 
 The architectural rule stands: the workbook model owns authored formula text and cached values, and HyperFormula must never be the source of the saved formula text. Any supported construct the GPL edition cannot parse is a blocker for the engine choice, not a reason to drop the construct silently.
+
+**Engine choice under review (2026-11-13):** IronCalc 0.9.1 (Rust/WASM, MIT OR Apache-2.0) is an unevaluated alternative for the 52-function contract. See [24 — IronCalc/WASM vs HyperFormula](24-ironcalc-vs-hyperformula.md).
