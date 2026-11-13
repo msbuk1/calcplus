@@ -103,3 +103,27 @@ _Avoid_: Path, file reference
 **Recent list**:
 The local list of previously opened workbooks, with file handles where the browser allows them.
 _Avoid_: History, recents
+
+**Touched cell**:
+A cell that holds a value, formula, style, comment, hyperlink or validation rule. Empty cells cost nothing, so memory scales with touched cells rather than the grid.
+_Avoid_: Used cell, populated cell, used range
+
+**Guaranteed envelope**:
+The workbook size at which every performance budget holds without a warning: 250,000 touched cells and 50,000 formulas.
+_Avoid_: Target size, supported size
+
+**Degraded envelope**:
+The larger workbook size that still opens and stays editable with reduced extras: up to 1,000,000 touched cells and 200,000 formulas.
+_Avoid_: Oversize, fallback mode
+
+**Working set**:
+The memory a calcplus tab actually uses: JavaScript heap, typed arrays, the engine worker's heap and grid canvases, excluding the browser's shared baseline.
+_Avoid_: Memory usage, footprint
+
+**Fan-out**:
+The number of formulas that depend on one cell. High fan-out is a build-time cliff in the dependency graph, not a recalculation cost.
+_Avoid_: Dependency breadth, spread
+
+**Benchmark corpus**:
+The fixed set of synthetic shapes and anonymised real workbooks that every performance budget is measured against.
+_Avoid_: Test files, sample data

@@ -38,6 +38,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - [IronCalc/WASM vs HyperFormula for the 52-function contract](issues/24-ironcalc-vs-hyperformula.md) — keep HyperFormula GPLv3; IronCalc 0.9.1 rejected for v1 (no 1904 dates, fake 1900 leap day wrong, `.xlsx` layer rewrites rather than preserves).
 - [Distribution and local-run model](issues/25-distribution.md) — static hosted build plus a bundled per-OS launcher (loopback-only server, opens the default browser); launcher is offline, updates are manual, Chromium-first file access with Safari/Firefox fallback, no accounts or telemetry. Contract: [distribution](spec/distribution.md).
 - [Launcher technology and release packaging](issues/26-launcher-technology.md) — Go stdlib-only launcher (embedded static build, `127.0.0.1`, stable port), one binary per OS; Windows signed portable `.exe`, macOS notarized universal `.app` in a DMG, Linux static tarball; about US$220/year signing cost; random ports would break origin-scoped storage.
+- [Performance targets and benchmarks](issues/11-performance.md) — reference machine is a mid-range 2023 laptop on desktop Chromium; guaranteed 250k touched cells / 50k formulas, degraded 1M / 200k, refuse above; 500 MB / 1 GB / 1.2 GB memory ladder; cold open 0.8/2.5/5/15 s; 60 fps scroll, 50 ms direct, 100 ms commit; 100k-cell paste in 1 s; fan-out is a named corpus case; 20% PR regression gate plus nightly absolute budgets; staged visible degradation. Contract: [performance](spec/performance.md).
 
 ## Not yet specified
 
