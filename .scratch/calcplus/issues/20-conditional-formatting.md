@@ -1,6 +1,6 @@
 # 20 — Conditional-formatting rendering
 
-Status: open
+Status: claimed
 Type: grilling
 Blocked by: none
 
