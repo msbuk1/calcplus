@@ -1,6 +1,6 @@
 # 25 — Distribution and local-run model
 
-Status: claimed
+Status: resolved
 Type: grilling
 Blocked by: none
 
@@ -20,3 +20,15 @@ Decide:
 - **Desktop wrapper:** if deferred, what would trigger it, and what the architecture must keep possible.
 
 Output: the v1 distribution contract and acceptance criteria for "an individual can install and run calcplus".
+
+## Answer
+
+The v1 distribution contract is in [distribution.md](../spec/distribution.md).
+
+- **Two paths:** a static hosted URL (latest build, nothing to install) and a bundled launcher (local and offline).
+- **Launcher:** one executable per OS (Windows, macOS, Linux), loopback-only static server, opens the default browser; no runtime to install.
+- **Offline and updates:** the launcher is offline by nature; the hosted URL is online. Launcher updates are manual and versioned; the app shows its version.
+- **Browsers:** Chromium-first (File System Access API), with Safari/Firefox upload/download fallback.
+- **Privacy:** no accounts, no telemetry, no workbook uploads; the launcher makes no outbound calls.
+- **Desktop app:** not v1; only if OS integration is needed.
+- **Open:** launcher technology and release packaging — [26 — Launcher technology and release packaging](26-launcher-technology.md).

@@ -135,7 +135,7 @@ Paste Special · fill series · discontiguous selection · entry AutoComplete ·
 
 ## 10. Never / out of scope
 
-PivotTables and Power Query (as features) · Solver / Goal Seek / Scenario Manager · Data Analysis ToolPak · Consolidate · macro execution / Office Scripts / add-ins · native desktop and mobile/touch apps · legacy `.xls` binary and ODS.
+PivotTables and Power Query (as features) · Solver / Goal Seek / Scenario Manager · Data Analysis ToolPak · Consolidate · macro execution / Office Scripts / add-ins · native desktop and mobile/touch apps (the distribution launcher is in scope; a Tauri/Electron desktop app is not) · legacy `.xls` binary and ODS.
 
 ## 11. Deliberate deviations and open questions
 

@@ -14,6 +14,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - **V1 scope cut**: core credible spreadsheet, fixed by the [feature matrix](spec/feature-matrix.md). Charts, advanced data tools and authoring of read-only fidelity features are v2; PivotTables and macros are never.
 - **Constraints**: browser app; single-user; no backend; high-fidelity `.xlsx` import and export; no pixel-perfect requirement, but near-identical chrome.
 - **Project licence**: GPLv3 (decided while resolving ticket 02). Dependencies must be GPLv3-compatible; the free HyperFormula edition is used.
+- **Distribution**: static host plus a bundled per-OS launcher; no backend. See the [distribution contract](spec/distribution.md).
 - **Execution carried into the map**: because the destination is an artifact, ticket 15 assembles the spec package. Every other ticket resolves a decision.
 - **Skills for sessions**: `grilling`, `domain-modeling`, `prototype`, `research`.
 - **Research artifacts**: `.scratch/calcplus/research/<slug>.md` (files rather than throwaway branches, so they travel with the map).
@@ -30,6 +31,7 @@ A build-ready spec package for **calcplus**, a browser-based, single-user clone 
 - [Number-format engine: build vs buy](issues/18-number-format-engine.md) — `numfmt` 4.1.3 (MIT) behind an internal interface, plus owned Excel seams: built-in ID table, 1904 adapter, width layout, colour/palette, locale grouping, invalid-format fallback and style-table round-trip. `ssf` is a differential test oracle only.
 - [Print and PDF pipeline](issues/21-print-pdf.md) — own pagination in a pure `PrintPlanner`/`PrintPlan`; render pages as inline SVG for preview and paper, PDFKit for vector PDF export, and 300 DPI canvas only as a font/script fallback.
 - [IronCalc/WASM vs HyperFormula for the 52-function contract](issues/24-ironcalc-vs-hyperformula.md) — keep HyperFormula GPLv3; IronCalc 0.9.1 rejected for v1 (no 1904 dates, fake 1900 leap day wrong, `.xlsx` layer rewrites rather than preserves).
+- [Distribution and local-run model](issues/25-distribution.md) — static hosted build plus a bundled per-OS launcher (loopback-only server, opens the default browser); launcher is offline, updates are manual, Chromium-first file access with Safari/Firefox fallback, no accounts or telemetry. Contract: [distribution](spec/distribution.md).
 
 ## Not yet specified
 
@@ -49,5 +51,5 @@ Everything marked **V2** or **NEVER** in the [feature matrix](spec/feature-matri
 - **Authoring of read-only fidelity features**: conditional formatting, comments, hyperlinks, defined names, protection, themes and named styles.
 - **Paste Special, fill series, split view, full page setup, localization, dark mode.**
 - **Formula features deferred to v2**: R1C1 notation, 3D ranges, structured table references, external-link refresh, dynamic arrays/spill, iterative calculation, manual calculation mode, union/intersection operators, localized function names.
-- **Native desktop and mobile/touch apps.**
+- **Native desktop and mobile/touch apps** (the distribution launcher is in scope; a Tauri/Electron desktop app is not).
 - **Legacy `.xls` binary and ODS formats.**
