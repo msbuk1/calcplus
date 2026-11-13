@@ -1,6 +1,6 @@
 # calcplus v1 — UI chrome
 
-Resolved by [10 — UI chrome architecture and ribbon shell prototype](../issues/10-ui-chrome.md) on 2026-11-13. The throwaway prototype lives on branch `prototype/ui-shell` under `prototype/ui-shell/`; command binding is in [command-system](command-system.md).
+Resolved by [10 — UI chrome architecture and ribbon shell prototype](../issues/10-ui-chrome.md) on 2026-11-13. The throwaway prototype lives on [branch `prototype/ui-shell`](https://github.com/msbuk1/calcplus/tree/prototype/ui-shell/prototype/ui-shell); command binding is in [command-system](command-system.md).
 
 ## 1. Verdict
 

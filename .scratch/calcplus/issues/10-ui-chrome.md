@@ -26,7 +26,7 @@ Then decide the UI architecture: reusable primitives, how ribbon controls dispat
 
 Verdict: **Variant A (ribbon) is the primary shell; Variant B (compact) is the responsive mode below roughly 900 px; Variant C (classic) is rejected.**
 
-The architecture is in [ui-chrome.md](../spec/ui-chrome.md). The throwaway prototype lives on branch `prototype/ui-shell` under `prototype/ui-shell/` (screens in `screens/`).
+The architecture is in [ui-chrome.md](../spec/ui-chrome.md). The throwaway prototype lives on [branch `prototype/ui-shell`](https://github.com/msbuk1/calcplus/tree/prototype/ui-shell/prototype/ui-shell) (screens in `screens/`).
 
 - **Shell:** React 19 + TypeScript + Vite.
 - **Primitives:** Ribbon family, CompactBar, NameBox, FormulaBar, SheetTabs, StatusBar, Menu/ContextMenu, Dialog.
