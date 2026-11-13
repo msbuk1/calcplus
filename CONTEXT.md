@@ -147,3 +147,19 @@ _Avoid_: Screen-reader layer, a11y overlay
 **DOM-cell renderer**:
 The fallback grid renderer that draws real DOM cells behind the same frame seam, used if the canvas plus mirror fails accessibility or performance testing.
 _Avoid_: HTML grid, fallback table
+
+**Sort key**:
+A column whose values determine the row order, with a direction; multi-key sorts apply keys in order.
+_Avoid_: Sort column, sort level
+
+**AutoFilter**:
+The per-column filter attached to a plain range, stored as `autoFilter` XML and evaluated to hide non-matching rows.
+_Avoid_: Filter, data filter
+
+**Value checklist**:
+The list of distinct typed values in a filter column, with Select All, Blanks and a search box.
+_Avoid_: Filter list, value list
+
+**Filter-hidden row**:
+A row hidden because it fails the active filter, as distinct from a row the user hid manually.
+_Avoid_: Filtered row, invisible row
