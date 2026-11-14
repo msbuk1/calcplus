@@ -42,6 +42,14 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 - Dialogs submit a command with a payload.
 - No chrome code touches the workbook model directly.
 
+### 4.1 Command inventory and ribbon map (v1 deliverable)
+
+- Every feature-matrix **IN** row maps to exactly one command ID in the [command registry](command-system.md). The authoritative chrome map is a checked-in `command-inventory.md` generated from the matrix: command ID, label, ribbon tab, ribbon group, menu placement, shortcut and enablement predicate. The generator lives in the repo; the output is reviewed like code.
+- Ribbon tabs follow Excel 365 desktop's default tab set (Home, Insert, Page Layout, Formulas, Data, Review, View). A group renders only if it owns at least one IN command. Where calcplus is thinner than Excel, the fewer commands sit in the familiar group — never a regrouped ribbon.
+- Commands outside the matrix are **hidden** in v1, not greyed: a greyed control implies the command exists. Matrix rows marked PARTIAL render greyed with the limitation in the tooltip.
+- **AutoSum** (`Alt+=`, `formula.autosum`) is **IN** — it is a command surface over the `SUM` function contract — and appears in the inventory (Home → Editing).
+- **v1 dialog inventory:** Format Cells, Paste Special, Sort, Custom AutoFilter, Conditional Formatting (new/edit rule, manage rules), Go To / Go To Special, Insert Function, Name Manager, Find & Replace, Row Height / Column Width, Save As, Options, Compatibility Report, About. Each dialog's behaviour is specified by its owning contract; this contract owns only its layout, focus trap, Esc and default-button semantics.
+
 ## 5. Responsive behaviour
 
 - **≥ 900 px:** full ribbon.
@@ -53,7 +61,18 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 ## 6. Theming
 
 - CSS custom properties for all chrome colours; light theme in v1, dark mode in v2.
-- Excel-like palette: green accent, neutral chrome, white grid.
+- Excel-like palette: green accent, neutral chrome, white grid. v1 tokens (confirm hexes against Excel 365 desktop's light theme before the task-10 freeze):
+
+| Token | Value | Use |
+|---|---|---|
+| `--accent` | `#107C41` | Excel green: active tab underline, primary buttons |
+| `--accent-hover` | `#0E6B37` | hover/pressed accent |
+| `--chrome-surface` | `#F3F2F1` | ribbon, title strip |
+| `--command-surface` | `#FFFFFF` | menus, dialogs, gallery popouts |
+| `--grid-bg` | `#FFFFFF` | grid canvas |
+| `--border` | `#D1D1D1` | chrome borders |
+| `--text` | `#262626` | chrome text |
+| `--disabled` | `#A19F9D` | PARTIAL commands, disabled controls |
 - Near-identical chrome, not pixel-perfect.
 
 ## 7. Accessibility
@@ -64,7 +83,7 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 
 ## 8. Deferred
 
-- Full command inventory — derive from the feature matrix.
+- (The full command inventory is a v1 deliverable — see §4.1; it is no longer deferred.)
 - Backstage File panel; v1 uses a simple File menu with New, Open, Save, Save As, Print and Recent.
 - “Tell me” command search.
 - Alt key tips.

@@ -15,7 +15,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 - **Three engineers in parallel:** one on grid and rendering, one on model, engine and commands, one on file I/O and chrome. Part-time design and QA.
 - **Person-weeks, not calendar dates.** The plan stays useful whatever the start date. A range is a planning estimate, not a commitment.
-- **Total:** about **66-96 person-weeks**, plus a **20% contingency**, for roughly **79-115 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
+- **Total:** about **70-100 person-weeks**, plus a **20% contingency**, for roughly **84-120 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
 - The conformance tail is the largest uncertainty. Milestone 8 carries an explicit reserve.
 
 ## 3. Overview
@@ -56,7 +56,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 4. The app opens in Chromium and saves through the file API or a download.
 5. Unit and smoke tests run in CI.
 
-### M2 — Grid foundation (8-12 pw)
+### M2 — Grid foundation (12-16 pw)
 
 **Build**
 

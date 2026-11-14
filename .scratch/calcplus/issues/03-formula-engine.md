@@ -23,7 +23,7 @@ Recommend an approach and list exactly which gaps would need custom work under t
 
 ## Answer
 
-Adopt **HyperFormula 3.5.x under a commercial licence** for v1, behind a narrow internal `FormulaEngine` port; do not build a custom engine. It is the only mature standalone TypeScript engine with a real dependency graph, incremental recalc, worker-capable runtime, custom functions and a 181 KB gzip bundle. Gate the choice on a written quote: GPLv3 is unusable for a closed product, and 3.5.0 can licence only part of the library.
+[**SUPERSEDED** — reversed by the GPLv3 amendment further down this thread; kept for the record.] Adopt **HyperFormula 3.5.x under a commercial licence** for v1, behind a narrow internal `FormulaEngine` port; do not build a custom engine. It is the only mature standalone TypeScript engine with a real dependency graph, incremental recalc, worker-capable runtime, custom functions and a 181 KB gzip bundle. Gate the choice on a written quote: GPLv3 is unusable for a closed product, and 3.5.0 can licence only part of the library.
 
 Expect custom work around HyperFormula's gaps: ~130 missing Excel functions (notably `AVERAGEIFS`, `LOOKUP`, `INDIRECT`, `RANK`, `XMATCH`, `SORTBY`, `TEXTSPLIT`), documented semantic deviations (`INT(-8.9) = -8`), and engine-level limits (no 3D refs, tables, `A1#`, range spill, relative names or iteration). A parity plugin can fix many functions and deviations; parser/reference gaps need deferral or a fork.
 

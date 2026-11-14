@@ -15,7 +15,7 @@ Resolved by [18 — Number-format engine: build vs buy](../issues/18-number-form
 | Built-in `numFmtId` table | 0-22, 37-49, and locale-specific 27-36, 50-58, 59-62, 67-81. Built-ins are never materialised; the ID is preserved. |
 | 1904 adapter | Add 1462 days for calendar formats only; never for `[h]`, `[m]` or `[s]` elapsed formats. |
 | Cell-width layout | Handle `*` fill, `_` skip, `?` digit alignment, `General`, and `#####` when the value does not fit. |
-| Colours and palette | Map `[Black]`, `[Blue]`, `[Cyan]`, `[Green]`, `[Magenta]`, `[Red]`, `[White]`, `[Yellow]` and indexed/theme colours to the workbook palette. |
+| Colours and palette | Map `[Black]`, `[Blue]`, `[Cyan]`, `[Green]`, `[Magenta]`, `[Red]`, `[White]`, `[Yellow]` and indexed/theme colours to the workbook palette. Number-format colour codes are legacy **indexed** colours (research/18): `[Color n]` resolves against the workbook indexed palette. Theme-colour references inside number formats round-trip untouched but render through the indexed palette mapping — a pinned deviation. |
 | Normalisation | Lowercase `e+` and `a/p`, and `[NatNum]`/`[DBNum]`, are normalised before formatting. |
 | Grouping | Indian 3/2 grouping is supported. |
 | Invalid format | Fall back to `General`; never throw and never show a raw code. |
@@ -71,6 +71,6 @@ Resolved by [18 — Number-format engine: build vs buy](../issues/18-number-form
 
 ## 8. Limits
 
-- English locale only in v1; localized formats and function names are v2.
+- English locale semantics only in v1: locale-specific built-in IDs (59-62 and kin) render their **Gregorian en-US form**, and localized format codes and function names are shown but not re-rendered. numFmtId=59-62 Thai/Buddhist-era behaviour is therefore a **pinned v1 deviation** (PRD AC10), listed in the compatibility report. Localized formats and function names are v2.
 - `numfmt`'s known lowercase `e+` and `a/p` bugs are handled by the seams and pinned by tests.
 - Gradient and pattern fills are cell formatting, not number formats; they are handled by the style table.
