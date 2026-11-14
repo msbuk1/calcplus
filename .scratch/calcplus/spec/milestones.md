@@ -40,7 +40,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - Repo, build, lint, typecheck, Vitest and Playwright harnesses.
 - Canonical workbook model: workbook, sheet, sparse cells, minimal styles, stable IDs, source-part skeletons, snapshot metadata plus binary part payloads.
 - OOXML package layer: ZIP via `fflate`, SAX via `saxes`, part store, content types and relationships, one worksheet mapped into the model with its original bytes retained as the patch skeleton.
-- No-op save returns the original bytes; untouched parts are copied; a dirty part is patched in place, so the first edited save already preserves unmodelled sheet children.
+- No-op save returns the original bytes; untouched parts are copied; a dirty part is patched in place — cells only in M1, with row and column shifting arriving with M5 on the same writer — so the first edited save already preserves unmodelled sheet children.
 - Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
 - Minimal command registry and one undoable `cell.set`.
 - File open and save through the File System Access API with a download fallback.
@@ -138,7 +138,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - AutoFilter: value checklist, two AND/OR conditions, text/number/date, blanks, hidden layers, dropdown UI, round-trip.
 - Conditional formatting: cell-value, text, date/time-period, top/bottom, duplicate/unique, colour scales, data bars and icon sets; priority and stop-if-true; unsupported rules reported.
 - Clipboard: HTML Excel dialect and TSV fallback; in-app copy/cut/paste; Excel interop where the OS allows.
-- Fill handle drag and double-click; Ctrl+D/R; insert/delete cells, rows and columns with full reference rewriting.
+- Fill handle drag and double-click; Ctrl+D/R; insert/delete cells, rows and columns with full reference rewriting, through the M1 part patch writer including row and column renumbering.
 - Context menu, Clear, Format Painter.
 
 **Spike:** Excel clipboard interop for values, formulas, formats and merges.

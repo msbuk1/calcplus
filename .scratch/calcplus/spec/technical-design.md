@@ -57,6 +57,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 - Four-pane freeze geometry, custom scrollbars, virtual scroll, Fenwick/prefix-sum row geometry.
 - DOM editor overlay for in-cell editing and the formula bar.
 - `RenderFrame` is the renderer seam; a DOM-cell renderer can replace the canvas without touching the model.
+- Reads the sheet projection only (workbook model §11); it never imports the model (ADR 0007).
 - ARIA mirror: `role="grid"`, absolute indices, roving tabindex, persistent active cell, live region.
 - Selection, active cell, fill handle, headers, merges, gridlines, conditional formatting and selection overlay.
 - Contract: [grid spike](grid-spike.md) and [accessibility](accessibility.md).
@@ -101,7 +102,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 ### 3.7 OOXML layer
 
-- Preservation-first in-house package layer: `fflate` for ZIP, `saxes` for SAX parsing.
+- Preservation-first in-house package layer: `fflate` for ZIP, `saxes` for SAX parsing and character positions, plus a part patch writer that edits the original bytes (ADR 0006).
 - Three tiers: modelled and editable, preserved and not editable, rejected.
 - No-op save returns the original bytes; untouched parts are copied; a dirty part is patched in place against its original bytes, never regenerated from the model.
 - Style and shared-string tables are append-only; existing indices are never renumbered.
@@ -252,6 +253,8 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 | [0003](../../../docs/adr/0003-preservation-first-ooxml.md) | Preservation-first in-house OOXML layer |
 | [0004](../../../docs/adr/0004-hyperformula-engine.md) | HyperFormula behind a narrow engine port |
 | [0005](../../../docs/adr/0005-gplv3.md) | GPL-3.0-only and its obligations |
+| [0006](../../../docs/adr/0006-patch-in-place-xml.md) | Save by patching the original XML; tree-edit only small parts |
+| [0007](../../../docs/adr/0007-sheet-projection.md) | The grid reads a projection of the workbook, never the workbook |
 
 The decision tickets on the map remain the narrative record; the ADRs capture the irreversible choices.
 

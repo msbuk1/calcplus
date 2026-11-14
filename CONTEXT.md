@@ -36,9 +36,17 @@ _Avoid_: Format, formatting (when referring to the shared record)
 A part of an `.xlsx` package that calcplus does not model, such as a chart, pivot cache or macro project. It is preserved byte-for-byte, except where a structural edit must transform its anchor index or a chart's series ranges.
 _Avoid_: Blob, attachment, unsupported feature
 
+**Part patch**:
+The in-place edit of a part's original XML: the bytes that did not change are copied, and only the changed cells, rows and range-bearing elements are regenerated.
+_Avoid_: XML rewrite, serialisation
+
 **Workbook model**:
 The canonical in-memory representation of a workbook. Opening a file fills it; saving maps it back to `.xlsx`. It is the source of truth, not the file.
 _Avoid_: State, store, document model
+
+**Sheet projection**:
+The read-only, versioned view of one sheet that the canvas, the accessibility mirror and the DOM-cell fallback read. Built lazily for the visible window; the selection is passed in, not owned.
+_Avoid_: View model, sheet state
 
 **Document state**:
 The part of a workbook that belongs to the document and is saved — cells, styles, structure, names and sheet view settings.

@@ -108,6 +108,16 @@ Each bulk action is one undo transaction (see [command system §4](command-syste
 | Print preview, 20-page A4 report | ≤ 2.0 s |
 | PDF export, 20-page A4 report | ≤ 3.0 s |
 
+### 3.7 Saving
+
+| Case | Budget |
+|---|---|
+| No-op save, unchanged workbook | ≤ 0.3 s (write the original bytes) |
+| 250k cells saved | ≤ 2.0 s |
+| 1M cells saved (degraded) | ≤ 8.0 s |
+
+Measured from the save command to the saved confirmation, including serialisation, compression and the write to the file handle. Save As uses the same budget; the file-permission prompt is excluded. A save over 300 ms shows a non-blocking progress indicator. Changed parts are compressed at the lowest deflate level; if the measurement misses these budgets, a ZIP rewriter that copies already-compressed parts is the documented fallback (ADR 0006).
+
 ## 4. Memory
 
 **Working set** means the tab's JavaScript heap, typed arrays, the engine worker's heap, and grid canvases. It excludes the browser's shared baseline.
@@ -190,6 +200,7 @@ Rendering degrades before correctness does. Values are never silently dropped, a
 12. Every result carries a machine fingerprint; non-reference runs never gate.
 13. Firefox, Safari, mobile and touch are documented as outside the performance contract.
 14. The filter, conditional-formatting and print budgets in §3.4-§3.6 are enforced by the nightly browser suite.
+15. The save budgets in §3.7 are measured by the browser harness and block the release.
 
 ## 10. Evidence
 

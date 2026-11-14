@@ -89,7 +89,7 @@ Every fixture in [file compatibility §9](file-compat.md) is a test:
 - **Identity:** open → save with no edits is byte-identical.
 - **Repair-free:** every output opens in Excel 365 without a repair prompt. Automated CI uses openpyxl, LibreOffice and a relationship verifier; Excel is a manual release step.
 - **Part inventory:** for an edited file, every preserved part has identical uncompressed bytes and resolvable relationships. Compare a manifest of name, CRC, uncompressed size and SHA-256.
-- **Dirty-part preservation:** a rewritten worksheet keeps every unmodelled child element, attribute, namespace declaration and its order. The fixture asserts on the XML tree, not on byte equality of the dirty part.
+- **Dirty-part preservation:** a rewritten worksheet keeps every unmodelled child element, attribute, namespace declaration and its order, and every untouched row is byte-identical. The fixture asserts on the XML tree for the part as a whole and on bytes for the untouched rows.
 - **Semantic equality:** styles, number formats, merges, dimensions, names, comments, hyperlinks, validation and conditional formats compare equal through an independent reader.
 - **Formula fidelity:** authored text, shared/array attributes and cached values survive an edit to another cell.
 - **Structural edits:** after insert/delete, every range-bearing construct points at the intended range; chart series ranges are rewritten, and pivot sources are reported stale or blocked.
@@ -143,6 +143,7 @@ The [accessibility contract](accessibility.md) is the source:
 - Filter: every data row is either visible or filter-hidden; the header is always visible; clearing restores the manual layer.
 - Undo/redo: applying a command then undo returns the exact prior snapshot; redo returns the post-state.
 - Package: no-op save is byte-identical; an edited save changes only dirty parts.
+- Part patch: a single-cell edit leaves every untouched row byte-identical and preserves the order of unknown elements.
 - Number format: never throws, is deterministic, and returns a string.
 - CF: data-bar lengths and colour-scale positions stay within bounds; icon thresholds are monotonic.
 - Comparator: antisymmetry, transitivity and blank-last.

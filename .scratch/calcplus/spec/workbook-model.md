@@ -119,7 +119,20 @@ An opaque part's bytes change only where the transform requires it: its anchor i
 
 **Deferred:** tables (imported parts preserved; structured references per ticket 02), data-validation enforcement, protection enforcement, rich-text authoring.
 
-## 11. Acceptance criteria
+## 11. Sheet projection
+
+The renderer, the accessibility mirror and the DOM-cell fallback read a **projection**, never the model (ADR 0007).
+
+- A projection is immutable for one document version; a command bumps the version and the next paint builds a new one.
+- It is lazy: asking for the visible window costs the visible cells, not the sheet.
+- Records are ready to paint: display text after number formats and conditional-format number formats, fill, font, border, alignment, merged span, plus the raw value, formula text and stale flag that the mirror and the editor need.
+- Geometry answers by index rather than by iteration: the row at a y offset, the y offset of a row, and the same for columns.
+- Selection, scroll and focus are passed in by the caller. They are view state and never part of the document version (§4).
+- Number-format caching stays in the `NumberFormatter`, keyed by style and value.
+- Conditional formatting is resolved into the record; it never mutates the model (invariant 11 of the technical design).
+- The projection imports the model and the formatter; the renderer imports only the projection, enforced by a lint rule.
+
+## 12. Acceptance criteria
 
 1. A sheet with 100 populated cells in a 1,048,576-row grid uses memory proportional to the populated cells, not the grid.
 2. Open → save with no edits returns byte-identical package parts.
@@ -132,3 +145,4 @@ An opaque part's bytes change only where the transform requires it: its anchor i
 9. View-state changes never mark the document dirty.
 10. Opaque parts survive byte-identical unless their anchor must shift.
 11. A dirty save preserves unmodelled children, attributes and namespace declarations inside the part it rewrites.
+12. The renderer, the accessibility mirror and the DOM-cell fallback consume one projection; none of them imports a model module.

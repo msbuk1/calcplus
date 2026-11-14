@@ -13,6 +13,7 @@ spec package, not a working application. Start here:
 - [Milestones](.scratch/calcplus/spec/milestones.md) — the eight-phase build plan
 - [Spec map](.scratch/calcplus/map.md) — destination, decisions and open work
 - [Glossary](CONTEXT.md) — the project vocabulary
+- [Development setup](docs/dev-setup.md) — repo layout, toolchain and CI
 - [Testing and conformance](.scratch/calcplus/spec/testing-conformance.md) — how
   "faithful" is proved
 
