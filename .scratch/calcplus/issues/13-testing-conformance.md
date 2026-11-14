@@ -26,6 +26,10 @@ Depends on the semantics contract (02), the engine choice (03), and the I/O appr
 
 ## Answer
 
+> **Amended 2026-11-14:** the runner, pull-request and scheduled-oracle wording
+> below is historical. All tests and the Excel capture now run locally; no test
+> or check runs on GitHub. See the amendment at the end of this file.
+
 The strategy is in [testing-conformance.md](../spec/testing-conformance.md).
 
 **Oracle:** real Excel 365 on a Windows runner is authoritative; a COM/PowerShell harness generates goldens, and pull requests run against stored goldens. LibreOffice is a differential smoke test, and `ssf` is a differential oracle for number formats only. Every golden manifest records Excel version, OS, locale and date system.
@@ -43,3 +47,7 @@ The strategy is in [testing-conformance.md](../spec/testing-conformance.md).
 **CI:** pull requests run typecheck, lint, unit/integration, a small golden set, identity, smoke, axe and changed-area visuals under 15 minutes. Nightly runs the full formula/file/visual/performance/accessibility suite. The Excel oracle regenerates goldens on a schedule. The release gate requires all functions, files, UI, accessibility and performance to pass, with no P0/P1 or data-loss bugs.
 
 **Not tested:** pixel-perfect parity, the full function set, dynamic arrays, R1C1, 3D/structured refs, external-link refresh, iterative/manual calc, Mac Excel/Excel Online/mobile, VBA, pivot refresh, chart rendering, encrypted/.xls/.xlsb/ODS/Strict OOXML, co-authoring, non-English locales, versions other than 365/2019, beyond-envelope workbooks, mobile AT, tagged PDF and user-authored formatting contrast.
+
+## Amendment — 2026-11-14
+
+The user approved a testing-plan change: **no test or check runs on GitHub**. The oracle is captured manually with Excel 365 on the maintainer's Windows PC, the local suite compares against stored goldens, and the full suite and manual oracle refresh run locally on demand. The resolved answer above is retained as history; the contract now reflects the local-only plan.

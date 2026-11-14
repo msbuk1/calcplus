@@ -258,7 +258,7 @@ CF fill covers gridlines. The formula bar always shows the raw value, not the CF
 13. Unsupported rules are preserved, never painted, and listed in the compatibility and export reports.
 14. CF never mutates the model; copy, paste and Format Painter ignore it.
 15. Print, PDF and the accessibility display text follow §5.5.
-16. All fixtures in §9 pass in CI.
+16. All fixtures in §9 pass locally.
 
 ## 11. Deliberate deviations and v2 cuts
 

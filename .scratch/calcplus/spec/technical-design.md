@@ -259,8 +259,8 @@ The decision tickets on the map remain the narrative record; the ADRs capture th
 ## 12. Build, test and release
 
 - TypeScript + Vite; Vitest, Playwright and fast-check. axe-core returns with the v2 accessibility work.
-- Excel 365 on a Windows runner is the conformance oracle; stored goldens run on pull requests.
-- Pull requests under 15 minutes; nightly full suite; scheduled oracle regeneration.
+- Excel 365 on the maintainer's local Windows PC is the conformance oracle; the local suite compares against stored goldens.
+- Checks run locally before each commit. Per-change checks stay under 15 minutes; the full suite and manual oracle regeneration run on demand.
 - Release gate: [testing and conformance](testing-conformance.md).
 - Milestones: [milestones](milestones.md).
 - Licence and notices: [licensing](licensing.md).

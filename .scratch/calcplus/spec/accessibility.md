@@ -166,7 +166,7 @@ Every command in the registry is reachable without a pointer:
 
 ## 10. Testing
 
-**Automated, in CI**
+**Automated, local**
 
 - axe-core with no serious or critical violations on the chrome, dialogs, menus and the mirror.
 - Playwright keyboard suite: every command reachable, focus order, F6 zones, Esc paths, no traps.

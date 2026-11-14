@@ -1,26 +1,47 @@
-# Excel oracle harness (scaffold)
+# Excel oracle harness
 
-The authoritative conformance oracle is **real Excel 365 on a Windows runner**
-(testing-conformance §2). This repository does not provision that runner or
-license. Until the maintainer does, the `oracle` workflow is skipped by the
-`CALCPLUS_ORACLE_ENABLED` repository variable and pull requests use stored
-goldens only.
+The authoritative conformance oracle is **real Excel 365 on the maintainer's
+Windows PC** (testing-conformance §2). The capture is manual and the test suite
+runs locally; no test or check runs on GitHub.
 
-## External setup still required
+## Manual capture
 
-1. Provision a self-hosted Windows runner with the label
-   `calcplus-oracle-windows` and the maintainer's activated Excel 365.
-2. Exercise `capture-goldens.ps1` manually against the fixture corpus.
-3. Review the generated manifest (Excel version, build, OS, locale, date
-   system and generation date) and commit the golden.
-4. Set `CALCPLUS_ORACLE_ENABLED=true` only after the capture is reproducible.
-5. Add the LibreOffice headless and openpyxl relationship checks at release
-   time.
+1. Open Windows PowerShell on the PC with an activated desktop Excel 365.
+2. Run `capture-goldens.ps1` against the fixture corpus. If script execution is
+   blocked, use a process-scoped execution policy for that command only; do not
+   change the machine policy.
+3. Review the generated manifest (Excel version, build, OS, locale, date system
+   and generation date) and commit the golden.
+4. Add the LibreOffice headless and openpyxl relationship checks locally where
+   those tools are installed; the Excel check is a manual release step.
+
+The capture must be reproducible before a golden is committed. There is no
+runner, scheduled GitHub job or repository variable.
 
 ## Script
 
 `capture-goldens.ps1` opens a workbook read-only through COM, calls
-`CalculateFullRebuild`, captures each used cell's formula, value and displayed
-text, and writes a JSON golden with a manifest. It fails with a clear message
-when Excel COM is unavailable. It never executes macros: `AutomationSecurity`
-is forced to `msoAutomationSecurityForceDisable`.
+`CalculateFullRebuild`, captures each used cell's typed value, error and
+formula status, and writes a JSON golden with a manifest. It fails with a clear
+message (including the workbook path and COM HRESULT) when Excel COM or the
+workbook open fails. It never executes macros: `AutomationSecurity` is forced
+to `msoAutomationSecurityForceDisable`.
+
+Cell records carry `ref`, `hasFormula`, `kind` and a typed `value`. `kind` is
+one of `text`, `number`, `boolean` or `error`; blank cells are currently
+omitted by the script rather than emitted as `kind: blank`. Errors are mapped
+from the `Value2` CVErr to the exact names in testing-conformance §2.1;
+`Range.Text` is never used for identity because it can be width-dependent
+(`####`). `formula` is emitted only when Excel reports `HasFormula = true`, so a
+text value beginning with `=` stays a text constant. Formula text is Excel's
+exact `Range.Formula` output (including the leading `=`).
+
+The JSON is written as UTF-8 without a BOM by a stable serialiser rather than
+Windows PowerShell 5.1 `Set-Content -Encoding utf8`, which adds a BOM, or
+`ConvertTo-Json`, whose output differs between PowerShell 5.1 and 7. The
+manifest keeps Excel version/build, OS, locale, date system, generation time
+and workbook name.
+
+The script targets `fixtures/oracle/m1-values-errors.xlsx`, an Excel-openable
+fixture exercising the M1 value and error surface. The M1 chart fixture is a
+preservation fixture whose minimal chart package Excel 365 refuses to open.

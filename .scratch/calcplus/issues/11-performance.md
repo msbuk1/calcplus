@@ -22,6 +22,9 @@ Define the benchmark corpus (synthetic and real-world shapes), the measurement h
 
 ## Answer
 
+> **Amended 2026-11-14:** performance checks now run locally; there is no
+> pull-request or nightly GitHub job. See the amendment at the end of this file.
+
 Performance is a contract with a test behind it, not a hope. Full detail in [performance.md](../spec/performance.md).
 
 **Reference machine:** mid-range 2023 laptop (4-core, 16 GB, current Chromium, 1440×900 at 100% zoom). A 2-core/8 GB floor tier must stay usable but may be 2× slower. Only desktop Chromium is covered; Firefox and Safari are best-effort with no performance claim, and mobile/touch is out.
@@ -30,9 +33,9 @@ Performance is a contract with a test behind it, not a hope. Full detail in [per
 
 **Budgets:** cold open 0.8 s / 2.5 s / 5 s / 15 s at 10k / 100k / 250k / 1M cells. Typical recalc ≤ 50 ms, 100k-formula fan-out ≤ 400 ms, full recalc 1.5 s / 5 s. 60 fps scrolling with no frame over 50 ms; 50 ms click-to-paint; 100 ms commit. 100k-cell paste/fill ≤ 1 s, find 250k ≤ 0.5 s, sort 100k rows ≤ 2 s.
 
-**Harness:** Node microbenchmarks on every pull request; Playwright plus Chromium DevTools Protocol nightly on a fixed hardware class; an in-app panel behind `?perf=1`.
+**Harness:** Node microbenchmarks for every local change; Playwright plus Chromium DevTools Protocol in the full local run on a fixed hardware class; an in-app panel behind `?perf=1`.
 
-**Gate:** 20% regression against the rolling median of the last 10 same-runner runs blocks a pull request; absolute budgets are enforced nightly and at release.
+**Gate:** 20% regression against the rolling median of the last 10 same-machine local runs blocks a change; absolute budgets are enforced by the full local run and at release.
 
 **Degradation:** staged and visible — banner, then conditional-formatting painting outside the viewport, scroll overscan, idle recalculation, memory warning, refusal. Rendering degrades before correctness does.
 
@@ -41,3 +44,7 @@ Performance is a contract with a test behind it, not a hope. Full detail in [per
 ## Notes
 
 - Benchmark HyperFormula's browser memory at the target sheet sizes. If memory is the constraint, move the engine to a Web Worker; do not switch to IronCalc (see ticket 24).
+
+## Amendment — 2026-11-14
+
+The testing-plan change removed GitHub execution. The per-change and full benchmark runs and the 20% regression gate now run locally on the maintainer's PC; there is no pull-request or nightly GitHub job.

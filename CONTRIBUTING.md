@@ -69,7 +69,10 @@ There is **no contributor licence agreement (CLA)**. The DCO is enough.
 - Follow the contracts for the workbook model, commands, file compatibility,
   performance, accessibility and conformance.
 - Add tests with the change. Conformance is the release gate, not coverage.
-- Keep the working tree clean and the main branch green.
+- Run the local checks before committing and keep them passing: `npm run check`,
+  `npm run format:check`, `npm run build` and `npm run test:e2e`. No test or
+  check runs on GitHub.
+- Keep the working tree clean and the main branch passing the local checks.
 
 ## Review
 

@@ -6,8 +6,9 @@ come with it. The release build must include the full licence texts for every
 distributed component; this file is the human-readable index.
 
 The audit was last reviewed on **2026-11-14** for the M1 walking skeleton.
-Re-run it whenever a dependency is added, removed or upgraded. The CI licence
-gate (`scripts/licence-gate.mjs`) checks the lockfile on every pull request.
+Re-run it whenever a dependency is added, removed or upgraded. The local
+licence gate (`scripts/licence-gate.mjs`) checks the lockfile before each
+commit.
 
 ## Runtime dependencies (distributed)
 
@@ -48,7 +49,7 @@ allowlist (`spec/licensing.md` §7). Both are GPL-3.0-only-compatible:
   GPL-compatible.
 
 They are not distributed in the browser bundle. Any further addition to this
-list needs a review note and a change to the CI gate.
+list needs a review note and a change to the local licence gate.
 
 ## Test and conformance tooling (not distributed)
 

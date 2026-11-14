@@ -17,8 +17,8 @@ M1 scope only:
   harness can read CDP heap metrics and that it is below the 500 MB guaranteed
   envelope.
 - Does not generate the 250k/50k formula corpus or enforce the full absolute
-  budgets; those arrive with the formula engine and the nightly fixed-hardware
-  runner in later milestones.
+  budgets; those arrive with the formula engine and the fixed-hardware local
+  full run in later milestones.
 
 The JSON attachment contains the exact machine fingerprint required by the
 performance contract (CPU model, core count, RAM and browser version). Results

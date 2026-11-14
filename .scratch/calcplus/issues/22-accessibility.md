@@ -23,6 +23,9 @@ Output: the accessibility contract for tickets 10, 11 and 13.
 
 The contract is in [accessibility.md](../spec/accessibility.md).
 
+> **Amended 2026-11-14:** automated accessibility checks run locally; no test
+> or check runs on GitHub. See the amendment at the end of this file.
+
 **Target:** WCAG 2.2 AA for the app interface and the DOM accessibility mirror. The canvas is `aria-hidden`; the mirror is the conformant representation. User-authored cell and conditional formatting is a content caveat: the value is always exposed, but its contrast and colour-only meaning are the author's.
 
 **Screen reader:** `role="grid"` with `aria-rowcount`/`aria-colcount`, absolute `aria-rowindex`/`aria-colindex`, `columnheader`/`rowheader`, merged spans, roving tabindex with a persistent active cell, `aria-selected` for the selection, and a polite live region for edits, structural changes, sort, filter, save and errors. Only the visible range plus the active cell is mirrored.
@@ -31,6 +34,10 @@ The contract is in [accessibility.md](../spec/accessibility.md).
 
 **Focus and contrast:** 2 px focus ring at 3:1, never obscured; forced-colours mode repaints the canvas with system colours; 200% browser zoom and 10–400% app zoom; chrome reflows below 900 px. Chrome controls meet 24 × 24; grid cells and resize gutters use the essential two-dimensional exceptions and have keyboard alternatives.
 
-**Testing:** axe-core and Playwright keyboard/live-region/zoom tests in CI; manual NVDA/Chrome, NVDA/Firefox, JAWS/Chrome and VoiceOver/Safari before the grid milestone is accepted. If the mirror fails, the DOM-cell renderer fallback is built behind `RenderFrame` and the milestone is blocked without it.
+**Testing:** axe-core and Playwright keyboard/live-region/zoom tests run locally; manual NVDA/Chrome, NVDA/Firefox, JAWS/Chrome and VoiceOver/Safari run before the grid milestone is accepted. If the mirror fails, the DOM-cell renderer fallback is built behind `RenderFrame` and the milestone is blocked without it.
 
 **Out of scope:** mobile screen readers, braille, sonification, AAA, dark mode, tagged PDF, charts/images, split panes, localized announcements.
+
+## Amendment — 2026-11-14
+
+The testing-plan change removed GitHub execution. The automated accessibility checks run locally when the v2 work is scheduled; there is no GitHub Actions job.

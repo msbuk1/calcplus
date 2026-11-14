@@ -44,7 +44,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
 - Minimal command registry and one undoable `cell.set`.
 - File open and save through the File System Access API with a download fallback.
-- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), the maintainer's own Excel 365 on a self-hosted Windows runner, value and error golden generation scripted, and the browser memory harness from ticket 11 (testing-conformance §2). Sort-collation, CF-paint and print-pagination goldens are added by M5 and M7, when those features exist.
+- Conformance infrastructure stands up: the maintainer's own Excel 365 on their Windows PC with a COM/PowerShell harness, value and error golden generation run manually, and the browser memory harness from ticket 11 (testing-conformance §2). Sort-collation, CF-paint and print-pagination goldens are added by M5 and M7, when those features exist.
 
 **Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical, and the chart, drawing and extension children of the edited sheet survive.
 
@@ -55,7 +55,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 3. A cell edit is one undoable command; undo restores the prior value.
 4. An edited save of a workbook carrying a chart, a `<legacyDrawing>` and an unknown `<extLst>` keeps those elements and their order in the dirty worksheet part; a part inventory proves it, not inspection.
 5. The app opens in Chromium and saves through the file API or a download.
-6. Unit and smoke tests run in CI.
+6. Unit and smoke tests pass on the maintainer's PC; no GitHub test execution is required.
 
 ### M2 — Grid foundation (8-12 pw)
 

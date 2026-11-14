@@ -70,5 +70,5 @@ Resolved by [26 — Launcher technology and release packaging](../issues/26-laun
 
 - **Technology:** a stdlib-only Go launcher, embedding the static build (`//go:embed` + `http.FileServerFS`), bound to `127.0.0.1`. Measured 6.9 MB, ~2 ms startup, ~9 MB RSS.
 - **Release matrix:** Windows x64 portable `.exe`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases. No macOS artifact in v1.
-- **Signing:** optional and not budgeted for v1. Unsigned Windows builds show a SmartScreen warning until reputation builds, which the README and the About dialog explain; Microsoft Artifact Signing is about US$120/year if that changes. The oracle runner uses the maintainer's own Excel 365 licence, so the project carries no recurring cost.
+- **Signing:** optional and not budgeted for v1. Unsigned Windows builds show a SmartScreen warning until reputation builds, which the README and the About dialog explain; Microsoft Artifact Signing is about US$120/year if that changes. The oracle uses the maintainer's own Excel 365 licence on their PC, so the project carries no runner and no recurring cost.
 - **Desktop wrapper** is only justified by native menus, file associations, a guaranteed browser engine, lifecycle control, or a blocked-loopback environment.

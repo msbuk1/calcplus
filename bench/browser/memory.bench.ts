@@ -10,7 +10,7 @@ const fixturePath = fileURLToPath(
 /**
  * M1 browser memory harness (performance contract §6, strategy 2). It stands
  * up the CDP measurement plumbing and records a machine fingerprint; the full
- * corpus and absolute budgets are enforced by the nightly suite in later
+ * corpus and absolute budgets are enforced by the full local suite in later
  * milestones. The M1 smoke assertion only proves the harness can read heap
  * metrics and that the tiny fixture stays under the guaranteed envelope.
  */

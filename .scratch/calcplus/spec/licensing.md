@@ -151,9 +151,9 @@ Source unless their licence allows it.
 11. The release notes state the licence and the source location.
 12. Counsel reviews the first public release package.
 
-## 7. CI licence gate
+## 7. Local licence gate
 
-- A licence check runs on every pull request and on the release build.
+- A licence check runs before each commit and on the release build. There is no GitHub test execution.
 - The allowlist is: GPL-3.0-only, MIT, ISC, BSD-2-Clause, BSD-3-Clause,
   Apache-2.0, MPL-2.0, OFL-1.1, PSF-2.0, 0BSD and CC0-1.0.
 - An unknown or disallowed licence fails the build until it is reviewed and the
@@ -180,7 +180,7 @@ Source unless their licence allows it.
    licence.
 9. The release checklist includes the About dialog, source archive, SBOM and
    counsel review.
-10. The CI licence gate runs and blocks unknown or disallowed licences.
+10. The local licence gate runs and blocks unknown or disallowed licences.
 11. No Microsoft asset or proprietary GenOffice code is present.
 12. The maintainer confirms the licence before the spec is finalised.
 
@@ -191,7 +191,7 @@ Source unless their licence allows it.
 - **Font subsetting.** Subsetting Selawik or Carlito may count as a modified
   version under the OFL; rename if that happens.
 - **Store DRM.** A store that prevents modified builds conflicts with GPLv3.
-- **Dependency drift.** A routine upgrade can change a licence; the CI gate and
-  the SBOM diff are the guard.
+- **Dependency drift.** A routine upgrade can change a licence; the local licence
+  gate and the SBOM diff are the guard.
 - **Legal review.** The first public release should be reviewed by counsel in
   the project's jurisdiction.

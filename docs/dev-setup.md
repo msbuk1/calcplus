@@ -27,21 +27,34 @@ One npm project, folders by area. Revisit workspaces only if the formula worker 
 - **ESLint** flat config plus **Prettier**. Two rules carry architecture: the renderer may not import model modules (ADR 0007), and nothing outside the OOXML layer may write part bytes (ADR 0006).
 - The licence gate checks dependencies against the allowlist in [licensing](../.scratch/calcplus/spec/licensing.md).
 
-## CI (GitHub Actions)
+## Local checks
 
-| Job | Runner | Trigger | Runs |
-|---|---|---|---|
-| `quality` | `ubuntu-latest` | every push | typecheck, lint, unit, integration, licence gate |
-| `e2e` | `ubuntu-latest` | every push | Playwright smoke |
-| `oracle` | `windows-latest` | scheduled and manual | Excel 365 golden regeneration and the manual repair check |
+**No test or check runs on GitHub.** GitHub hosts the source and release
+downloads only. Run these on the maintainer's PC:
 
-Node comes from `.nvmrc`; npm cache is enabled. The self-hosted Windows oracle runner is set up in milestone 1 ([distribution §8](../.scratch/calcplus/spec/distribution.md)); the Excel licence is the maintainer's own, so no recurring cost is incurred.
+| Check | Command |
+|---|---|
+| Typecheck, lint, unit tests, licence gate | `npm run check` |
+| Formatting | `npm run format:check` |
+| Production build | `npm run build` |
+| Chromium end-to-end smoke | `npm run test:e2e` |
+| Excel 365 value/error goldens | `scripts/oracle/capture-goldens.ps1` (manual) |
+
+Node comes from `.nvmrc`. Install Chromium once with
+`npx playwright install chromium`. Visual baselines and performance numbers are
+tied to this local machine; results from other hardware are advisory. The Excel
+oracle uses the maintainer's own licence, so there is no runner and no recurring
+cost.
 
 ## Branches
 
-Direct commits to `main` while the project has one maintainer, with CI green. Move to pull requests with one approval when a second contributor lands, as [CONTRIBUTING](../CONTRIBUTING.md) requires.
+Direct commits to `main` while the project has one maintainer, with the local
+checks passing. Move to pull requests with one approval when a second
+contributor lands, as [CONTRIBUTING](../CONTRIBUTING.md) requires.
 
 ## Targets this setup must meet
 
-- A pull request's CI under 15 minutes ([testing and conformance §11](../.scratch/calcplus/spec/testing-conformance.md)).
-- Save: 2 s at 250k cells, 8 s at 1M ([performance §3.7](../.scratch/calcplus/spec/performance.md)).
+- A per-change local check under 15 minutes
+  ([testing and conformance §11](../.scratch/calcplus/spec/testing-conformance.md)).
+- Save: 2 s at 250k cells, 8 s at 1M
+  ([performance §3.7](../.scratch/calcplus/spec/performance.md)).

@@ -155,21 +155,21 @@ Real workbooks: a budget/forecast model, a sales tracker and a gradebook, anonym
 
 Three layers:
 
-1. **Node microbenchmarks** (`bench/engine`, `bench/model`, `bench/io`) — deterministic, fixed seed, 5 warm-up runs then 10 measured runs, reporting p50/p95/max plus memory after forced garbage collection (`--expose-gc`). Runs on every pull request.
-2. **Browser end-to-end** (`bench/browser`, Playwright + Chromium DevTools Protocol) — cold open, scripted scroll, click/key-to-paint, paste/fill/find/sort and memory. Uses `performance.mark`/`measure`, `PerformanceObserver` long tasks, `requestAnimationFrame` deltas, and CDP heap metrics for both the page and the worker target. Runs nightly on a fixed hardware class.
+1. **Node microbenchmarks** (`bench/engine`, `bench/model`, `bench/io`) — deterministic, fixed seed, 5 warm-up runs then 10 measured runs, reporting p50/p95/max plus memory after forced garbage collection (`--expose-gc`). Runs for every local change.
+2. **Browser end-to-end** (`bench/browser`, Playwright + Chromium DevTools Protocol) — cold open, scripted scroll, click/key-to-paint, paste/fill/find/sort and memory. Uses `performance.mark`/`measure`, `PerformanceObserver` long tasks, `requestAnimationFrame` deltas, and CDP heap metrics for both the page and the worker target. Runs in the full local suite on a fixed hardware class.
 3. **In-app performance panel** (`?perf=1`) — last-command timings, 5-second frame p95, working-set estimate and engine queue depth. For manual checks and bug reports.
 
 Every result records a machine fingerprint (CPU model, core count, RAM, browser version). Results from a different machine are advisory, not gating.
 
-## 7. CI regression gate
+## 7. Local regression gate
 
 | Stage | Gate |
 |---|---|
-| Pull request | Node microbenchmarks. Block on a **20% regression** against the rolling median of the last 10 runs on the same runner. One automatic re-run filters noise; a second failure blocks. |
-| Nightly | Browser end-to-end on the fixed runner. Enforces the absolute budgets in §3 and §4. A failure opens a tracked issue. |
+| Per change | Node microbenchmarks. Block on a **20% regression** against the rolling median of the last 10 local runs on the same machine. One immediate re-run filters noise; a second failure blocks the change. |
+| Full local run | Browser end-to-end on the fixed hardware class. Enforces the absolute budgets in §3 and §4. A failure opens a tracked issue. |
 | Release | Full corpus, all sizes. Absolute budgets block the release. |
 
-A `perf-regression` label can override a pull-request block with a written justification. Overrides are listed in the release notes.
+A written `perf-regression` override can accept a per-change block; overrides are listed in the release notes.
 
 ## 8. Degradation ladder
 
@@ -195,11 +195,11 @@ Rendering degrades before correctness does. Values are never silently dropped, a
 7. No recalculation blocks the main thread for more than 50 ms.
 8. Whole-column and whole-row references do not allocate the full grid.
 9. A 100k-cell paste is one undo step and undoes in under 1 s.
-10. Pull requests block on a 20% regression; nightly and release builds enforce the absolute budgets.
+10. Per-change local runs block on a 20% regression; full local runs and release builds enforce the absolute budgets.
 11. The corpus is reproducible from a committed generator; real fixtures are anonymised and licensed for test use.
 12. Every result carries a machine fingerprint; non-reference runs never gate.
 13. Firefox, macOS, mobile and touch are documented as outside the performance contract.
-14. The filter, conditional-formatting and print budgets in §3.4-§3.6 are enforced by the nightly browser suite.
+14. The filter, conditional-formatting and print budgets in §3.4-§3.6 are enforced by the full local browser suite.
 15. The save budgets in §3.7 are measured by the browser harness and block the release.
 
 ## 10. Evidence

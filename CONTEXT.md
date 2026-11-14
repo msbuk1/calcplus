@@ -137,11 +137,11 @@ The fixed set of synthetic shapes and anonymised real workbooks that every perfo
 _Avoid_: Test files, sample data
 
 **Conformance oracle**:
-The authoritative source of expected Excel behaviour: real Excel 365 on a Windows runner, captured into stored goldens.
+The authoritative source of expected Excel behaviour: real Excel 365 on the maintainer's Windows PC, captured manually into stored goldens.
 _Avoid_: Reference implementation, baseline
 
 **Golden file**:
-A committed expected result — a value, error, display string, saved workbook or screenshot — produced by the oracle or a pinned runner and compared in CI.
+A committed expected result — a value, error, display string, saved workbook or screenshot — produced by the oracle or a pinned local environment and compared by the local test suite.
 _Avoid_: Baseline, snapshot
 
 **Release gate**:

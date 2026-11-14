@@ -24,6 +24,9 @@ This is a task, not a decision: it unblocks the spec package. The result is a li
 
 ## Answer
 
+> **Amended 2026-11-14:** the licence gate now runs locally; no test or check
+> runs on GitHub. See the amendment at the end of this file.
+
 The licence decision is now real in the repository:
 
 - `LICENSE` — the unmodified GNU GPL version 3 text.
@@ -42,4 +45,8 @@ The licence decision is now real in the repository:
 
 **Contributor confirmation:** the current contributor is the repository owner; every commit is signed off under the DCO, which certifies the right to submit under GPL-3.0-only. No CLA.
 
-**CI:** a licence gate checks every pull request and release against an allowlist and fails on unknown or disallowed licences; the SBOM is diffed between releases.
+**Licence gate:** a local gate checks each change and the release against an allowlist and fails on unknown or disallowed licences; the SBOM is diffed between releases.
+
+## Amendment — 2026-11-14
+
+The testing-plan change removed GitHub execution. The licence gate runs locally before each commit and at release; there is no GitHub Actions licence job.

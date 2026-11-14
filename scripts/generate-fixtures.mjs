@@ -6,8 +6,10 @@ import { zipSync } from 'fflate';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const compatDir = join(root, 'fixtures', 'compat');
 const expectedDir = join(root, 'fixtures', 'expected');
+const oracleDir = join(root, 'fixtures', 'oracle');
 mkdirSync(compatDir, { recursive: true });
 mkdirSync(expectedDir, { recursive: true });
+mkdirSync(oracleDir, { recursive: true });
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const SPREADSHEET_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -191,6 +193,67 @@ const sheetOneXml = `${XML_HEADER}
   </extLst>
 </worksheet>`;
 
+// Excel-openable value/error fixture for the manual Excel capture. The chart
+// fixture is a preservation fixture: its hand-authored chart and extLst are
+// deliberately minimal and Excel 365 refuses to open it. This workbook keeps
+// the same M1 cell shapes without the unmodelled parts so the COM harness can
+// capture real Excel values, errors and formula status.
+const oracleWorkbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="${REL_NS}/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="${REL_NS}/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`;
+
+const oracleSharedStringsXml = `${XML_HEADER}
+<sst xmlns="${SPREADSHEET_NS}" count="6" uniqueCount="6">
+  <si><t>Name</t></si>
+  <si><t>Value</t></si>
+  <si><t>Alpha</t></si>
+  <si><t>Beta</t></si>
+  <si><t>=not a formula</t></si>
+  <si><t>=SUM(A1:A2)</t></si>
+</sst>`;
+
+const oracleSheetXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <dimension ref="A1:E5"/>
+  <cols><col min="4" max="4" width="22" customWidth="1"/><col min="5" max="5" width="4" customWidth="1"/></cols>
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s" s="1"><v>0</v></c>
+      <c r="B1" t="s"><v>1</v></c>
+    </row>
+    <row r="2">
+      <c r="A2" t="s"><v>2</v></c>
+      <c r="B2"><v>42.5</v></c>
+      <c r="C2" t="inlineStr"><is><t>inline text</t></is></c>
+      <c r="D2" t="s"><v>4</v></c>
+      <c r="E2" t="e"><v>#N/A</v></c>
+    </row>
+    <row r="3">
+      <c r="A3" t="s"><v>3</v></c>
+      <c r="B3"><f>B2*2</f><v>85</v></c>
+      <c r="C3"><v>3.141592653589793</v></c>
+      <c r="D3" t="s"><v>5</v></c>
+      <c r="E3" t="e"><v>#VALUE!</v></c>
+    </row>
+    <row r="4">
+      <c r="A4" t="b"><v>1</v></c>
+      <c r="B4" t="e"><v>#DIV/0!</v></c>
+      <c r="C4" t="str"><f>"=literal"</f><v>=literal</v></c>
+      <c r="D4" t="e"><f>1/0</f><v>#DIV/0!</v></c>
+      <c r="E4"><f>SUM(B2:B3)</f><v>127.5</v></c>
+    </row>
+    <row r="5">
+      <c r="A5" t="e"><v>#REF!</v></c>
+      <c r="B5" t="e"><v>#NAME?</v></c>
+      <c r="C5" t="e"><v>#NUM!</v></c>
+      <c r="D5" t="e"><v>#NULL!</v></c>
+    </row>
+  </sheetData>
+</worksheet>`;
+
 const identityWorkbookXml = `${XML_HEADER}
 <workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
   <workbookPr date1904="0"/>
@@ -296,8 +359,19 @@ const identityPackage = packageEntries({
   sharedStrings: identitySharedStrings,
 });
 
+const oraclePackage = packageEntries({
+  workbook: workbookXml,
+  workbookRels: oracleWorkbookRels,
+  sheets: [['xl/worksheets/sheet1.xml', oracleSheetXml]],
+  sharedStrings: oracleSharedStringsXml,
+  extra: {
+    'xl/styles.xml': stylesXml,
+  },
+});
+
 writeFileSync(join(compatDir, 'm1-chart-unknown.xlsx'), m1Package);
 writeFileSync(join(compatDir, 'identity-minimal.xlsx'), identityPackage);
+writeFileSync(join(oracleDir, 'm1-values-errors.xlsx'), oraclePackage);
 
 const expectedValues = {
   fixture: 'm1-chart-unknown.xlsx',
@@ -347,5 +421,6 @@ writeFileSync(
 
 console.log(`Wrote ${join(compatDir, 'm1-chart-unknown.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'identity-minimal.xlsx')}`);
+console.log(`Wrote ${join(oracleDir, 'm1-values-errors.xlsx')}`);
 console.log(`Wrote ${join(expectedDir, 'm1-values.json')}`);
 console.log(`Wrote ${join(root, 'fixtures', 'oracle-manifest.json')}`);

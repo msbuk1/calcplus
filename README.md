@@ -9,10 +9,9 @@ implementation slice: a canonical sparse workbook model, a preservation-first
 OOXML package layer with a cells-only part patch, one undoable `cell.set`
 command, a minimal canvas grid, New/Open/Save/Save As through File System
 Access or a download fallback, and an unsaved-change prompt. The M1 gate is
-still under review; CI has not run against a DCO-signed maintainer commit.
-Later milestones (formulas, formatting, multi-sheet editing, structural
-transforms, persistence hardening, the accessibility mirror) are not
-implemented.
+still under review; the local checks pass on the current working tree. Later
+milestones (formulas, formatting, multi-sheet editing, structural transforms,
+persistence hardening, the accessibility mirror) are not implemented.
 
 ## Run
 
@@ -26,12 +25,14 @@ npm test             # Vitest unit and integration tests
 npm run test:e2e     # Playwright Chromium smoke test
 npm run bench:browser # Chromium/CDP memory harness (M1 stand-up)
 npm run check        # typecheck, lint, unit tests and licence gate
+npm run format:check # Prettier check
+npm run build        # production build
 ```
 
-The Excel 365 oracle runner and stored oracle goldens are **not configured**.
-`scripts/oracle/README.md` lists the external setup the maintainer still needs
-to provide; push and pull-request CI uses unit, integration and Chromium smoke
-tests only.
+**No tests run on GitHub.** The test suite and stored goldens are run locally
+on the maintainer's PC. The Excel 365 oracle is captured manually as described
+in `scripts/oracle/README.md`; no GitHub runner or scheduled Excel job is used.
+Stored oracle goldens are not committed yet.
 
 Start here:
 
@@ -41,7 +42,7 @@ Start here:
 - [Milestones](.scratch/calcplus/spec/milestones.md) — the eight-phase build plan
 - [Spec map](.scratch/calcplus/map.md) — destination, decisions and open work
 - [Glossary](CONTEXT.md) — the project vocabulary
-- [Development setup](docs/dev-setup.md) — repo layout, toolchain and CI
+- [Development setup](docs/dev-setup.md) — repo layout, toolchain and local checks
 - [Testing and conformance](.scratch/calcplus/spec/testing-conformance.md) — how
   "faithful" is proved
 

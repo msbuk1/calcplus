@@ -10,14 +10,14 @@ The claim is bounded by §12. calcplus does not claim full Excel parity.
 
 ## 2. The oracle
 
-- **Real Excel 365 on a Windows runner is the authoritative oracle.** A COM/PowerShell harness opens generated workbooks, recalculates, and captures values, errors, number-format display text, formula text and saved files.
-- Pull requests never call Excel. They run against **stored goldens**.
-- Goldens regenerate on a schedule, when Excel updates, or when a new case is added. Every golden manifest records the Excel version and build, OS, locale, date system and the date generated.
+- **Real Excel 365 on the maintainer's local Windows PC is the authoritative oracle.** The COM/PowerShell harness opens generated workbooks, recalculates, and captures values, errors, number-format display text, formula text and saved files. The maintainer runs it manually.
+- **No test or check runs on GitHub.** The local suite compares against **stored goldens**; GitHub is used only for source hosting and release downloads.
+- Goldens regenerate manually when Excel updates or when a new case is added. Every golden manifest records the Excel version and build, OS, locale, date system and the date generated.
 - **LibreOffice headless is a differential smoke test**, never the authority. It catches packaging and gross-semantic breaks cheaply.
 - **`ssf` is a differential oracle for number formats only.** It never decides a formula result.
-- Goldens cover sort collation, conditional-formatting paint and print pagination as well as values and files: the Windows harness sorts fixture sheets, captures Excel-rendered CF ranges as images, and prints fixtures to PDF for page-break goldens. Every behavioural claim in §1 has a named oracle or contract-test path; accessibility and performance are contract tests with runners, not Excel claims, and a claim without either cannot enter the release gate.
+- Goldens cover sort collation, conditional-formatting paint and print pagination as well as values and files: the local Excel harness sorts fixture sheets, captures Excel-rendered CF ranges as images, and prints fixtures to PDF for page-break goldens. Every behavioural claim in §1 has a named oracle or contract-test path; accessibility and performance are contract tests with local harnesses, not Excel claims, and a claim without either cannot enter the release gate.
 - **Interaction fidelity** is verified by the §6 interaction suite against the feature-matrix behaviour list (shortcuts, selection, editing semantics), with a manual Excel side-by-side checklist per release; there is no pixel oracle for behaviour.
-- The runner is release-gate infrastructure: a self-hosted Windows host running the maintainer's own Excel 365 licence, provisioned in M1 (distribution.md §8).
+- The oracle is release-gate infrastructure: the maintainer's licensed Excel 365 on their Windows PC, exercised manually in M1. The capture is local and manual; no hosted test runner is used.
 - The oracle is a tool, not a dependency of the shipped app.
 
 ### 2.1 Tolerance
@@ -45,7 +45,7 @@ The tolerance reflects Excel's 15-significant-digit arithmetic. It must not be w
 | Integration | Vitest | Model + commands + engine + OOXML + `SheetView` | Fakes only for clock, file system, clipboard and Excel |
 | Conformance | Vitest + Python | Golden formulas and files; independent readers | Stored goldens, no live Excel |
 | End-to-end | Playwright | Real app, real Chromium, user journeys, keyboard, clipboard, file open/save | Real app; file picker shimmed |
-| Visual | Playwright | Grid and chrome screenshots | Pinned runner and fonts |
+| Visual | Playwright | Grid and chrome screenshots | Pinned local Chromium and fonts |
 | Performance | Node + Playwright/CDP | Microbenchmarks and browser budgets | Fixed hardware class |
 | Security | Vitest | Hostile packages, malformed XML, zip bombs, XXE | Time and size caps |
 
@@ -86,7 +86,7 @@ Coverage targets: **90% lines / 85% branches on pure modules**. Coverage is not 
 Every fixture in [file compatibility §9](file-compat.md) is a test:
 
 - **Identity:** open → save with no edits is byte-identical.
-- **Repair-free:** every output opens in Excel 365 without a repair prompt. Automated CI uses openpyxl, LibreOffice and a relationship verifier; Excel is a manual release step.
+- **Repair-free:** every output opens in Excel 365 without a repair prompt. Local scripts use openpyxl, LibreOffice and a relationship verifier where installed; the Excel check is a manual local release step.
 - **Part inventory:** for an edited file, every preserved part has identical uncompressed bytes and resolvable relationships. Compare a manifest of name, CRC, uncompressed size and SHA-256.
 - **Dirty-part preservation:** a rewritten worksheet keeps every unmodelled child element, attribute, namespace declaration and its order, and every untouched row is byte-identical. The fixture asserts on the XML tree for the part as a whole and on bytes for the untouched rows.
 - **Semantic equality:** styles, number formats, merges, dimensions, names, comments, hyperlinks, validation and conditional formats compare equal through an independent reader.
@@ -103,16 +103,16 @@ Large files are generated on demand; only small fixtures live in git.
 - **Interaction suite:** selection and keyboard navigation, in-cell editing, formula bar, fill handle and Ctrl+D/R, row/column resize, freeze panes, merges, context menu, clipboard, zoom, sheet tabs, sort, AutoFilter, conditional formatting, undo/redo and the focus model.
 - **Command suite:** every surface dispatches the same command ID; enablement and checked state follow the registry; one transaction per action; the shortcut map matches the registry.
 - **Visual suite:** the grid at 100% and 200% zoom, with and without CF, freeze panes, merges, selection, editing, dialogs, the compact bar and forced colours.
-- **Determinism:** a fixed Linux Chromium runner with a pinned font set (Selawik, Carlito, Liberation Sans), fixed viewport and DPR 1 and 2, frozen clock, fixed locale and timezone, and animations disabled.
-- **Pixel comparison:** about 0.1% of pixels may differ, with a per-channel tolerance of 2/255. Baselines are tied to the runner image and Chromium version and are updated deliberately.
+- **Determinism:** a fixed Chromium version on the maintainer's PC with a pinned font set (Selawik, Carlito, Liberation Sans), fixed viewport and DPR 1 and 2, frozen clock, fixed locale and timezone, and animations disabled.
+- **Pixel comparison:** about 0.1% of pixels may differ, with a per-channel tolerance of 2/255. Baselines are tied to the local Chromium version and machine and are updated deliberately.
 - **Model assertions:** interaction tests also assert model snapshots and DOM state, so a screenshot that happens to look right cannot hide a wrong command.
 
 ## 7. Performance
 
 The [performance contract](performance.md) is the source:
 
-- Pull request: Node microbenchmarks block on a 20% regression against the rolling median of the last 10 same-runner runs.
-- Nightly: browser end-to-end on the fixed hardware class enforces the absolute budgets.
+- Per change: Node microbenchmarks block on a 20% regression against the rolling median of the last 10 local runs on the same machine.
+- Full local run: browser end-to-end on the fixed hardware class enforces the absolute budgets.
 - Release: the full corpus at 1, 10 and 50 MB.
 - Every result records a machine fingerprint; non-reference machines are advisory.
 
@@ -146,15 +146,17 @@ Assistive-technology support is **v2**. v1 has no accessibility layer, no axe jo
 
 - Hostile files: truncated ZIPs, bad central directories, zip bombs, oversized parts, malformed XML, DTD/XXE payloads, path traversal in entry names, huge shared strings.
 - Every fuzz case must fail safely within the package caps and never execute external content.
-- Fuzzing is a nightly job with a fixed corpus and seed; new crashes become regression fixtures.
+- Fuzzing is an on-demand local job with a fixed corpus and seed; new crashes become regression fixtures.
 
-## 11. CI cadence and goldens
+## 11. Local test cadence and goldens
+
+There is no GitHub Actions test workflow. Checks run on the maintainer's PC; GitHub hosts the source and releases only.
 
 | Stage | What runs | Target |
 |---|---|---|
-| Pull request | Typecheck, lint, unit, integration, contract tests, a small formula golden set, round-trip identity, Playwright smoke, visual diff for changed areas | Under 15 minutes |
-| Nightly | Full 52-function suite, generated cases, full file corpus and producer matrix, LibreOffice smoke, full visual suite, performance, accessibility | Under 60 minutes |
-| Scheduled oracle | Excel 365 regenerates formula and file goldens on the Windows runner; manifest review | Monthly or on Excel update |
+| Per change | Typecheck, lint, format check, unit, integration, contract tests, a small formula golden set, round-trip identity, Playwright smoke, visual diff for changed areas | Under 15 minutes |
+| Full local run | Full 52-function suite, generated cases, full file corpus and producer matrix, LibreOffice smoke, full visual suite, performance, accessibility | Under 60 minutes |
+| Manual oracle | Excel 365 on the maintainer's PC regenerates formula and file goldens; manifest review | On Excel update or new case |
 | Release | Full matrix, manual Excel repair check, performance on the reference machine, no P0/P1 or data-loss bugs | Blocks the release |
 
 **Golden management**
@@ -208,17 +210,17 @@ v1 is faithful only when all of these pass:
 
 ## 14. Acceptance criteria
 
-1. Excel 365 on a Windows runner is the authoritative oracle; pull requests use stored goldens.
+1. Excel 365 on the maintainer's local Windows PC is the authoritative oracle; the local suite uses stored goldens.
 2. Goldens carry a manifest with Excel version, OS, locale and date system, and are reviewed.
 3. The tolerance rules in §2.1 are enforced by the comparison helper, not by ad-hoc assertions.
 4. The 52-function suite, error/coercion/operator table, date, reference, lookup and circular-reference tests exist and pass.
 5. The shim tests exist and pass.
 6. File fixtures cover identity, repair-free, part inventory, semantic equality, formula fidelity, structural edits, hostile inputs and the producer matrix.
 7. Sort, filter and CF fixtures pass.
-8. Grid interaction and visual tests run on the pinned runner and assert model state as well as pixels.
+8. Grid interaction and visual tests run locally and assert model state as well as pixels.
 9. The performance gate follows its contract.
-10. Property and fuzz tests run nightly with fixed seeds.
-11. The CI cadence in §11 is implemented; pull requests stay under 15 minutes.
+10. Property and fuzz tests run locally on demand with fixed seeds.
+11. The local cadence in §11 is implemented; per-change checks stay under 15 minutes.
 12. The release gate in §13 blocks a release.
 13. The non-goals in §12 are documented in the PRD.
 14. No test mocks the model, engine, OOXML layer or app under test.
