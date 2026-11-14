@@ -15,7 +15,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 - **Three engineers in parallel:** one on grid and rendering, one on model, engine and commands, one on file I/O and chrome. Part-time design and QA.
 - **Person-weeks, not calendar dates.** The plan stays useful whatever the start date. A range is a planning estimate, not a commitment.
-- **Total:** about **62-90 person-weeks**, plus a **20% contingency**, for roughly **75-108 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
+- **Total:** about **66-96 person-weeks**, plus a **20% contingency**, for roughly **79-115 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
 - The conformance tail is the largest uncertainty. Milestone 8 carries an explicit reserve.
 
 ## 3. Overview
@@ -44,6 +44,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
 - Minimal command registry and one undoable `cell.set`.
 - File open and save through the File System Access API with a download fallback.
+- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), Microsoft 365 and JAWS licences provisioned, Excel golden generation scripted for values, sort collation, CF paint and print pagination, and the browser memory harness from ticket 11 (testing-conformance §2).
 
 **Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical.
 
@@ -69,7 +70,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 **Spike:** the accessibility mirror with NVDA/Chrome and VoiceOver/Safari. If it fails, build the DOM-cell renderer behind `RenderFrame` before the milestone gate.
 
-**Demo:** a keyboard-only user navigates, selects, edits and scrolls; a screen reader reads the address, value and selection; a 1M-row sheet scrolls at 60 fps.
+**Demo:** a keyboard-only user navigates, selects, edits and scrolls; a screen reader reads the address, value and selection; a 250k-touched-cell sheet scrolls at the frame budget and a 1M-row sparse sheet scrolls without allocating the grid.
 
 **Exit criteria**
 
@@ -151,7 +152,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 4. Fill and insert/delete are one undo transaction each.
 5. 100k-row sort and filter meet the performance budgets.
 
-### M6 — File fidelity (10-14 pw)
+### M6 — File fidelity (14-20 pw)
 
 **Build**
 
@@ -220,6 +221,8 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 5. The spec package is complete and internally consistent.
 
 ## 5. Dependency graph
+
+M6 gates after M5: the file-fidelity exit criterion (all 24 file-compat fixtures, including F13 validation + conditional-formatting round-trip) needs M5’s CF engine. Fixture authoring may start early; the M6 exit gate cannot run before M5 exits. In the graph below M6 is drawn beside M2/M3 for staffing, not for gating.
 
 ```
 M1 walking skeleton

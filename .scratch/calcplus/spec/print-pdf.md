@@ -48,7 +48,9 @@ window.print()
 - **Margins:** top, bottom, left, right in points.
 - **Scaling:** uniform; no independent X/Y scale in v1.
 - **Page count:** computed from the plan, not by the browser.
-- **Gridlines and headings:** follow the sheet view settings.
+- **Gridlines and headings:** follow the sheet’s **print** settings (`printOptions.gridLines` / `gridLinesSet` / `headings`); the view-gridlines state never drives print output (research/21).
+- **Multiple print areas:** each defined print area prints as its own page set, matching Excel (research/21).
+- **Font subsets are renamed at export** (for example `CALP+Selawik`) so no modified font ships under a reserved name (licensing.md); PDFKit’s default subsetting is kept.
 - **Merged cells:** clipped per page; content appears on the page containing the anchor.
 - **Row heights, column widths, borders, fills, fonts and number formats:** rendered from the same cell display records as the grid.
 - **Conditional formatting:** rendered from the same CF layer.

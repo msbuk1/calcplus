@@ -51,11 +51,14 @@ The engine runs in a dedicated Web Worker. No recalculation may block the main t
 | Case | Guaranteed | Degraded |
 |---|---|---|
 | Typical edit, up to 1,000 dependent formulas (p95) | ≤ 50 ms | ≤ 100 ms |
-| Heavy fan-out, 100,000 formulas reading one cell | ≤ 400 ms | ≤ 800 ms |
+| Heavy fan-out, 50,000 formulas reading one cell (incremental recalc after edit) | ≤ 400 ms | — |
+| Heavy fan-out, 100,000 formulas reading one cell (incremental recalc after edit) | — | ≤ 800 ms |
 | Full recalculation, 250k cells | ≤ 1.5 s | — |
 | Full recalculation, 1M cells | — | ≤ 5.0 s |
 
 A recalculation longer than 100 ms shows a non-blocking progress cue. Typing and scrolling continue while it runs.
+
+Budgets apply to incremental recalculation after an edit. Cold build on open is measured, not budgeted: 100k single-cell fan-out builds in about 4.8 s and 250k in about 27 s (§5 evidence), which is why the degraded envelope stops at 200,000 formulas.
 
 ### 3.3 Scrolling and direct interaction
 
@@ -112,7 +115,7 @@ A committed generator (`bench/corpus/generate.*`, fixed seed) produces ten synth
 | `styling-heavy` | 100k touched, 500 distinct styles, borders and fills | style-table lookup and paint |
 | `cf-heavy` | 100k touched, 50 conditional-formatting rules | render-only rule evaluation |
 | `degraded-1m` | 1M touched, 200k mixed formulas | degraded envelope |
-| `pathological` | 250k formulas reading one cell, plus whole-column refs | must finish, must not hang |
+| `pathological` | 200k formulas reading one cell, plus whole-column refs — the envelope ceiling (the 250k probe above the line measured 27 s build / 522 ms recalc and sets the refusal boundary) | must finish, must not hang |
 
 Real workbooks: a budget/forecast model, a sales tracker and a gradebook, anonymised and cleared for test use. File sizes of 1 MB, 10 MB and 50 MB are covered by generated variants. The `.xlsx` fixtures from ticket 04 are reused for open-time coverage.
 

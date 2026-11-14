@@ -114,7 +114,7 @@ These are deliberately outside v1 and must not block the build:
 
 - Localization of the UI and of function names.
 - Formula-bar and name-box edge behaviours.
-- Grid interaction edge cases not fixed by the matrix: fill-handle options, merged-range selection, IME/bidi text and selection scrolling.
+- Grid interaction edge cases not fixed by the matrix: fill-handle options, merged-range selection, complex bidi text layout and selection scrolling. IME input itself is in scope (M2’s DOM in-cell editor takes native composition); only bidi shaping and paragraph layout are deferred.
 
 ## 12. Risks
 

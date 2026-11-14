@@ -70,5 +70,5 @@ Resolved by [26 — Launcher technology and release packaging](../issues/26-laun
 
 - **Technology:** a stdlib-only Go launcher, embedding the static build (`//go:embed` + `http.FileServerFS`), bound to `127.0.0.1`. Measured 6.9 MB, ~2 ms startup, ~9 MB RSS.
 - **Release matrix:** Windows x64 portable `.exe` (Authenticode); macOS universal `.app` in a notarized and stapled `.dmg`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases.
-- **Signing cost:** about US$220/year (Apple Developer Program + Microsoft Artifact Signing), or about US$630/year with an OV certificate. Unsigned builds hit Gatekeeper/SmartScreen.
+- **Signing cost:** about US$220/year (Apple Developer Program + Microsoft Artifact Signing), plus conformance tooling: a Microsoft 365 licence for the oracle runner and a JAWS licence (about US$900/year), or about US$630/year with an OV certificate. Unsigned builds hit Gatekeeper/SmartScreen.
 - **Desktop wrapper** is only justified by native menus, file associations, a guaranteed browser engine, lifecycle control, or a blocked-loopback environment.
