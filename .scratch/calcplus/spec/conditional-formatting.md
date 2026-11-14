@@ -85,7 +85,7 @@ ConditionalFormatRule {
 **Date and time period**
 
 - Comparisons: equals, not equals, before, after, between, not between.
-- Presets: yesterday, today, tomorrow, last 7 days, last week, this week, next week, last month, this month, next month, last year, this year, next year.
+- Presets: Excel's ten — yesterday, today, tomorrow, last 7 days, last week, this week, next week, last month, this month, next month. Excel has no year-based period, and neither do we.
 - "Today" is the local calendar date. Periods use the workbook's date system for serial conversion.
 - Re-evaluate on open, after edits, when the tab regains focus, and when the local date changes. An overnight workbook must not stay stale.
 

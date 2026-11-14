@@ -42,7 +42,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | Flash Fill | V2 | — |
 | What-If / Goal Seek / Scenario Manager | NEVER | — |
 | Consolidate | NEVER | — |
-| PivotTables / Power Query | NEVER | Pivot parts are preserved on save but not displayed or edited. |
+| PivotTables / Power Query (as features) | NEVER | Pivot parts are preserved on save but not displayed or edited. |
 | Data Analysis ToolPak | NEVER | — |
 
 ## 3. Formatting

@@ -38,7 +38,7 @@ Two consequences:
 | Merged ranges | Read | Merge and unmerge | Written; borders follow the merged range |
 | Row heights, column widths, hidden rows/columns | Read | Resize; hide/unhide is v2 | Preserved; imported hidden state respected |
 | Freeze panes, gridline/heading visibility, saved zoom | Read | Editable | Written |
-| Defined names (workbook and sheet scope) | Read and evaluate | Read-only in v1 | Preserved; range transforms apply |
+| Defined names (workbook and sheet scope) | Read and evaluate | Read-only for user names in v1 | Preserved; range transforms apply. System names owned by an IN feature — `_xlnm._FilterDatabase` and `_xlnm.Print_Area` — are maintained by that feature |
 | Sheet list, order, names, visibility, tab colours | Read | Insert, delete, rename; reorder/hide is v2 | Written; hidden and veryHidden preserved |
 | Legacy notes and threaded comments | Read; indicator and popup | Read-only in v1 | Preserved; authors and shapes untouched unless edited |
 | Hyperlinks (external and internal) | Read; follow with Ctrl+click | Read-only in v1 | Preserved |

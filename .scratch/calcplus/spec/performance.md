@@ -55,6 +55,10 @@ The engine runs in a dedicated Web Worker. No recalculation may block the main t
 | Heavy fan-out, 100,000 formulas reading one cell (incremental recalc after edit) | — | ≤ 800 ms |
 | Full recalculation, 250k cells | ≤ 1.5 s | — |
 | Full recalculation, 1M cells | — | ≤ 5.0 s |
+| Structural edit (insert/delete row or column), graph rebuild, 250k cells | ≤ 1.5 s | — |
+| Structural edit (insert/delete row or column), graph rebuild, 1M cells | — | ≤ 5.0 s |
+
+A structural edit rebuilds the derived dependency graph, so its budget is the rebuild, not the delta. The grid repaints immediately and the 100 ms progress cue covers the convergence.
 
 A recalculation longer than 100 ms shows a non-blocking progress cue. Typing and scrolling continue while it runs.
 

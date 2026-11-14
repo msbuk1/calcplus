@@ -44,11 +44,12 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 
 ### 4.1 Command inventory and ribbon map (v1 deliverable)
 
-- Every feature-matrix **IN** row maps to exactly one command ID in the [command registry](command-system.md). The authoritative chrome map is a checked-in `command-inventory.md` generated from the matrix: command ID, label, ribbon tab, ribbon group, menu placement, shortcut and enablement predicate. The generator lives in the repo; the output is reviewed like code.
+- Every feature-matrix **IN** row maps to one or more command IDs in the [command registry](command-system.md) — one per user-visible action, because a row such as "insert/delete rows, columns and cells" names several commands. The mapping is bidirectional: every command traces back to exactly one matrix row, and the generator fails if either direction is unmapped. The authoritative chrome map is a checked-in `command-inventory.md` generated from the matrix: command ID, matrix row, label, ribbon tab, ribbon group, menu placement, shortcut and enablement predicate. The generator lives in the repo; the output is reviewed like code.
 - Ribbon tabs follow Excel 365 desktop's default tab set (Home, Insert, Page Layout, Formulas, Data, Review, View). A group renders only if it owns at least one IN command. Where calcplus is thinner than Excel, the fewer commands sit in the familiar group — never a regrouped ribbon.
-- Commands outside the matrix are **hidden** in v1, not greyed: a greyed control implies the command exists. Matrix rows marked PARTIAL render greyed with the limitation in the tooltip.
+- Commands outside the matrix are **hidden** in v1, not greyed: a greyed control implies the command exists.
+- Matrix rows qualified **IN (imported)**, **IN (preserve)** or **IN (reject)** ship as enabled commands whose limitation is stated in the tooltip and encoded in `isEnabled`. The matrix is the only scope vocabulary; there is no separate "partial" state.
 - **AutoSum** (`Alt+=`, `formula.autosum`) is **IN** — it is a command surface over the `SUM` function contract — and appears in the inventory (Home → Editing).
-- **v1 dialog inventory:** Format Cells, Paste Special, Sort, Custom AutoFilter, Conditional Formatting (new/edit rule, manage rules), Go To / Go To Special, Insert Function, Name Manager, Find & Replace, Row Height / Column Width, Save As, Options, Compatibility Report, About. Each dialog's behaviour is specified by its owning contract; this contract owns only its layout, focus trap, Esc and default-button semantics.
+- **v1 dialog inventory:** Format Cells, Sort, AutoFilter conditions, Go To, Find & Replace, Row Height / Column Width, Save As, Compatibility Report and About. Dialogs that belong to v2 features — Paste Special, Insert Function, Name Manager, the conditional-formatting rule manager and Go To Special — are not shipped in v1. Each dialog's behaviour is specified by its owning contract; this contract owns only its layout, focus trap, Esc and default-button semantics.
 
 ## 5. Responsive behaviour
 
@@ -72,7 +73,7 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 | `--grid-bg` | `#FFFFFF` | grid canvas |
 | `--border` | `#D1D1D1` | chrome borders |
 | `--text` | `#262626` | chrome text |
-| `--disabled` | `#A19F9D` | PARTIAL commands, disabled controls |
+| `--disabled` | `#A19F9D` | disabled controls |
 - Near-identical chrome, not pixel-perfect.
 
 ## 7. Accessibility

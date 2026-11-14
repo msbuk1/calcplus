@@ -25,7 +25,8 @@ Summary:
 - **Runtime:** HyperFormula (GPL-3.0-only), React/React DOM (MIT), `numfmt`
   (MIT), `fflate` (MIT), `saxes` (ISC), PDFKit (MIT), Go standard library
   (BSD-3-Clause), Selawik/Carlito/Liberation fonts (OFL-1.1).
-- **Build:** Vite (MIT), TypeScript (Apache-2.0), esbuild (MIT).
+- **Build:** Vite (MIT), TypeScript (Apache-2.0), esbuild (MIT), PostCSS and
+  plugins (MIT).
 - **Test only:** Vitest (MIT), Playwright (Apache-2.0), fast-check (MIT),
   axe-core (MPL-2.0), openpyxl (MIT), LibreOffice (MPL-2.0), `ssf`
   (Apache-2.0), Python (PSF-2.0).

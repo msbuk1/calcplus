@@ -31,7 +31,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 ## 4. Browsers and file access
 
 - **Chrome/Edge (desktop):** File System Access API for open and save in place; file handles are remembered where permitted.
-- **Safari/Firefox:** upload through a file input and download through a Blob/`<a download>` link; no in-place save.
+- **Safari/Firefox:** open through a file picker and save by download; no in-place save, and nothing leaves the machine.
 - The launcher opens the default browser, so both paths must work.
 - `file://` is unsupported: modules, WebAssembly, service workers and the File System Access API require `http://localhost` or HTTPS. Show a clear message if the app is opened from `file://`.
 - Unsupported browsers get a clear compatibility message rather than a broken grid.
@@ -70,5 +70,5 @@ Resolved by [26 — Launcher technology and release packaging](../issues/26-laun
 
 - **Technology:** a stdlib-only Go launcher, embedding the static build (`//go:embed` + `http.FileServerFS`), bound to `127.0.0.1`. Measured 6.9 MB, ~2 ms startup, ~9 MB RSS.
 - **Release matrix:** Windows x64 portable `.exe` (Authenticode); macOS universal `.app` in a notarized and stapled `.dmg`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases.
-- **Signing cost:** about US$220/year (Apple Developer Program + Microsoft Artifact Signing), plus conformance tooling: a Microsoft 365 licence for the oracle runner and a JAWS licence (about US$900/year), or about US$630/year with an OV certificate. Unsigned builds hit Gatekeeper/SmartScreen.
+- **Signing cost:** Apple Developer Program US$99/year plus Microsoft Artifact Signing at about US$120/year, so about US$220/year for both launchers. An OV code-signing certificate is an alternative to Artifact Signing at roughly US$300-400/year. Conformance tooling is a separate line: a Microsoft 365 licence for the oracle runner plus a JAWS licence, about US$900/year. Unsigned builds hit Gatekeeper/SmartScreen.
 - **Desktop wrapper** is only justified by native menus, file associations, a guaranteed browser engine, lifecycle control, or a blocked-loopback environment.

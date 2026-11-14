@@ -185,7 +185,7 @@ The allowed numerical difference when comparing a calculated value to its golden
 _Avoid_: Epsilon, margin
 
 **Preserved feature**:
-A construct calcplus keeps byte-for-byte but does not model, render or edit, such as a chart, pivot cache or macro project.
+A construct calcplus keeps byte-for-byte but does not model, render or edit, such as a pivot cache or a macro project — except where a structural edit must transform its anchor index or a chart's series ranges.
 _Avoid_: Unsupported feature, opaque blob
 
 **Compatibility report**:
@@ -229,7 +229,7 @@ The list of distinct typed values in a filter column, with Select All, Blanks an
 _Avoid_: Filter list, value list
 
 **Filter-hidden row**:
-A row hidden because it fails the active filter, as distinct from a row the user hid manually.
+A row hidden because it fails the active filter, as distinct from a row hidden for any other reason (imported hidden state, or the user's own hide once authoring arrives in v2).
 _Avoid_: Filtered row, invisible row
 
 **Conditional formatting rule**:

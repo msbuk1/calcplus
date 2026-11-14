@@ -47,7 +47,8 @@ Values, manual formatting and merges are guaranteed. Formulas are best-effort be
 - Use `copy` and `paste` events, not `navigator.clipboard.read()`.
 - Paste events return the raw HTML with its `<style>` context and no permission prompt.
 - `read()` sanitises HTML by default and drops `mso-*` and `ProgId`; Chromium's `unsanitized` option is not portable.
-- Keep a hidden focused textarea or contenteditable, because Safari and historically Firefox only fire paste in an editable context. This is the **one documented exception** to “focus is always visible” (command-system §7): the paste target is offscreen but focusable, the visible focus ring stays with the grid selection it serves, and the element is `aria-hidden` with the mirror as the accessible surface.
+- Prefer a document-level `paste` event with focus on the grid; Chromium and Firefox fire it without an editable target.
+- Safari needs an editable target. Use a labelled, visually hidden but focusable `<textarea>` that is **not** inside an `aria-hidden` subtree, announce `Paste target` when focus enters it, and return focus to the grid after the paste. It is the one documented exception to "focus is always visible" (command-system §7); a focusable element inside `aria-hidden` would silently drop the user's context and is a defect, not an exception.
 - Handle the async paste path and the permission prompt for write.
 - Paste HTML is sanitised: scripts, event handlers, external resources and unsafe URLs are stripped before parsing.
 

@@ -43,6 +43,7 @@ Resolved by [22 — Accessibility target for the grid](../issues/22-accessibilit
 | 3.3.2 Labels | Every input has a visible or programmatic label. |
 | 3.3.3 Error suggestion | Invalid addresses suggest the A1 form; unsupported files suggest Save As. |
 | 3.3.4 Error prevention | Destructive actions confirm; undo is available. |
+| 3.2.6 Consistent Help | The About/help entry and the shortcut map sit in the same place in every view; the app has no embedded help widget. |
 | 4.1.2 Name, role, value | Custom controls expose role, name and state; canvas content is represented by the mirror. |
 | 4.1.3 Status messages | Save, sort, filter, recalc, print and error messages go through a polite live region. |
 
@@ -207,7 +208,7 @@ NVDA/Chrome and VoiceOver/Safari gate the grid milestone; NVDA/Firefox and JAWS/
 9. 200% browser zoom and 10-400% app zoom work; the mirror follows the canvas.
 10. The chrome reflows to the compact bar below 900 px; the grid uses the two-dimensional exception.
 11. Chrome controls meet 24 × 24 target size; grid and resize targets have keyboard alternatives.
-12. axe-core reports no serious or critical violations on chrome, dialogs and menus.
+12. axe-core reports no serious or critical violations on the chrome, dialogs, menus and the mirror.
 13. The manual AT script passes with NVDA/Chrome and VoiceOver/Safari before the grid milestone is accepted, and with the full four-combination matrix — adding NVDA/Firefox and JAWS/Chrome — before release.
 14. If the mirror fails AT testing, the DOM-cell fallback is built behind `RenderFrame` and the milestone is not accepted without it.
 15. Author formatting is documented as a content caveat; the cell value is always exposed.

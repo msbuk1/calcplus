@@ -15,7 +15,7 @@ The claim is bounded by §12. calcplus does not claim full Excel parity.
 - Goldens regenerate on a schedule, when Excel updates, or when a new case is added. Every golden manifest records the Excel version and build, OS, locale, date system and the date generated.
 - **LibreOffice headless is a differential smoke test**, never the authority. It catches packaging and gross-semantic breaks cheaply.
 - **`ssf` is a differential oracle for number formats only.** It never decides a formula result.
-- Goldens cover sort collation, conditional-formatting paint and print pagination as well as values and files: the Windows harness sorts fixture sheets, captures Excel-rendered CF ranges as images, and prints fixtures to PDF for page-break goldens. Every claim in §1 has a named oracle path; a claim without one cannot enter the release gate.
+- Goldens cover sort collation, conditional-formatting paint and print pagination as well as values and files: the Windows harness sorts fixture sheets, captures Excel-rendered CF ranges as images, and prints fixtures to PDF for page-break goldens. Every behavioural claim in §1 has a named oracle or contract-test path; accessibility and performance are contract tests with runners, not Excel claims, and a claim without either cannot enter the release gate.
 - **Interaction fidelity** is verified by the §6 interaction suite against the feature-matrix behaviour list (shortcuts, selection, editing semantics), with a manual Excel side-by-side checklist per release; there is no pixel oracle for behaviour.
 - The runner is release-gate infrastructure: a Windows host, a Microsoft 365 licence and a JAWS licence are provisioned in M1 and budgeted in distribution.md §8.
 - The oracle is a tool, not a dependency of the shipped app.

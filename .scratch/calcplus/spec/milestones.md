@@ -105,7 +105,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 3. Date, reference, lookup and circular-reference tests pass.
 4. Every shim has a passing test.
 5. Undo/redo restores the exact prior state for cell and formatting commands.
-6. The range-transform prototype rewrites formulas, merges and names correctly.
+6. The range-transform prototype rewrites formulas, merges and names correctly and meets the structural-edit rebuild budget on the 250k shape ([performance §3.2](performance.md)).
 
 ### M4 — Formatting and workbook (8-12 pw)
 

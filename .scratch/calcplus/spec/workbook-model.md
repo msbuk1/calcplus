@@ -8,7 +8,7 @@ Resolved by [07 — Workbook data model](../issues/07-workbook-model.md) on 2026
 
 - `id` — stable identifier.
 - `sheets` — ordered list of sheets; order is the tab order.
-- `names` — workbook-scoped defined names.
+- `names` — workbook-scoped defined names. System names owned by an IN feature (`_xlnm._FilterDatabase`, `_xlnm.Print_Area`) live here too and are maintained by that feature's command, not by user name editing.
 - `styles` — the shared style table.
 - `theme` — theme colours and fonts.
 - `namedStyles` — named style definitions (read-only in v1).

@@ -142,7 +142,7 @@ ColumnFilter =
 
 Two independent layers:
 
-- **Manual-hidden** — the row's hidden flag set by the user.
+- **Manual-hidden** — the row's own hidden flag. In v1 it is imported from the file, because hide/unhide authoring is v2; the layer exists so that clearing a filter restores only filter-hidden rows.
 - **Filter-hidden** — derived: a data row that fails the active filter.
 
 A row is hidden when either layer hides it.

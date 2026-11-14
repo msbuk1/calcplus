@@ -42,7 +42,7 @@ window.print()
 
 ## 4. Page setup
 
-- **Print area:** the authored range; if none, the used range.
+- **Print area:** the authored `_xlnm.Print_Area` range; if none, the used range. It is a system name, so setting or clearing a print area is not defined-name authoring and does not contradict the v1 "names are read-only" cut.
 - **Orientation:** portrait or landscape.
 - **Fit-to-width:** scale all columns to one page width; the row count follows.
 - **Margins:** top, bottom, left, right in points.

@@ -101,4 +101,5 @@ Match Excel exactly.
 - A self-reference in a statically dead `IF` branch (for example `=IF(FALSE(),A1,0)` in A1) is flagged `#CIRC!` although Excel evaluates it to a number.
 - `INDEX` with `row=0` or `column=0` — Excel returns the whole row or column — returns `#VALUE!` in v1.
 - Empty-string coercion edge cases (`""+1` and kin) follow the error/coercion table (ticket 02); unlisted cases are tested against Excel and added to the table before release.
+- The 52-function set is curated, not a promised subset: omissions such as `COLUMNS`, `TEXT`, `SUMPRODUCT`, `FIND`, `SUBSTITUTE` and `TRUNC` are deliberate v2 cuts. A workbook that uses one behaves as the unsupported-function path in §1 (cached value shown stale, or `#NAME?`), never as a partial implementation.
 - No dynamic arrays/spill, R1C1, 3D ranges, structured table references, external-link refresh, iterative calculation, manual calculation mode, or union/intersection operators in v1.
