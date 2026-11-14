@@ -1,0 +1,78 @@
+{
+  "fixture": "m1-chart-unknown.xlsx",
+  "provenance": {
+    "kind": "hand-authored",
+    "generator": "scripts/generate-fixtures.mjs",
+    "oracle": null,
+    "manifest": "fixtures/oracle-manifest.json",
+    "generatedAt": "2026-11-14",
+    "note": "Hand-authored M1 expectations for the fixture generator output. These are not Excel 365 oracle goldens."
+  },
+  "tolerance": {
+    "relative": 1e-9,
+    "absolute": 1e-12
+  },
+  "cells": [
+    {
+      "sheet": "Sheet1",
+      "ref": "A1",
+      "kind": "text",
+      "value": "Name"
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "B1",
+      "kind": "text",
+      "value": "Value"
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "A2",
+      "kind": "text",
+      "value": "Alpha"
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "B2",
+      "kind": "number",
+      "value": 42.5
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "C2",
+      "kind": "text",
+      "value": "inline text"
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "A3",
+      "kind": "text",
+      "value": "Beta"
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "B3",
+      "kind": "formula",
+      "value": "B2*2",
+      "cached": 85
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "C3",
+      "kind": "number",
+      "value": 3.141592653589793
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "A4",
+      "kind": "boolean",
+      "value": true
+    },
+    {
+      "sheet": "Sheet1",
+      "ref": "B4",
+      "kind": "error",
+      "value": "#DIV/0!"
+    }
+  ]
+}

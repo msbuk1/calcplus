@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "status": "not-configured",
+  "oracle": {
+    "product": "Microsoft Excel 365",
+    "version": null,
+    "build": null,
+    "os": null,
+    "locale": null,
+    "dateSystem": null
+  },
+  "generatedAt": null,
+  "goldens": [],
+  "note": "No Excel 365 oracle goldens are committed or configured yet. See scripts/oracle/README.md. Hand-authored M1 fixture expectations live in fixtures/expected/ and are not oracle goldens."
+}

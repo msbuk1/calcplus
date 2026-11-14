@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@model/*": ["src/model/*"],
+      "@ooxml/*": ["src/ooxml/*"],
+      "@commands/*": ["src/commands/*"],
+      "@view/*": ["src/view/*"],
+      "@grid/*": ["src/grid/*"],
+      "@chrome/*": ["src/chrome/*"],
+      "@io/*": ["src/io/*"],
+      "@testing/*": ["src/testing/*"]
+    }
+  },
+  "include": ["src", "tests", "scripts", "bench", "*.config.ts"]
+}

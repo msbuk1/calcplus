@@ -4,8 +4,36 @@ A browser-based, single-user clone of Excel desktop (Microsoft 365): a core
 credible spreadsheet with grid editing, formatting, formulas, multi-sheet
 workbooks and high-fidelity `.xlsx` round-trip.
 
-**Status: specification.** This repository currently contains the build-ready
-spec package, not a working application. Start here:
+**Status: M1 walking skeleton.** The repository now contains the first
+implementation slice: a canonical sparse workbook model, a preservation-first
+OOXML package layer with a cells-only part patch, one undoable `cell.set`
+command, a minimal canvas grid, New/Open/Save/Save As through File System
+Access or a download fallback, and an unsaved-change prompt. The M1 gate is
+still under review; CI has not run against a DCO-signed maintainer commit.
+Later milestones (formulas, formatting, multi-sheet editing, structural
+transforms, persistence hardening, the accessibility mirror) are not
+implemented.
+
+## Run
+
+Requires Node 24 LTS and npm.
+
+```bash
+npm install
+npx playwright install chromium   # once, for the E2E smoke test
+npm run dev          # Vite app
+npm test             # Vitest unit and integration tests
+npm run test:e2e     # Playwright Chromium smoke test
+npm run bench:browser # Chromium/CDP memory harness (M1 stand-up)
+npm run check        # typecheck, lint, unit tests and licence gate
+```
+
+The Excel 365 oracle runner and stored oracle goldens are **not configured**.
+`scripts/oracle/README.md` lists the external setup the maintainer still needs
+to provide; push and pull-request CI uses unit, integration and Chromium smoke
+tests only.
+
+Start here:
 
 - [Spec package](.scratch/calcplus/spec/README.md) — reading order and all contracts
 - [PRD](.scratch/calcplus/spec/prd.md) — goals, scope and non-goals

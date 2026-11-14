@@ -1,0 +1,37 @@
+name: Excel oracle (scaffold — disabled until the maintainer provisions the runner)
+
+# This workflow does NOT mean the Excel oracle is configured. It requires:
+#   1. A self-hosted Windows runner labelled `calcplus-oracle-windows`.
+#   2. The maintainer's own Excel 365 licence installed and activated on it.
+#   3. Repository variable CALCPLUS_ORACLE_ENABLED set to `true`.
+#   4. `scripts/oracle/capture-goldens.ps1` exercised against real Excel and reviewed.
+# Until all four are true the job is skipped, not reported as passing.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: Excel 365 golden capture
+    if: ${{ vars.CALCPLUS_ORACLE_ENABLED == 'true' }}
+    runs-on: [self-hosted, windows, x64, calcplus-oracle-windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Capture oracle goldens
+        shell: pwsh
+        run: ./scripts/oracle/capture-goldens.ps1 -WorkbookPath fixtures/compat/m1-chart-unknown.xlsx -OutputPath fixtures/goldens/oracle-m1.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oracle-goldens
+          path: fixtures/goldens/oracle-*.json
+          retention-days: 90

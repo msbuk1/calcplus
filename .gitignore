@@ -1,5 +1,8 @@
 node_modules/
 dist/
+test-results/
+playwright-report/
+bench/results/
 .playwright-mcp/
 .opencode/
 .DS_Store
