@@ -14,6 +14,7 @@ Resolved by [07 — Workbook data model](../issues/07-workbook-model.md) on 2026
 - `namedStyles` — named style definitions (read-only in v1).
 - `protection` — workbook protection flags (preserved, not enforced).
 - `opaqueParts` — path → opaque part.
+- `sourceParts` — path → the original bytes of every part the model reads (workbook, styles, shared strings, worksheets). A dirty save patches into them; see §6.
 
 **Sheet**
 
@@ -36,6 +37,7 @@ Resolved by [07 — Workbook data model](../issues/07-workbook-model.md) on 2026
 
 - `value` — typed cell value.
 - `formula` — authored formula text, or `null`.
+- `formulaDerived` — `true` when `formula` was synthesised from a shared-formula group at import rather than authored in the file. Derived text is never written back as a plain formula; the group's `t="shared"`, `si` and `ref` are preserved instead.
 - `savedResult` — the result stored in the file, or `null`.
 - `styleId` — reference into the workbook style table.
 - `richText` — opaque payload, or `null`.
@@ -76,10 +78,10 @@ Resolved by [07 — Workbook data model](../issues/07-workbook-model.md) on 2026
 
 ## 6. Serialization
 
-- The canonical snapshot is versioned JSON: workbook, sheets, cells, styles, names, side tables, view settings, opaque-part metadata and opaque-part payloads (the original bytes).
-- `.xlsx` import maps the modelled parts into the model and stores everything else as original bytes, with an anchor index where the part is positioned on a sheet.
-- `.xlsx` export patches only dirty parts. Untouched parts are byte-identical; style and shared-string tables are append-only.
-- The snapshot is used for autosave, crash recovery, tests and a future sync layer. It is not the interchange format. Because it carries opaque-part payloads, restore → save is lossless (persistence.md §2).
+- The canonical snapshot is versioned JSON metadata plus binary part payloads: workbook, sheets, cells, styles, names, side tables and view settings are JSON; every part payload — modelled source parts and opaque parts, the original bytes — is a binary record, never base64 inside the JSON (persistence.md §2).
+- `.xlsx` import maps the modelled parts into the model, keeps their original bytes in `sourceParts`, and stores everything else as original bytes with an anchor index where the part is positioned on a sheet.
+- `.xlsx` export patches only dirty parts. Untouched parts are byte-identical; a dirty part is patched in place — its original bytes are the skeleton, and only changed cells, rows and range-bearing elements are rewritten — so unmodelled children, attributes and namespace declarations survive. Style and shared-string tables are append-only.
+- The snapshot is used for autosave, crash recovery, tests and a future sync layer. It is not the interchange format. Because it carries every part payload, restore → save is lossless (persistence.md §2).
 
 ## 7. Edits and undo
 
@@ -99,8 +101,9 @@ Insert/delete rows, columns and cells goes through one range-transform module, w
 - hyperlink and comment positions
 - row/column dimension records
 - anchor indexes for opaque charts, drawings and pivots
+- chart series references expressed as plain A1 ranges; charts with a non-range source and pivot source ranges are reported stale and the edit is blocked
 
-Only an opaque part's anchor index may change; the rest of its bytes stay untouched. Shared-formula masters and followers are handled at the `.xlsx` I/O edge; the model stores authored text per cell.
+An opaque part's bytes change only where the transform requires it: its anchor index, or a chart's series ranges. Everything else stays untouched. Shared-formula masters and followers are handled at the `.xlsx` I/O edge; the model stores authored text per cell.
 
 ## 9. Rich text
 
@@ -128,3 +131,4 @@ Only an opaque part's anchor index may change; the rest of its bytes stay untouc
 8. Imported rich text is preserved if untouched; editing it warns and stores plain text.
 9. View-state changes never mark the document dirty.
 10. Opaque parts survive byte-identical unless their anchor must shift.
+11. A dirty save preserves unmodelled children, attributes and namespace declarations inside the part it rewrites.

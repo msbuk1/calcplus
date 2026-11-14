@@ -24,7 +24,7 @@ The plan is in [milestones.md](../spec/milestones.md).
 
 **Shape:** hybrid vertical slices. Milestone 1 is a walking skeleton with the real OOXML layer, canonical model, minimal grid, one edit and undo. Every later milestone ends in a demoable user journey.
 
-**Team and size:** three engineers in parallel (grid/render, model/engine/commands, file I/O/chrome), part-time design and QA. Estimates in person-weeks, no calendar dates: about 62-90 person-weeks plus a 20% contingency, roughly 75-108 person-weeks and 25-36 working weeks with three engineers.
+**Team and size:** three engineers in parallel (grid/render, model/engine/commands, file I/O/chrome), part-time design and QA. Estimates in person-weeks, no calendar dates: about 70-100 person-weeks plus a 20% contingency, roughly 84-120 person-weeks and 28-40 working weeks with three engineers.
 
 **Milestones:**
 

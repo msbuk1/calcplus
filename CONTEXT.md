@@ -33,7 +33,7 @@ A reusable set of visual properties — font, fill, border, alignment and number
 _Avoid_: Format, formatting (when referring to the shared record)
 
 **Opaque part**:
-A part of an `.xlsx` package that calcplus does not model, such as a chart, pivot cache or macro project. It is preserved byte-for-byte.
+A part of an `.xlsx` package that calcplus does not model, such as a chart, pivot cache or macro project. It is preserved byte-for-byte, except where a structural edit must transform its anchor index or a chart's series ranges.
 _Avoid_: Blob, attachment, unsupported feature
 
 **Workbook model**:

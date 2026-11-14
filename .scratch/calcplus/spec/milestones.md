@@ -15,7 +15,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 - **Three engineers in parallel:** one on grid and rendering, one on model, engine and commands, one on file I/O and chrome. Part-time design and QA.
 - **Person-weeks, not calendar dates.** The plan stays useful whatever the start date. A range is a planning estimate, not a commitment.
-- **Total:** about **70-100 person-weeks**, plus a **20% contingency**, for roughly **84-120 person-weeks**. With three engineers and the dependencies below, that is about **25-36 working weeks** — six to eight months — if the tracks stay staffed.
+- **Total:** about **70-100 person-weeks**, plus a **20% contingency**, for roughly **84-120 person-weeks**. With three engineers and the dependencies below, that is about **28-40 working weeks** — seven to ten months — if the tracks stay staffed.
 - The conformance tail is the largest uncertainty. Milestone 8 carries an explicit reserve.
 
 ## 3. Overview
@@ -23,11 +23,11 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 | # | Milestone | Demoable outcome | Effort (pw) | Main risk |
 |---|---|---|---:|---|
 | 1 | Walking skeleton | Open a small `.xlsx`, see it, edit a cell, undo, save with untouched parts byte-identical | 4-6 | Package parsing and model shape |
-| 2 | Grid foundation | Keyboard and screen-reader navigation, editing, frozen panes, 1M-row scroll | 8-12 | Accessibility mirror |
+| 2 | Grid foundation | Keyboard and screen-reader navigation, editing, frozen panes, 1M-row scroll | 12-16 | Accessibility mirror |
 | 3 | Formula engine and model depth | Formulas recalculate, 52-function subset passes, undo/redo, dates and names | 8-12 | HyperFormula shims and fan-out |
 | 4 | Formatting and workbook | Format a report, number formats, merges, multiple sheets, find and Go To | 8-12 | Number-format seams |
 | 5 | Data tools | Sort, AutoFilter, conditional formatting, clipboard, fill, insert/delete | 8-12 | Range transforms and clipboard |
-| 6 | File fidelity | Charts, pivots and macros survive a round-trip; Excel opens without repair | 10-14 | Structural edits and preservation |
+| 6 | File fidelity | Charts, pivots and macros survive a round-trip; Excel opens without repair | 14-20 | Structural edits and preservation |
 | 7 | Output and hardening | Print/PDF, accessibility pass, 250k-cell performance, signed launcher | 10-14 | Print fidelity and signing |
 | 8 | Conformance and release | Release candidate with every gate green | 6-8 + reserve | The long tail |
 
@@ -38,23 +38,24 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 **Build**
 
 - Repo, build, lint, typecheck, Vitest and Playwright harnesses.
-- Canonical workbook model: workbook, sheet, sparse cells, minimal styles, stable IDs, snapshot.
-- OOXML package layer: ZIP via `fflate`, SAX via `saxes`, part store, content types and relationships, one worksheet mapped into the model.
-- No-op save returns the original bytes; untouched parts are copied.
+- Canonical workbook model: workbook, sheet, sparse cells, minimal styles, stable IDs, source-part skeletons, snapshot metadata plus binary part payloads.
+- OOXML package layer: ZIP via `fflate`, SAX via `saxes`, part store, content types and relationships, one worksheet mapped into the model with its original bytes retained as the patch skeleton.
+- No-op save returns the original bytes; untouched parts are copied; a dirty part is patched in place, so the first edited save already preserves unmodelled sheet children.
 - Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
 - Minimal command registry and one undoable `cell.set`.
 - File open and save through the File System Access API with a download fallback.
-- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), Microsoft 365 and JAWS licences provisioned, Excel golden generation scripted for values, sort collation, CF paint and print pagination, and the browser memory harness from ticket 11 (testing-conformance §2).
+- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), Microsoft 365 and JAWS licences provisioned, value and error golden generation scripted, and the browser memory harness from ticket 11 (testing-conformance §2). Sort-collation, CF-paint and print-pagination goldens are added by M5 and M7, when those features exist.
 
-**Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical.
+**Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical, and the chart, drawing and extension children of the edited sheet survive.
 
 **Exit criteria**
 
 1. The model opens a minimal `.xlsx` and renders it.
 2. No-op open → save is byte-identical.
 3. A cell edit is one undoable command; undo restores the prior value.
-4. The app opens in Chromium and saves through the file API or a download.
-5. Unit and smoke tests run in CI.
+4. An edited save of a workbook carrying a chart, a `<legacyDrawing>` and an unknown `<extLst>` keeps those elements and their order in the dirty worksheet part; a part inventory proves it, not inspection.
+5. The app opens in Chromium and saves through the file API or a download.
+6. Unit and smoke tests run in CI.
 
 ### M2 — Grid foundation (12-16 pw)
 
@@ -77,7 +78,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 1. Selection, editing, formula bar, freeze panes and keyboard navigation work.
 2. Scroll holds the ticket 11 frame budget on a 250k-cell sheet.
 3. The mirror exposes rows, cells, headers, selection and the active cell.
-4. AT sign-off is recorded, or the DOM-cell fallback is in place and accepted.
+4. AT sign-off is recorded for NVDA/Chrome and VoiceOver/Safari, or the DOM-cell fallback is in place and accepted; NVDA/Firefox and JAWS/Chrome are scheduled for M7.
 5. The focus model and Esc/F6 paths pass the keyboard suite.
 
 ### M3 — Formula engine and model depth (8-12 pw)
@@ -158,7 +159,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 - Full `.xlsx` round-trip: styles and shared strings append-only; cached results; shared and array formulas; comments and threaded comments; hyperlinks; validation; conditional formatting; names; protection; print setup.
 - Preserved parts: charts, images, shapes, pivots and caches, external links, VBA, signatures, tables, slicers, sparklines, custom XML and custom properties.
-- Structural-edit range transforms across formulas, merges, names, validation, CF, comment/hyperlink positions and drawing anchors; block when an anchor cannot be transformed.
+- Structural-edit range transforms across formulas, merges, names, validation, CF, comment/hyperlink positions, drawing anchors and chart series ranges; block only a non-range chart source, a pivot source range or an untransformable anchor.
 - Compatibility report and export report; Tier C rejection for encrypted, corrupt, zip-bomb and Strict files.
 - Producer matrix: Excel 365/2019, LibreOffice, Google Sheets, openpyxl, SheetJS, xlsx-populate.
 - Hostile-input caps and XXE-safe parsing.
@@ -180,7 +181,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 **Build**
 
 - Print/PDF: `PrintPlanner`/`PrintPlan`, print area, orientation, fit-to-width, margins; SVG preview; PDFKit vector export; 300 DPI canvas fallback.
-- Accessibility hardening: full mirror, live regions, forced colours, zoom, target sizes, the AT matrix.
+- Accessibility hardening: full mirror, live regions, forced colours, zoom, target sizes, and the four-combination AT matrix (NVDA/Chrome, NVDA/Firefox, JAWS/Chrome, VoiceOver/Safari).
 - Performance hardening: corpus, fan-out, memory, worker queue, degradation ladder.
 - Persistence: autosave recovery copy, recent list, external-edit conflict, close prompt, stable origin.
 - Launcher: Go static server on `127.0.0.1:47823`, Windows signed `.exe`, macOS notarized universal `.app` in a DMG, Linux tarball.

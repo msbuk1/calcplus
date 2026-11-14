@@ -89,9 +89,10 @@ Every fixture in [file compatibility §9](file-compat.md) is a test:
 - **Identity:** open → save with no edits is byte-identical.
 - **Repair-free:** every output opens in Excel 365 without a repair prompt. Automated CI uses openpyxl, LibreOffice and a relationship verifier; Excel is a manual release step.
 - **Part inventory:** for an edited file, every preserved part has identical uncompressed bytes and resolvable relationships. Compare a manifest of name, CRC, uncompressed size and SHA-256.
+- **Dirty-part preservation:** a rewritten worksheet keeps every unmodelled child element, attribute, namespace declaration and its order. The fixture asserts on the XML tree, not on byte equality of the dirty part.
 - **Semantic equality:** styles, number formats, merges, dimensions, names, comments, hyperlinks, validation and conditional formats compare equal through an independent reader.
 - **Formula fidelity:** authored text, shared/array attributes and cached values survive an edit to another cell.
-- **Structural edits:** after insert/delete, every range-bearing construct points at the intended range; charts and pivots are transformed or reported stale.
+- **Structural edits:** after insert/delete, every range-bearing construct points at the intended range; chart series ranges are rewritten, and pivot sources are reported stale or blocked.
 - **Hostile inputs:** encrypted, truncated, non-ZIP, zip-bomb, XXE-style and oversized files fail safely within the time and size caps.
 - **Producer matrix:** Excel 365, Excel 2019, LibreOffice, Google Sheets, openpyxl, SheetJS and xlsx-populate outputs.
 - **Macros, external links, pivots, charts, threaded comments, x14 conditional formatting:** preserved and reported as specified.
@@ -122,7 +123,7 @@ The [accessibility contract](accessibility.md) is the source:
 
 - axe-core with no serious or critical violations on chrome, dialogs, menus and the mirror.
 - Playwright keyboard, focus-order, live-region, forced-colours and zoom tests.
-- Manual NVDA/Chrome, NVDA/Firefox, JAWS/Chrome and VoiceOver/Safari sign-off before the grid milestone is accepted.
+- Manual NVDA/Chrome and VoiceOver/Safari sign-off before the grid milestone is accepted; NVDA/Firefox and JAWS/Chrome are added at the M7 accessibility pass and are required for release.
 - If the mirror fails, the DOM-cell fallback is built and the milestone is blocked without it.
 
 ## 9. Supporting contracts
@@ -201,7 +202,7 @@ v1 is faithful only when all of these pass:
 6. Excel 365 opens every output without a repair prompt.
 7. Sort, AutoFilter and conditional-formatting fixtures pass.
 8. Grid interaction and visual baselines pass.
-9. axe is clean; NVDA/Chrome and VoiceOver/Safari sign off.
+9. axe is clean; NVDA/Chrome and VoiceOver/Safari sign off at the grid milestone, and the full four-combination AT matrix signs off for release.
 10. Performance budgets hold on the reference machine.
 11. Command registry, undo/redo, transaction boundaries, shortcut map and focus model pass.
 12. Number-format, print/PDF, clipboard and persistence contracts pass.

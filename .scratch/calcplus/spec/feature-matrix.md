@@ -147,6 +147,7 @@ PivotTables and Power Query (as features) · Solver / Goal Seek / Scenario Manag
 - Sort and AutoFilter operate on **plain ranges**; tables and structured references are v2 (evaluation of imported structured refs is pending ticket 02).
 - Conditional formatting **renders but cannot be authored**.
 - Charts, images, shapes and PivotTables are **preserved but not rendered**.
+- Chart series references that are plain A1 ranges are **rewritten** by structural edits; pivot source ranges are not, and an edit that would move one is blocked.
 - Data validation is **preserved but not enforced**.
 
 **Open questions graduated to tickets:**

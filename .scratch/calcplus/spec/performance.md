@@ -60,6 +60,8 @@ A recalculation longer than 100 ms shows a non-blocking progress cue. Typing and
 
 Budgets apply to incremental recalculation after an edit. Cold build on open is measured, not budgeted: 100k single-cell fan-out builds in about 4.8 s and 250k in about 27 s (§5 evidence), which is why the degraded envelope stops at 200,000 formulas.
 
+**Open does not wait for the engine.** The grid paints from stored results, so "interactive" (§3.1) is reached before recalculation finishes. A cold build over 100 ms shows the non-blocking progress cue, and values converge while the user can already select, scroll and edit. Time to *all formulas current* is measured and reported, not gated, because the fan-out build is the reason. The only case that must wait is a shape with no stored results; it shows the progress cue for its whole build.
+
 ### 3.3 Scrolling and direct interaction
 
 | Case | Budget |
@@ -82,9 +84,25 @@ Frame timing is measured while scrolling a 250k-cell formatted sheet at 100% zoo
 | Find across 250k cells | ≤ 0.5 s |
 | Find across 1M cells (degraded) | ≤ 2.0 s |
 | Sort 100k rows | ≤ 2.0 s |
+| Filter apply, change or clear, 100k rows | ≤ 1.0 s |
 | Undo or redo any bulk action | ≤ 1.0 s |
 
 Each bulk action is one undo transaction (see [command system §4](command-system.md)).
+
+### 3.5 Formatting and conditional formatting
+
+| Case | Budget |
+|---|---|
+| Number formatting of the visible cells | inside the 16.7 ms frame budget |
+| Conditional-formatting evaluation, visible cells | ≤ 4 ms per frame |
+| Conditional-formatting range statistics, 100k cells | ≤ 200 ms, computed in row-block chunks |
+
+### 3.6 Print and PDF
+
+| Case | Budget |
+|---|---|
+| Print preview, 20-page A4 report | ≤ 2.0 s |
+| PDF export, 20-page A4 report | ≤ 3.0 s |
 
 ## 4. Memory
 
@@ -115,7 +133,7 @@ A committed generator (`bench/corpus/generate.*`, fixed seed) produces ten synth
 | `styling-heavy` | 100k touched, 500 distinct styles, borders and fills | style-table lookup and paint |
 | `cf-heavy` | 100k touched, 50 conditional-formatting rules | render-only rule evaluation |
 | `degraded-1m` | 1M touched, 200k mixed formulas | degraded envelope |
-| `pathological` | 200k formulas reading one cell, plus whole-column refs — the envelope ceiling (the 250k probe above the line measured 27 s build / 522 ms recalc and sets the refusal boundary) | must finish, must not hang |
+| `pathological` | 200k formulas reading one cell, plus whole-column refs — the envelope ceiling; the 250k probe above the refusal line measured 27 s build and 522 ms recalc | must finish, must not hang |
 
 Real workbooks: a budget/forecast model, a sales tracker and a gradebook, anonymised and cleared for test use. File sizes of 1 MB, 10 MB and 50 MB are covered by generated variants. The `.xlsx` fixtures from ticket 04 are reused for open-time coverage.
 
@@ -167,6 +185,7 @@ Rendering degrades before correctness does. Values are never silently dropped, a
 11. The corpus is reproducible from a committed generator; real fixtures are anonymised and licensed for test use.
 12. Every result carries a machine fingerprint; non-reference runs never gate.
 13. Firefox, Safari, mobile and touch are documented as outside the performance contract.
+14. The filter, conditional-formatting and print budgets in §3.4-§3.6 are enforced by the nightly browser suite.
 
 ## 10. Evidence
 

@@ -303,7 +303,7 @@ This is the honest boundary of the recommendation. "Preserved" means the bytes s
 
 ### 7.2 Preserved as bytes, but not understood, rendered or edited
 
-- **Charts and chart sheets.** XML survives; calcplus does not draw them in V1. Chart series references are not updated if source ranges move. This is the biggest visible gap for a user opening a chart-heavy workbook.
+- **Charts and chart sheets.** XML survives; calcplus does not draw them in V1. Chart series references are not updated if source ranges move. This is the biggest visible gap for a user opening a chart-heavy workbook. **Superseded for v1:** the contract rewrites plain-range series references through the range-transform module and blocks only non-range sources and pivots ([file compatibility §4](../spec/file-compat.md)); this note records the pre-contract analysis.
 - **Images, shapes, drawings, OLE objects and form controls.** Parts survive; nothing is displayed or movable. Drawing anchors are not adjusted on row/column insert/delete unless the anchor transform is built.
 - **Pivot tables and pivot caches.** Definitions and cached records survive; calcplus shows only the pivot's output cells, cannot refresh, cannot change fields, and cannot keep the cache in sync with edited source data.
 - **External links.** Parts survive; referenced workbooks are never opened or refreshed; formulas keep their cached values.

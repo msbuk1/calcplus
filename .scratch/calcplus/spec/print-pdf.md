@@ -68,7 +68,7 @@ window.print()
 ## 6. Performance
 
 - The plan is computed once per print/export.
-- A 20-page A4 report is expected to stay under 2 seconds to preview and under 3 seconds to PDF on the reference machine.
+- A 20-page A4 report stays under 2 seconds to preview and under 3 seconds to PDF on the reference machine; the budget is contractual in [performance §3.6](performance.md).
 - Large print areas are paginated in row bands; the renderer never builds a page-sized canvas for the whole sheet.
 - The 300 DPI fallback is limited to pages that need it.
 

@@ -27,9 +27,11 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 
 ## 2. Autosave and recovery
 
-- Autosave writes a **recovery copy** — the canonical JSON snapshot from the workbook model, including opaque-part payloads (the original bytes) and their metadata — to IndexedDB.
+- Autosave writes a **recovery copy** to IndexedDB: JSON metadata (workbook, sheets, cells, styles, names, side tables, view settings) plus every part payload held as a binary record. Payloads are never base64-encoded inside the JSON.
+- Writes are incremental and keyed by part: an edit rewrites only the parts whose bytes or model records changed. A 50 MB workbook is never re-serialised in full every three seconds.
+- A write is chunked so that no IndexedDB transaction blocks the main thread for more than 50 ms; a snapshot above 8 MB is written in part-sized batches with the manifest record written last, so a crash mid-write leaves the previous good copy.
 - Cadence: debounced about 3 seconds after the last document edit, plus on `visibilitychange` (hidden) and `pagehide`.
-- One latest recovery copy per open document, keyed by document ID.
+- One latest recovery copy per open document, keyed by document ID, plus a small `pendingDocuments` record (document ID, display name, last write) that a restarted app reads to offer Restore. The record is created with the first recovery copy and deleted on save or discard.
 - The user's file is written only on explicit Save or Save As. Autosave never writes the file.
 - On startup, if an unsaved recovery copy exists, offer **Restore** or **Discard**.
 - Delete the recovery copy after a successful save.
@@ -90,3 +92,4 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 9. No workbook data leaves the machine.
 10. Snapshot and command log use stable IDs; a future sync layer can replay them without a schema change.
 11. Recovery copies, recent entries and file handles survive a launcher restart because the origin is stable; `--port N` is documented as separate storage.
+12. A 50 MB workbook's recovery copy is written incrementally: an edit rewrites only the parts it changed, no write blocks the main thread for more than 50 ms, and a crash mid-write leaves the previous copy restorable.

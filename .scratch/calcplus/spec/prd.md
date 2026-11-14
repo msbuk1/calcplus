@@ -99,7 +99,7 @@ Everything marked **V2** or **NEVER** in the feature matrix. Highlights:
 4. Sort, AutoFilter and conditional formatting behave as specified and round-trip.
 5. The grid supports the keyboard, editing, fill, resize, freeze, merges and selection journeys.
 6. A 250k-cell workbook meets the performance budgets; 1M cells opens in degraded mode.
-7. The accessibility contract passes, including NVDA/Chrome and VoiceOver/Safari sign-off.
+7. The accessibility contract passes: NVDA/Chrome and VoiceOver/Safari sign off before the grid milestone, and the full four-combination matrix (adding NVDA/Firefox and JAWS/Chrome) signs off before release.
 8. The launcher runs offline on all three OSes and keeps a stable origin.
 9. No P0, P1 or data-loss bug remains at release.
 10. Every known deviation is documented and pinned by a test.

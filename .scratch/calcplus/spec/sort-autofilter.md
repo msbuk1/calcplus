@@ -250,7 +250,7 @@ AutoFilter:
 | F14 | `filter-unsupported` | Colour/dynamic filters are preserved and read-only |
 | F15 | `filter-table` | A table filter is preserved and not editable |
 | F16 | `filter-one-per-sheet` | A second filter replaces or is refused |
-| F17 | `filter-100k` | 100k-row sort within 2 s and filter within 1 s |
+| F17 | `filter-100k` | 100k-row sort within 2 s and filter within 1 s ([performance §3.4](performance.md)) |
 | F18 | `filter-undo` | Apply, change and clear are undoable as one step each |
 
 ## 5. Acceptance criteria

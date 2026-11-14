@@ -172,7 +172,9 @@ Every command in the registry is reachable without a pointer:
 - Forced-colours emulation and 200%/400% zoom screenshots.
 - Mirror/canvas sync: active cell, selection, merged spans, frozen panes.
 
-**Manual, before the grid milestone is accepted**
+**Manual**
+
+NVDA/Chrome and VoiceOver/Safari gate the grid milestone; NVDA/Firefox and JAWS/Chrome are added at the M7 accessibility pass and gate the release.
 
 - NVDA with Chrome and Firefox on Windows 11.
 - JAWS with Chrome on Windows 11.
@@ -206,7 +208,7 @@ Every command in the registry is reachable without a pointer:
 10. The chrome reflows to the compact bar below 900 px; the grid uses the two-dimensional exception.
 11. Chrome controls meet 24 × 24 target size; grid and resize targets have keyboard alternatives.
 12. axe-core reports no serious or critical violations on chrome, dialogs and menus.
-13. The manual AT script passes with NVDA/Chrome and VoiceOver/Safari before the grid milestone is accepted.
+13. The manual AT script passes with NVDA/Chrome and VoiceOver/Safari before the grid milestone is accepted, and with the full four-combination matrix — adding NVDA/Firefox and JAWS/Chrome — before release.
 14. If the mirror fails AT testing, the DOM-cell fallback is built behind `RenderFrame` and the milestone is not accepted without it.
 15. Author formatting is documented as a content caveat; the cell value is always exposed.
 

@@ -69,7 +69,7 @@ Match Excel exactly.
 - Automatic calculation after every edit. Manual calculation mode is v2.
 - Recalculate only the cells affected by a change (dependency graph).
 - Recalculate volatile functions on open and on every edit.
-- Store every result as a cached value in the model and write it to `.xlsx`.
+- Store every result as a cached value in the model; write it to `.xlsx` only under the file-compatibility save rule ([file compatibility §6.1](file-compat.md)), which also forces recalculation whenever anything is stale.
 
 ## 9. Storage and round-trip
 
@@ -77,7 +77,7 @@ Match Excel exactly.
 - Keep the **cached result** from the file.
 - Recalculate when the formula uses only supported functions and references and the inputs are known. Otherwise display the cached result and mark it "not recalculated".
 - Unsupported function with no cached result: show `#NAME?`. With a cached result: show the cached result marked stale.
-- Preserve `_xlfn.` prefixes and shared-formula structures in the file; the model stores the authored text.
+- Preserve `_xlfn.` prefixes and shared-formula structures in the file; the model stores the authored text. A shared-formula follower carries no text of its own in the file, so the text synthesised for it at import is flagged as derived and is never written back as a plain formula (workbook model §1, file compatibility §6.1).
 - The formula bar shows the authored text; the engine parses an internal form for calculation only.
 - A formula the engine **cannot parse at all** — `@` implicit intersection, unknown constructs, malformed text — takes the unsupported-construct path above: authored text and cached result kept, cell marked stale, never recalculated. The text is never handed to the engine, so nothing can rewrite it. Excel-365-saved files commonly carry `@` forms; they are expected, not errors.
 - Dependants recalculate against the cached result and are marked stale in turn.

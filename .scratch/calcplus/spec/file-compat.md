@@ -22,7 +22,7 @@ Two consequences:
 | Tier | Meaning | Guarantee |
 |---|---|---|
 | **A — modelled and editable** | calcplus reads the construct into its model and can change it. | Semantic round-trip: open → edit → save preserves the meaning, and an independent reader compares equal. |
-| **B — preserved, not editable** | calcplus does not model the construct. Its parts are copied verbatim. | Byte-identical parts; relationships still resolve; not rendered or edited. Structural edits transform the anchor where possible, otherwise warn or block. |
+| **B — preserved, not editable** | calcplus does not model the construct. Its parts are copied verbatim. | Byte-identical parts; relationships still resolve; not rendered or edited, with one exception — a structural edit transforms a chart's series ranges. Anchors transform where possible, otherwise warn or block. |
 | **C — rejected** | calcplus cannot read the file safely. | Clear, actionable message. No partial import and no modification. |
 
 ## 3. Tier A — modelled and editable
@@ -52,11 +52,13 @@ Two consequences:
 
 **Style and shared-string tables are append-only.** Existing indices are never renumbered, because cells, charts and conditional formats reference them by integer index. Unused shared-string entries are permitted.
 
+**Dirty parts are patched, not regenerated.** When a modelled part must change, calcplus writes into the original XML: changed rows and cells are rewritten, and every unmodelled child element, attribute, namespace declaration and its order is carried through unchanged. A dirty part is never re-serialised from the model, because the model does not describe `sheetPr`, `extLst`, `legacyDrawing`, `oleObjects`, `phoneticPr`, `ignoredErrors` and the rest. This is what makes "no silent loss" true for edited files, not only for no-op saves.
+
 ## 4. Tier B — preserved, not editable
 
 | Construct | Parts | Behaviour |
 |---|---|---|
-| Charts and chart sheets | `xl/charts/*`, `xl/chartsheets/*`, drawings | Parts and anchors preserved; not rendered in v1; series references are not rewritten |
+| Charts and chart sheets | `xl/charts/*`, `xl/chartsheets/*`, drawings | Parts and anchors preserved; not rendered in v1; series references are rewritten where they are plain A1 ranges (§4) |
 | Images, shapes, drawings, OLE objects, form controls | `xl/drawings/*`, `xl/media/*` | Preserved; anchors transformed on row/column insert/delete where the anchor is modelled |
 | PivotTables and pivot caches | `xl/pivotTables/*`, `xl/pivotCache/*` | Definition and cache preserved; never refreshed; output cells render as stored values; source refs are not rewritten |
 | External links | `xl/externalLinks/*` | Preserved; never resolved or refreshed; cached values shown |
@@ -68,7 +70,7 @@ Two consequences:
 | Tables / ListObjects | `xl/tables/*` | Preserved; structured references are not evaluated in v1; table refs may go stale and are reported |
 | `calcChain.xml` | `xl/calcChain.xml` | Not trusted. Deleted when formulas change, with `fullCalcOnLoad="1"` set |
 
-**Structural edits and Tier B.** A single range-transform module rewrites merged ranges, validations, conditional formats, names, comment and hyperlink positions, dimension records and drawing anchors. Chart series and pivot source references are not rewritten in v1. If an insert or delete would move or resize one of those, calcplus blocks that specific edit with an explanation, rather than leaving a silently wrong chart or pivot. Edits elsewhere on the sheet are allowed.
+**Structural edits and Tier B.** A single range-transform module rewrites merged ranges, validations, conditional formats, names, comment and hyperlink positions, dimension records and drawing anchors. Chart series references expressed as plain A1 ranges are rewritten by the same module, so inserting a row above a charted range leaves the chart pointing at the intended cells; matching Excel here is v1 scope, because PRD journey 4 depends on it. Three cases are blocked with an explanation rather than left silently wrong: a chart served by a defined name or another non-range source, a pivot source range (pivot caches are never refreshed in v1), and any anchor the module cannot transform. Edits elsewhere on the sheet are allowed.
 
 ## 5. Tier C — rejected
 
@@ -89,8 +91,9 @@ No Tier C case imports anything partially, and no Tier C case modifies the file.
 - **Open:** parse the formula text. If it uses only the 52 published functions and resolvable references, recalculate and show the result.
 - If the function is outside the set and there is no cached value, show `#NAME?` and mark the cell "not recalculated".
 - If the function is outside the set but a cached value exists, show the cached value marked stale.
-- **Save:** write `<v>` only when the engine actually evaluated the cell. Otherwise retain the original `<v>` if present. If there was none, write no `<v>` and set `fullCalcOnLoad="1"`, so Excel calculates on open.
-- **Shared formulas:** preserve `t="shared"`, `si` and `ref` for untouched groups. Editing one follower writes a plain formula for that cell and leaves the group intact for the rest.
+- **Save:** write `<v>` only when the engine evaluated the cell **from inputs it also evaluated**. A cell that depends on a stale or unsupported result is never written from that stale input; it keeps its original `<v>` and is marked stale.
+- **Recalculation flag:** set `fullCalcOnLoad="1"` whenever any cell is stale, whenever a `<v>` was omitted, or whenever a value was written from an input the engine did not evaluate. A stale value must never reach a file without asking Excel to recalculate, because Excel would present it as current.
+- **Shared formulas:** preserve `t="shared"`, `si` and `ref` for untouched groups. Follower text is synthesised at import and flagged as derived, so it is never written back as authored text. Editing one follower writes a plain formula for that cell and leaves the group intact for the rest.
 - **Legacy array formulas:** read-only. Preserve `<f t="array" ref>` and the cached result; editing shows a message and does not change the cell.
 
 ### 6.2 External links
@@ -169,8 +172,8 @@ The fixture corpus lives in `fixtures/compat/` and is generated by a committed s
 | F6 | `formula-uncached.xlsx` | A formula with no `<v>` recalculates on open and saves a value |
 | F7 | `unsupported-function.xlsx` | `_xlfn.XLOOKUP` with a cached value shows stale; without one shows `#NAME?` |
 | F8 | `array-shared.xlsx` | Legacy array and shared formulas are read-only and preserved |
-| F9 | `charts-images.xlsx` | Chart, image and shape parts are byte-identical after an unrelated edit; report lists them |
-| F10 | `pivot-external.xlsx` | Pivot and external-link parts preserved; source-range edit blocked; report marks staleness |
+| F9 | `charts-images.xlsx` | Chart, image and shape parts are byte-identical after an unrelated edit; report lists them; the dirty worksheet part keeps its unmodelled children (`extLst`, `legacyDrawing`, `oleObjects`) and their order; an insert above the charted range rewrites the series reference |
+| F10 | `pivot-external.xlsx` | Pivot and external-link parts preserved; a pivot source-range edit is blocked; external-link references are untouched; report marks staleness |
 | F11 | `macros.xlsm` | `vbaProject.bin` byte-identical; no execution; `.xlsx` Save As warns |
 | F12 | `threaded-comments.xlsx` | Threaded comments and persons preserved; indicator renders |
 | F13 | `validation-cf.xlsx` | Validation and every supported conditional-format rule type render and round-trip |
@@ -194,9 +197,9 @@ The fixture corpus lives in `fixtures/compat/` and is generated by a committed s
 2. Every Tier A feature round-trips with semantic equality against an independent reader.
 3. Every Tier B part survives with identical uncompressed bytes and resolvable relationships after an unrelated edit.
 4. Every output opens in Excel 365 without a repair prompt and in LibreOffice without error.
-5. A formula's exact text is never rewritten; a cached value is retained unless the engine evaluated the cell.
+5. A formula's exact text is never rewritten; a cached value is retained only when the engine evaluated the cell from inputs it also evaluated; any stale content sets `fullCalcOnLoad="1"`.
 6. No-op save and edited save both leave style and shared-string indices stable; new entries are appended.
-7. A structural edit either transforms every range-bearing construct or blocks the edit; it never leaves a silently wrong chart, pivot or name.
+7. A structural edit either transforms every range-bearing construct or blocks the edit; it never leaves a silently wrong chart, pivot or name. Chart series ranges are rewritten; a non-range chart source or a pivot source range is blocked and reported.
 8. Tier C inputs are rejected with the §5 message, with no partial import and no file modification.
 9. The compatibility report appears only when there is something to report, and lists every Tier B item.
 10. The export report uses the five categories in §7 and is shown whenever anything is stale, removed or warned about.
@@ -204,11 +207,13 @@ The fixture corpus lives in `fixtures/compat/` and is generated by a committed s
 12. Encrypted workbooks, `.xls`, `.xlsb`, ODS, corrupt files, zip bombs and Strict OOXML are rejected safely within the performance budget.
 13. The fixture corpus in §9 passes in CI, including the producer matrix.
 14. No workbook content leaves the machine during open, save or reporting.
+15. A dirty modelled part preserves every unmodelled child element, attribute, namespace declaration and its order.
+16. The dirty-part and chart-series behaviours are proved by fixtures, not by inspection.
 
 ## 11. What this contract does not promise
 
 - That calcplus understands, renders or edits Tier B objects.
-- That chart series and pivot sources stay correct after structural edits; those edits are blocked instead.
+- That a chart whose series comes from a defined name or another non-range source, or a pivot, stays correct after a structural edit; those edits are blocked instead.
 - That unsupported functions recalculate; cached values are a snapshot.
 - That a digital signature remains valid after any save.
 - That protection is enforced.

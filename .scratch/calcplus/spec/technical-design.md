@@ -66,7 +66,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 - Canonical workbook: sheets, sparse typed cells, shared append-only style table, names, theme, named styles, protection and opaque parts.
 - Stable workbook, sheet and style IDs; cells addressed by `(row, column)`.
 - Document state vs view state; view state never marks the document dirty.
-- Cell: value, authored formula text, saved result, style ID, rich-text payload.
+- Cell: value, authored formula text (flagged when derived from a shared group), saved result, style ID, rich-text payload.
 - JSON snapshot for recovery, tests and a future sync layer; `.xlsx` is not the snapshot format.
 - Dependency graph derived from the engine, never persisted.
 - Opaque parts keep original bytes and an anchor index.
@@ -103,7 +103,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 - Preservation-first in-house package layer: `fflate` for ZIP, `saxes` for SAX parsing.
 - Three tiers: modelled and editable, preserved and not editable, rejected.
-- No-op save returns the original bytes; untouched parts are copied; only dirty parts are rewritten.
+- No-op save returns the original bytes; untouched parts are copied; a dirty part is patched in place against its original bytes, never regenerated from the model.
 - Style and shared-string tables are append-only; existing indices are never renumbered.
 - Structural edits go through the range-transform module; unsafe anchors block the edit.
 - Compatibility and export reports surface every preserved, stale, transformed, removed or warned item.
@@ -114,7 +114,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 - Chrome/Edge: File System Access API for open and save in place.
 - Safari/Firefox: file input and download; no in-place save, explained once.
-- Recovery copy: canonical JSON snapshot in IndexedDB, debounced about 3 seconds after the last edit, plus on hide/pagehide.
+- Recovery copy: canonical snapshot in IndexedDB — JSON metadata plus binary part payloads, written per changed part and never base64 — debounced about 3 seconds after the last edit, plus on hide/pagehide. A small pending-document record makes the copy discoverable after a crash.
 - Recent list with handles where available; external-edit conflict prompts; one workbook per tab.
 - Stable origin from the launcher; `--port N` creates a separate storage area.
 - Contract: [persistence](persistence.md).
@@ -148,7 +148,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 1. Read the file as an `ArrayBuffer`; reject CFB/encrypted, corrupt, oversized and Strict inputs.
 2. Parse the OPC package and relationships; build the part store.
-3. Map workbook, styles, shared strings and worksheets into the canonical model; keep unmodelled parts opaque.
+3. Map workbook, styles, shared strings and worksheets into the canonical model, keeping each part's original bytes as its source skeleton; keep unmodelled parts opaque.
 4. Configure and build the formula engine for the workbook's date system.
 5. Project the active sheet into `SheetView`.
 6. Paint the grid; build the accessibility mirror.
@@ -166,8 +166,8 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 ### 4.3 Save
 
 1. Collect dirty parts.
-2. Serialize modelled parts; copy untouched parts byte-for-byte; append new style/shared-string entries.
-3. Apply structural transforms; delete `calcChain` when formulas changed and set `fullCalcOnLoad`.
+2. Patch dirty parts against their source bytes — rewrite only changed cells, rows and range-bearing elements; copy untouched parts byte-for-byte; append new style/shared-string entries.
+3. Apply structural transforms; delete `calcChain` when formulas changed and set `fullCalcOnLoad` under the rule in [file compatibility §6.1](file-compat.md) — any stale cell, any omitted `<v>`, or a formula change.
 4. Write the package; produce the export report.
 5. On success, clear the dirty flag and the recovery copy.
 
@@ -186,13 +186,14 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 4. One command registry; no surface mutates the model.
 5. One transaction per user action; undo restores the exact prior state.
 6. Structural edits use one range-transform module.
-7. No silent loss; preserved parts are byte-identical and reported.
+7. No silent loss; preserved parts are byte-identical unless a structural edit transforms them, and every transform is reported.
 8. View state never marks the document dirty.
 9. The renderer reads `SheetView`; it never reads the model.
 10. The dependency graph is derived, not persisted.
 11. Conditional formatting is an overlay; it never mutates the model.
 12. The accessibility mirror is the grid's accessible representation; the canvas is `aria-hidden`.
 13. Performance and accessibility are contracts with tests.
+14. A dirty part is patched, not regenerated; unmodelled children survive it.
 
 ## 6. Threading and scheduling
 
@@ -219,7 +220,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 - `role="grid"`, absolute counts/indices, headers, merged spans, roving tabindex, persistent active cell, `aria-selected`, live region.
 - Every command keyboard-reachable; F6 zones; Esc returns to the grid.
 - 2 px 3:1 focus ring; forced-colours canvas palette; 200% browser zoom; 24 × 24 chrome targets.
-- AT sign-off before the grid milestone; DOM-cell fallback behind `RenderFrame`.
+- AT sign-off at the grid milestone (NVDA/Chrome and VoiceOver/Safari) and the full four-combination matrix by release; DOM-cell fallback behind `RenderFrame`.
 - Contract: [accessibility](accessibility.md).
 
 ## 9. Security and privacy
