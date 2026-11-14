@@ -24,7 +24,7 @@ The plan is in [milestones.md](../spec/milestones.md).
 
 **Shape:** hybrid vertical slices. Milestone 1 is a walking skeleton with the real OOXML layer, canonical model, minimal grid, one edit and undo. Every later milestone ends in a demoable user journey.
 
-**Team and size:** three engineers in parallel (grid/render, model/engine/commands, file I/O/chrome), part-time design and QA. Estimates in person-weeks, no calendar dates: about 70-100 person-weeks plus a 20% contingency, roughly 84-120 person-weeks and 28-40 working weeks with three engineers.
+**Team and size:** three engineers in parallel (grid/render, model/engine/commands, file I/O/chrome), part-time design and QA. Estimates in person-weeks, no calendar dates: about 64-94 person-weeks plus a 20% contingency, roughly 77-113 person-weeks and 26-38 working weeks with three engineers.
 
 **Milestones:**
 
@@ -35,8 +35,8 @@ The plan is in [milestones.md](../spec/milestones.md).
 5. **Data tools** (8-12 pw) — sort, AutoFilter, conditional formatting, clipboard, fill, insert/delete. *Spike: Excel clipboard.*
 6. **File fidelity** (10-14 pw) — full round-trip, preserved parts, structural edits, reports, producer matrix, hostile inputs.
 7. **Output and hardening** (10-14 pw) — print/PDF, accessibility, performance, persistence, signed launcher. *Spike: vector print/PDF.*
-8. **Conformance and release** (6-8 pw + reserve) — full golden suite, manual Excel repair check, AT sign-off, docs, release gate.
+8. **Conformance and release** (6-8 pw + reserve) — full golden suite, manual Excel repair check, docs, release gate.
 
 **Gates:** each milestone's exit criteria map to feature-matrix sections; a gate fails if any acceptance criterion fails, even when the demo looks good.
 
-**v1 done:** the ticket 13 release gate passes in full, every feature-matrix IN item is present, launcher artifacts are signed/notarized, the spec package is complete, known deviations are documented and pinned, AT sign-off is recorded, and no P0/P1 or data-loss bug remains.
+**v1 done:** the ticket 13 release gate passes in full, every feature-matrix IN item is present, launcher artifacts are built and published, the spec package is complete, known deviations are documented and pinned, and no P0/P1 or data-loss bug remains.

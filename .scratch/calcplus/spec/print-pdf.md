@@ -60,7 +60,6 @@ window.print()
 
 - Paper printing is advisory: the browser dialog can override paper size, margins, scale, headers/footers and background graphics. Excel has the same printer caveat.
 - PDF substitutes fonts. There is no Aptos metric clone in v1; the closest bundled metric-compatible font is used. **Pinned v1 deviation (PRD AC10):** Aptos falls back to Carlito, which is *not* metric-compatible with Aptos — line and column widths can differ from Excel. It is the only non-metric font substitution in v1, and it is listed in the compatibility report.
-- Safari before 18.2 does not honour `@page`; the preview still works, but paper geometry may differ.
 - Excel's exact fit-to-page edge cases need golden workbooks; the plan follows the documented behaviour and is pinned by fixtures.
 - Images and charts are v2; the layout reserves their anchors but does not render them.
 - Tagged PDF is v2.

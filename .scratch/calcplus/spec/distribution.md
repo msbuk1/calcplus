@@ -13,7 +13,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 
 ## 2. Launcher
 
-- One executable per OS: Windows, macOS (Intel + Apple Silicon, or universal) and Linux.
+- One executable per supported OS: Windows x64 and Linux x64.
 - Starts a static HTTP server bound to the literal `127.0.0.1` on a **stable preferred port** (default `47823`); never binds to a LAN interface. Reuse an existing instance if one is already running; if another program owns the port, fail with an actionable message instead of silently choosing a random port. `--port N` is an escape hatch and uses a separate browser origin and storage.
 - Serves the bundled static build and opens the default browser at `http://127.0.0.1:<port>`.
 - No runtime dependency; portable executable unless the launcher research decides an installer is better.
@@ -31,7 +31,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 ## 4. Browsers and file access
 
 - **Chrome/Edge (desktop):** File System Access API for open and save in place; file handles are remembered where permitted.
-- **Safari/Firefox:** open through a file picker and save by download; no in-place save, and nothing leaves the machine.
+- **Firefox:** open through a file picker and save by download; no in-place save, and nothing leaves the machine.
 - The launcher opens the default browser, so both paths must work.
 - `file://` is unsupported: modules, WebAssembly, service workers and the File System Access API require `http://localhost` or HTTPS. Show a clear message if the app is opened from `file://`.
 - Unsupported browsers get a clear compatibility message rather than a broken grid.
@@ -57,7 +57,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 2. The launcher binds only to `127.0.0.1` on a stable preferred port; the server is not reachable from the LAN.
 3. The launcher works with no network connection.
 4. The hosted URL serves the latest build and requires no install.
-5. Chrome/Edge can open and save a workbook in place; Safari/Firefox can upload and download it.
+5. Chrome/Edge can open and save a workbook in place; Firefox can open and download it.
 6. Opening from `file://` or an unsupported browser shows a clear message.
 7. No workbook data is transmitted anywhere; the launcher makes no outbound calls.
 8. The app shows its version; replacing the launcher updates it.
@@ -69,6 +69,6 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 Resolved by [26 — Launcher technology and release packaging](../issues/26-launcher-technology.md).
 
 - **Technology:** a stdlib-only Go launcher, embedding the static build (`//go:embed` + `http.FileServerFS`), bound to `127.0.0.1`. Measured 6.9 MB, ~2 ms startup, ~9 MB RSS.
-- **Release matrix:** Windows x64 portable `.exe` (Authenticode); macOS universal `.app` in a notarized and stapled `.dmg`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases.
-- **Signing cost:** Apple Developer Program US$99/year plus Microsoft Artifact Signing at about US$120/year, so about US$220/year for both launchers. An OV code-signing certificate is an alternative to Artifact Signing at roughly US$300-400/year. Conformance tooling is a separate line: a Microsoft 365 licence for the oracle runner plus a JAWS licence, about US$900/year. Unsigned builds hit Gatekeeper/SmartScreen.
+- **Release matrix:** Windows x64 portable `.exe`; Linux x64 static tarball (optional `.deb` and arm64); `SHA256SUMS` and GitHub Releases. No macOS artifact in v1.
+- **Signing:** optional and not budgeted for v1. Unsigned Windows builds show a SmartScreen warning until reputation builds, which the README and the About dialog explain; Microsoft Artifact Signing is about US$120/year if that changes. The oracle runner uses the maintainer's own Excel 365 licence, so the project carries no recurring cost.
 - **Desktop wrapper** is only justified by native menus, file associations, a guaranteed browser engine, lifecycle control, or a blocked-loopback environment.

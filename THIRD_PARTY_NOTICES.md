@@ -45,7 +45,7 @@ compatible with GPL-3.0-only and their notices must be kept in the repository.
 | Vitest | MIT | Unit and integration tests | Compatible. |
 | Playwright | Apache-2.0 | End-to-end and visual tests | Compatible with GPLv3. |
 | fast-check | MIT | Property tests | Compatible. |
-| axe-core | MPL-2.0 | Accessibility tests | MPL-2.0 is GPLv3-compatible; test-only. |
+| axe-core | MPL-2.0 | Accessibility tests (v2; unused in v1) | MPL-2.0 is GPLv3-compatible; test-only. |
 | openpyxl | MIT | Independent file verification | Test-only. |
 | LibreOffice | MPL-2.0 | Differential smoke oracle | Test-only; not distributed. |
 | ssf | Apache-2.0 | Number-format differential oracle | Test-only; not distributed. |
@@ -75,7 +75,7 @@ compatible with GPL-3.0-only and their notices must be kept in the repository.
 - **Apache-2.0** is compatible with GPLv3, but not with GPLv2. This project is
   GPLv3-only, so that distinction does not bite.
 - **MPL-2.0** is file-level copyleft and GPLv3-compatible. axe-core and
-  LibreOffice are test-only and not distributed.
+  LibreOffice are test-only and not distributed. axe-core is unused until the v2 accessibility work.
 - **OFL-1.1 fonts** are separate works. They are not relicensed under GPLv3;
   their notices travel with them. Reserved Font Names must be respected.
 - **No Microsoft assets** are copied. Excel icons, logos and fonts other than

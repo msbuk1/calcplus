@@ -17,7 +17,7 @@ The claim is bounded by §12. calcplus does not claim full Excel parity.
 - **`ssf` is a differential oracle for number formats only.** It never decides a formula result.
 - Goldens cover sort collation, conditional-formatting paint and print pagination as well as values and files: the Windows harness sorts fixture sheets, captures Excel-rendered CF ranges as images, and prints fixtures to PDF for page-break goldens. Every behavioural claim in §1 has a named oracle or contract-test path; accessibility and performance are contract tests with runners, not Excel claims, and a claim without either cannot enter the release gate.
 - **Interaction fidelity** is verified by the §6 interaction suite against the feature-matrix behaviour list (shortcuts, selection, editing semantics), with a manual Excel side-by-side checklist per release; there is no pixel oracle for behaviour.
-- The runner is release-gate infrastructure: a Windows host, a Microsoft 365 licence and a JAWS licence are provisioned in M1 and budgeted in distribution.md §8.
+- The runner is release-gate infrastructure: a self-hosted Windows host running the maintainer's own Excel 365 licence, provisioned in M1 (distribution.md §8).
 - The oracle is a tool, not a dependency of the shipped app.
 
 ### 2.1 Tolerance
@@ -46,7 +46,6 @@ The tolerance reflects Excel's 15-significant-digit arithmetic. It must not be w
 | Conformance | Vitest + Python | Golden formulas and files; independent readers | Stored goldens, no live Excel |
 | End-to-end | Playwright | Real app, real Chromium, user journeys, keyboard, clipboard, file open/save | Real app; file picker shimmed |
 | Visual | Playwright | Grid and chrome screenshots | Pinned runner and fonts |
-| Accessibility | axe-core + Playwright | ARIA tree, keyboard, live regions, forced colours, zoom | Real app |
 | Performance | Node + Playwright/CDP | Microbenchmarks and browser budgets | Fixed hardware class |
 | Security | Vitest | Hostile packages, malformed XML, zip bombs, XXE | Time and size caps |
 
@@ -119,12 +118,7 @@ The [performance contract](performance.md) is the source:
 
 ## 8. Accessibility
 
-The [accessibility contract](accessibility.md) is the source:
-
-- axe-core with no serious or critical violations on chrome, dialogs, menus and the mirror.
-- Playwright keyboard, focus-order, live-region, forced-colours and zoom tests.
-- Manual NVDA/Chrome and VoiceOver/Safari sign-off before the grid milestone is accepted; NVDA/Firefox and JAWS/Chrome are added at the M7 accessibility pass and are required for release.
-- If the mirror fails, the DOM-cell fallback is built and the milestone is blocked without it.
+Assistive-technology support is **v2**. v1 has no accessibility layer, no axe job and no AT gate; keyboard operation and visible focus are covered by the interaction suite in §6. The [accessibility contract](accessibility.md) is retained for v2 and is not a v1 gate.
 
 ## 9. Supporting contracts
 
@@ -158,10 +152,10 @@ The [accessibility contract](accessibility.md) is the source:
 
 | Stage | What runs | Target |
 |---|---|---|
-| Pull request | Typecheck, lint, unit, integration, contract tests, a small formula golden set, round-trip identity, Playwright smoke, axe, visual diff for changed areas | Under 15 minutes |
+| Pull request | Typecheck, lint, unit, integration, contract tests, a small formula golden set, round-trip identity, Playwright smoke, visual diff for changed areas | Under 15 minutes |
 | Nightly | Full 52-function suite, generated cases, full file corpus and producer matrix, LibreOffice smoke, full visual suite, performance, accessibility | Under 60 minutes |
 | Scheduled oracle | Excel 365 regenerates formula and file goldens on the Windows runner; manifest review | Monthly or on Excel update |
-| Release | Full matrix, manual Excel repair check, AT sign-off, performance on the reference machine, no P0/P1 or data-loss bugs | Blocks the release |
+| Release | Full matrix, manual Excel repair check, performance on the reference machine, no P0/P1 or data-loss bugs | Blocks the release |
 
 **Golden management**
 
@@ -186,6 +180,8 @@ Outside the v1 claim:
 - Excel versions other than 365 as the oracle and 2019 as a compatibility fixture.
 - Workbooks beyond the performance envelope.
 - Mobile screen readers.
+- Assistive-technology support and WCAG conformance (v2).
+- macOS and Safari.
 - Tagged PDF.
 - The contrast or colour-only meaning of user-authored formatting.
 - Hardware outside the reference and floor tiers.
@@ -203,13 +199,12 @@ v1 is faithful only when all of these pass:
 6. Excel 365 opens every output without a repair prompt.
 7. Sort, AutoFilter and conditional-formatting fixtures pass.
 8. Grid interaction and visual baselines pass.
-9. axe is clean; NVDA/Chrome and VoiceOver/Safari sign off at the grid milestone, and the full four-combination AT matrix signs off for release.
-10. Performance budgets hold on the reference machine.
-11. Command registry, undo/redo, transaction boundaries, shortcut map and focus model pass.
-12. Number-format, print/PDF, clipboard and persistence contracts pass.
-13. No P0, P1 or data-loss bug remains.
-14. Every known deviation is documented and has a test that pins it.
-15. No silent skips and no quarantined test older than one week.
+9. Performance budgets hold on the reference machine.
+10. Command registry, undo/redo, transaction boundaries, shortcut map and focus model pass.
+11. Number-format, print/PDF, clipboard and persistence contracts pass.
+12. No P0, P1 or data-loss bug remains.
+13. Every known deviation is documented and has a test that pins it.
+14. No silent skips and no quarantined test older than one week.
 
 ## 14. Acceptance criteria
 
@@ -221,7 +216,7 @@ v1 is faithful only when all of these pass:
 6. File fixtures cover identity, repair-free, part inventory, semantic equality, formula fidelity, structural edits, hostile inputs and the producer matrix.
 7. Sort, filter and CF fixtures pass.
 8. Grid interaction and visual tests run on the pinned runner and assert model state as well as pixels.
-9. Performance and accessibility gates follow their contracts.
+9. The performance gate follows its contract.
 10. Property and fuzz tests run nightly with fixed seeds.
 11. The CI cadence in §11 is implemented; pull requests stay under 15 minutes.
 12. The release gate in §13 blocks a release.

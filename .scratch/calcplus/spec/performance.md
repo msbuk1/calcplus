@@ -6,14 +6,14 @@ Resolved by [11 — Performance targets and benchmarks](../issues/11-performance
 
 Performance numbers are meaningless without a named machine. The contract applies only to:
 
-- **Hardware:** a mid-range 2023 laptop — 4-core CPU (Intel i5 class or Apple M1), 16 GB RAM, integrated graphics, AC power.
+- **Hardware:** a mid-range 2023 laptop — 4-core CPU (Intel i5 class or AMD Ryzen 5 class), 16 GB RAM, integrated graphics, AC power.
 - **Browser:** desktop Chromium, Chrome or Edge, the latest two stable versions.
-- **OS:** Windows 11, macOS 13 or newer, Ubuntu 22.04 or newer.
+- **OS:** Windows 11 or Ubuntu 22.04 or newer.
 - **Window:** 1440 × 900 CSS pixels at 100% zoom, one workbook per tab.
 
 A second **floor tier** — 2-core CPU, 8 GB RAM, older Chromium — must stay usable but may be up to 2× slower. It is not the contract.
 
-**Explicit cut:** Firefox and Safari open and edit workbooks using the download-based file fallback, but are **not performance-tested and carry no performance claim**. Mobile, tablet, touch and low-power devices are out of scope. A desktop wrapper is the only way to widen this later.
+**Explicit cut:** Firefox opens and edits workbooks using the download-based file fallback, but is **not performance-tested and carries no performance claim.** Safari, macOS, mobile, tablet, touch and low-power devices are out of scope. A desktop wrapper is the only way to widen this later.
 
 ## 2. Size envelopes
 
@@ -198,7 +198,7 @@ Rendering degrades before correctness does. Values are never silently dropped, a
 10. Pull requests block on a 20% regression; nightly and release builds enforce the absolute budgets.
 11. The corpus is reproducible from a committed generator; real fixtures are anonymised and licensed for test use.
 12. Every result carries a machine fingerprint; non-reference runs never gate.
-13. Firefox, Safari, mobile and touch are documented as outside the performance contract.
+13. Firefox, macOS, mobile and touch are documented as outside the performance contract.
 14. The filter, conditional-formatting and print budgets in §3.4-§3.6 are enforced by the nightly browser suite.
 15. The save budgets in §3.7 are measured by the browser harness and block the release.
 

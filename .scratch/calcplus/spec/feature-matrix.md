@@ -99,6 +99,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | Status bar: sum/average/count for the selection; zoom slider | IN | Stats update for numeric selections; slider and menu stay in sync. |
 | Page-break preview / page-layout view | V2 | — |
 | Custom views / sheet views | V2 | — |
+| Assistive-technology support (screen readers, WCAG 2.2 AA) | V2 | v1 keeps keyboard operation and visible focus as ordinary usability and makes no accessibility claim. Contract: [accessibility](accessibility.md). |
 
 ## 7. File I/O and printing
 
@@ -132,7 +133,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 
 ## 9. Deferred to v2
 
-Paste Special · fill series · discontiguous selection · entry AutoComplete · hide/unhide rows and columns · reorder/move/copy/hide sheets · tab colours · grouping/outline · tables · data validation · filter by colour/Top 10/advanced filter · conditional-formatting authoring · theme and named-style authoring · Name Manager · Insert Function · formula auditing · manual calculation · split view · page-break preview · custom views · full page setup · hyperlink authoring · comment authoring · protection authoring and enforcement · charts/images/shapes/sparklines · localization · dark mode/theming.
+Paste Special · fill series · discontiguous selection · entry AutoComplete · hide/unhide rows and columns · reorder/move/copy/hide sheets · tab colours · grouping/outline · tables · data validation · filter by colour/Top 10/advanced filter · conditional-formatting authoring · theme and named-style authoring · Name Manager · Insert Function · formula auditing · manual calculation · split view · page-break preview · custom views · full page setup · hyperlink authoring · comment authoring · protection authoring and enforcement · charts/images/shapes/sparklines · assistive-technology support and WCAG conformance · localization · dark mode/theming.
 
 ## 10. Never / out of scope
 

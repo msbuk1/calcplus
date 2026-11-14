@@ -10,7 +10,7 @@ The spike does not overturn the grid research. It sharpens it:
 
 - Univer is the faster route to **a spreadsheet**. It is not the faster route to **an Excel clone**. Its chrome, model, formula engine and interaction model are Univer's, and replacing them is the product.
 - The custom grid reached a usable, Excel-shaped grid in a throwaway spike and met the frame budget; Univer missed it at p95.
-- Univer's stock canvas exposes **zero grid cells** to assistive technology. The accessibility mirror that the custom path needs would still have to be built — inside a renderer we do not own.
+- Univer's stock canvas exposes **zero grid cells** to assistive technology, so the mirror would still have to be built inside a renderer we do not own. Accessibility is v2 in either case, so this point no longer decides the choice.
 - Univer's open-source preset has **no `.xlsx` import or export**. That is a commercial Pro feature. The hardest part of the product, the OOXML layer from tickets 04 and 12, is not bought by adopting Univer.
 
 ## 2. What was built
@@ -78,7 +78,7 @@ The custom column is a 696-line sketch, not the finished grid. The missing items
 1. **Chrome is the product.** The destination is near-identical Excel chrome. Univer ships its own tabs, toolbar, menus, formula bar, sheet tabs and status bar. Replacing them means rebuilding the chrome and fighting the framework's layout and command model.
 2. **The model is ours.** The canonical workbook model (ticket 07), the command registry (09) and HyperFormula (03, 24) are the chosen architecture. Adopting Univer means either abandoning them or keeping two models in sync. The spike confirms Univer's model is the source of truth inside its own UI.
 3. **`.xlsx` is not bought.** The open-source preset has no exchange package. The commercial Pro tier owns `.xlsx` conversion. calcplus would still build the preservation-first OOXML layer from tickets 04 and 12, then map it into Univer's model — the largest and hardest part, unchanged.
-4. **Accessibility is not bought.** Univer's canvas exposes zero grid cells. A screen-reader user hears the name box and formula bar, not the sheet. The DOM mirror is required on either path; building it inside our own renderer is simpler and testable.
+- **Accessibility is not bought** (v2 work, but it decides nothing today). Univer's canvas exposes zero grid cells, so the mirror would have to be built inside a renderer we do not own; in our own renderer it is simpler and testable.
 5. **The patch surface is real.** GenOffice adopted Univer and still owns roughly 256 modules around the renderer, including named patches for merges, thick borders, number formats, the formula lexer, selection wrap, sheet rename, RTL text, rich-text bidi, clipboard anchors and filter buttons (ticket 16). Those patches are coupled to Univer internals and to its version.
 6. **Bundle and startup headroom.** 7.9 KB versus 1.78 MB gzip, and roughly 125 ms versus 300-400 ms warm to a visible grid. Both fit the ticket 11 budget, but the custom path leaves room for the model, the engine and the file layer.
 7. **Licence is not the blocker.** Univer's core is Apache-2.0 and compatible with GPLv3. The blocker is fit, not licence.
@@ -89,7 +89,7 @@ The custom column is a 696-line sketch, not the finished grid. The missing items
 
 The custom approach is confirmed, with four additions:
 
-1. **The accessibility mirror is a first-milestone gate.** It is not a later enhancement. The spike shows the mirror can expose rows and cells; it does not prove NVDA, JAWS or VoiceOver usability. Ticket 22 owns the target and the AT test.
+1. **The accessibility mirror is v2.** The spike shows the mirror can expose rows and cells; usability with real screen readers is unproven and is not a v1 gate. Ticket 22 owns the target and the test for the later release.
 2. **Keep a DOM-cell renderer behind the same seam.** `RenderFrame` already isolates the renderer. A real-DOM renderer is the fallback if the canvas mirror fails accessibility or the 1M-cell benchmark. It is cheap insurance and makes the accessibility-mode fallback credible.
 3. **Own the missing interactions explicitly.** Fill-handle drag and double-click, context menus, clipboard, zoom, text layout, IME and autofit are part of the grid milestone, not hidden in "polish".
 4. **Keep the grid and the engine decoupled.** Univer couples its renderer to its formula engine; calcplus keeps the `FormulaEngine` port and HyperFormula. The spike did not find a reason to revisit tickets 03 or 24.
@@ -100,7 +100,7 @@ The rest of ticket 05 stands: viewport-sized panes, no sheet-sized canvas, no fu
 
 Re-open the buy decision only if one of these becomes true:
 
-- The accessibility mirror fails real screen-reader testing and the DOM-cell fallback cannot meet the ticket 11 frame budget.
+- The v2 accessibility work finds the canvas mirror unusable and the DOM-cell fallback cannot meet the ticket 11 frame budget.
 - The custom grid cannot hold the 250k-cell guaranteed envelope in the ticket 11 harness after the first two milestones.
 - Univer ships an Apache-2.0 `.xlsx` exchange layer **and** a supported way to replace its chrome with Excel's, without forking its internals.
 - The product goal changes from an Excel clone to a general spreadsheet.
@@ -109,7 +109,7 @@ Re-open the buy decision only if one of these becomes true:
 
 1. The v1 architecture uses the custom canvas grid; no Univer dependency ships.
 2. HyperFormula remains the engine behind the `FormulaEngine` port.
-3. The accessibility mirror is built and tested with at least NVDA/Chrome and VoiceOver/Safari before the grid milestone is accepted.
+3. The DOM-cell renderer can carry the v2 accessibility mirror without changing the model or commands.
 4. A DOM-cell renderer can replace the canvas renderer behind `RenderFrame` without changing the workbook model or commands.
 5. The custom grid meets the ticket 11 scroll and memory budgets on the benchmark corpus.
 6. Fill handle, context menu, clipboard, zoom, text layout, IME and autofit are scheduled in the grid milestone.

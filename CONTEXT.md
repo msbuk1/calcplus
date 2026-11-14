@@ -45,7 +45,7 @@ The canonical in-memory representation of a workbook. Opening a file fills it; s
 _Avoid_: State, store, document model
 
 **Sheet projection**:
-The read-only, versioned view of one sheet that the canvas, the accessibility mirror and the DOM-cell fallback read. Built lazily for the visible window; the selection is passed in, not owned.
+The read-only, versioned view of one sheet that the canvas, the cell editor and the DOM-cell fallback read; the accessibility mirror joins them in v2. Built lazily for the visible window; the selection is passed in, not owned.
 _Avoid_: View model, sheet state
 
 **Document state**:
@@ -145,7 +145,7 @@ A committed expected result — a value, error, display string, saved workbook o
 _Avoid_: Baseline, snapshot
 
 **Release gate**:
-The fixed set of conformance, accessibility, performance and bug conditions that must pass before v1 is called faithful.
+The fixed set of conformance, performance and bug conditions that must pass before v1 is called faithful.
 _Avoid_: Quality bar, definition of done
 
 **Walking skeleton**:
@@ -204,23 +204,23 @@ _Avoid_: Warning dialog, import log
 The list shown on save of what changed, what was preserved, what went stale and what needs a warning.
 _Avoid_: Save log, error list
 
-**Accessibility mirror**:
+**Accessibility mirror (v2)**:
 The transparent DOM copy of the visible cells that exposes the canvas grid to assistive technology, using absolute row and column indices.
 _Avoid_: Screen-reader layer, a11y overlay
 
 **DOM-cell renderer**:
-The fallback grid renderer that draws real DOM cells behind the same frame seam, used if the canvas plus mirror fails accessibility or performance testing.
+The fallback grid renderer that draws real DOM cells behind the same frame seam; used if the canvas fails performance testing, and as the accessibility fallback in v2.
 _Avoid_: HTML grid, fallback table
 
-**Live region**:
+**Live region (v2)**:
 The visually hidden `aria-live` element that announces edits, structural changes, sort, filter, save and errors without moving focus.
 _Avoid_: Announcer, screen-reader toast
 
-**Roving tabindex**:
+**Roving tabindex (v2)**:
 The focus model where one cell has `tabindex="0"` and every other mirrored cell has `tabindex="-1"`, so focus stays on a real cell as the active cell moves.
 _Avoid_: Focus grid, active descendant
 
-**Forced colours**:
+**Forced colours (v2)**:
 The operating-system high-contrast mode exposed through `forced-colors: active`, where the canvas must repaint with system colours because it cannot inherit them.
 _Avoid_: High-contrast mode, dark mode
 

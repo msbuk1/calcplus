@@ -29,7 +29,7 @@ This is the build-ready specification for **calcplus**, a browser-based, single-
 | Persistence | [Persistence](persistence.md) |
 | Distribution | [Distribution](distribution.md) |
 | Performance | [Performance](performance.md) |
-| Accessibility | [Accessibility](accessibility.md) |
+| Accessibility (v2) | [Accessibility](accessibility.md) |
 | Testing and conformance | [Testing and conformance](testing-conformance.md) |
 | Licence | [Licensing](licensing.md) |
 

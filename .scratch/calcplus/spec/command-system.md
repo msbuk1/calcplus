@@ -74,7 +74,7 @@ Changes reference stable sheet IDs and row/column coordinates. Recalculated resu
 
 ## 6. Keyboard map
 
-Platform mapping: `Ctrl` on Windows/Linux, `Cmd` on macOS. The UI shows the platform symbol.
+Platform mapping: `Ctrl` on Windows and Linux. macOS is not supported in v1, so there is no `Cmd` variant.
 
 **Navigation**
 
@@ -110,7 +110,7 @@ Alt+= (AutoSum) · F9 (recalculate).
 
 **Browser-reserved shortcuts**
 
-Ctrl+1–8 (tab switching) · Ctrl+Page Up/Down (tab switching) · Ctrl+Tab · Ctrl+N/T/W · F5 (reload) · F11 (fullscreen) · F12 (devtools) · Cmd+Q and other OS shortcuts.
+Ctrl+1–8 (tab switching) · Ctrl+Page Up/Down (tab switching) · Ctrl+Tab · Ctrl+N/T/W · F5 (reload) · F11 (fullscreen) · F12 (devtools).
 
 Policy:
 
@@ -132,7 +132,7 @@ Policy:
 - **Dialogs:** modal, focus trapped; Esc cancels; Enter confirms; focus returns to the invoking control.
 - **Find/Replace:** panel; Esc closes and returns to the grid.
 - After any command, focus returns to the grid unless the command opened a dialog or panel.
-- Focus is always visible. Screen-reader announcements are ticket 22.
+- Focus is always visible. Screen-reader announcements are v2 ([accessibility](accessibility.md)).
 
 ## 8. Co-authoring log
 

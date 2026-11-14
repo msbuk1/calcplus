@@ -58,7 +58,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 - DOM editor overlay for in-cell editing and the formula bar.
 - `RenderFrame` is the renderer seam; a DOM-cell renderer can replace the canvas without touching the model.
 - Reads the sheet projection only (workbook model §11); it never imports the model (ADR 0007).
-- ARIA mirror: `role="grid"`, absolute indices, roving tabindex, persistent active cell, live region.
+- No accessibility mirror in v1; assistive-technology support is v2 ([accessibility](accessibility.md)).
 - Selection, active cell, fill handle, headers, merges, gridlines, conditional formatting and selection overlay.
 - Contract: [grid spike](grid-spike.md) and [accessibility](accessibility.md).
 
@@ -114,7 +114,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 ### 3.8 Persistence
 
 - Chrome/Edge: File System Access API for open and save in place.
-- Safari/Firefox: file input and download; no in-place save, explained once.
+- Firefox: file input and download; no in-place save, explained once.
 - Recovery copy: canonical snapshot in IndexedDB — JSON metadata plus binary part payloads, written per changed part and never base64 — debounced about 3 seconds after the last edit, plus on hide/pagehide. A small pending-document record makes the copy discoverable after a crash.
 - Recent list with handles where available; external-edit conflict prompts; one workbook per tab.
 - Stable origin from the launcher; `--port N` creates a separate storage area.
@@ -139,7 +139,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 - Static build served by any static host over HTTPS.
 - Go stdlib launcher embeds the build and serves it on `127.0.0.1:47823`; opens the default browser.
-- Windows signed portable `.exe`; macOS notarized universal `.app` in a DMG; Linux static tarball.
+- Unsigned Windows portable `.exe` and Linux static tarball; no macOS artifact in v1.
 - No background updater, no outbound calls, no telemetry.
 - Contract: [distribution](distribution.md).
 
@@ -192,7 +192,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 9. The renderer reads `SheetView`; it never reads the model.
 10. The dependency graph is derived, not persisted.
 11. Conditional formatting is an overlay; it never mutates the model.
-12. The accessibility mirror is the grid's accessible representation; the canvas is `aria-hidden`.
+12. Keyboard operation is complete; v1 makes no assistive-technology claim.
 13. Performance and accessibility are contracts with tests.
 14. A dirty part is patched, not regenerated; unmodelled children survive it.
 
@@ -215,14 +215,12 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 - Frame budget: 60 fps scroll, 50 ms direct interaction, 100 ms commit.
 - The engine runs in a worker; the grid never waits on recalc to paint selection.
 
-## 8. Accessibility
+## 8. Keyboard and accessibility
 
-- WCAG 2.2 AA for the chrome and the DOM mirror; the canvas is decorative.
-- `role="grid"`, absolute counts/indices, headers, merged spans, roving tabindex, persistent active cell, `aria-selected`, live region.
-- Every command keyboard-reachable; F6 zones; Esc returns to the grid.
-- 2 px 3:1 focus ring; forced-colours canvas palette; 200% browser zoom; 24 × 24 chrome targets.
-- AT sign-off at the grid milestone (NVDA/Chrome and VoiceOver/Safari) and the full four-combination matrix by release; DOM-cell fallback behind `RenderFrame`.
-- Contract: [accessibility](accessibility.md).
+- Assistive-technology support and WCAG conformance are **v2**; the contract is [accessibility](accessibility.md).
+- v1 keeps keyboard operation for every command, visible focus, the default-contrast tokens and 200% browser zoom as ordinary usability.
+- The canvas is not exposed to assistive technology, and v1 makes no claim otherwise.
+- The DOM-cell renderer stays behind `RenderFrame` as the seam the v2 mirror or fallback will use.
 
 ## 9. Security and privacy
 
@@ -260,7 +258,7 @@ The decision tickets on the map remain the narrative record; the ADRs capture th
 
 ## 12. Build, test and release
 
-- TypeScript + Vite; Vitest, Playwright, fast-check and axe-core.
+- TypeScript + Vite; Vitest, Playwright and fast-check. axe-core returns with the v2 accessibility work.
 - Excel 365 on a Windows runner is the conformance oracle; stored goldens run on pull requests.
 - Pull requests under 15 minutes; nightly full suite; scheduled oracle regeneration.
 - Release gate: [testing and conformance](testing-conformance.md).

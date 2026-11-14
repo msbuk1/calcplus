@@ -12,7 +12,7 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 - Re-request permission if the handle loses read/write access.
 - Drag-and-drop a file onto the app opens it.
 
-**Safari/Firefox**
+**Firefox**
 
 - Open through a file picker (or drag-and-drop) and read the file into memory.
 - Save by downloading a copy (Blob + `<a download>`).
@@ -45,7 +45,7 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 
 - A local recent list in IndexedDB: document name, file handle where available, last-opened time and stable document ID.
 - Reopening a recent entry re-requests permission if needed; if permission is denied or the file is gone, remove or mark the entry.
-- Safari/Firefox: name-only or omitted; no handle persistence.
+- Firefox: name-only or omitted; no handle persistence.
 - No absolute paths are stored or shown.
 - Clearing site data clears the list.
 
@@ -82,7 +82,7 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 ## 8. Acceptance criteria
 
 1. Chrome/Edge: open `.xlsx`, edit, `Ctrl+S` writes back to the same file; Save As creates a new file.
-2. Safari/Firefox: open via picker, save via download; the limitation is explained.
+2. Firefox: open via picker, save via download; the limitation is explained.
 3. Kill the tab mid-edit; reopen; the recovery prompt restores the unsaved changes, and a subsequent save writes charts, pivots, macros and external links byte-identical.
 4. Autosave never writes the user's file; only explicit Save does.
 5. Recent entries reopen with permission; denied permission prompts and can be removed.

@@ -28,9 +28,8 @@ People who work in Excel desktop want a spreadsheet they can open in a browser w
 1. **Familiarity.** The ribbon, formula bar, grid, sheet tabs, dialogs and shortcuts feel like Excel desktop. When Excel and "clean design" disagree, match Excel.
 2. **No silent loss.** A workbook that calcplus cannot fully model is preserved, reported and never silently dropped.
 3. **Credible performance.** A 250k-cell workbook is guaranteed; up to 1M cells opens in a degraded mode; the app refuses rather than corrupts beyond that.
-4. **Accessibility.** WCAG 2.2 AA for the chrome and the DOM grid mirror, with real screen-reader sign-off.
-5. **Local-first.** No accounts, no uploads, no telemetry; the file stays on the machine.
-6. **Open source.** GPL-3.0-only, with a build that anyone can reproduce.
+4. **Local-first.** No accounts, no uploads, no telemetry; the file stays on the machine.
+5. **Open source.** GPL-3.0-only, with a build that anyone can reproduce.
 
 ## 4. Fidelity promise
 
@@ -54,7 +53,7 @@ The authoritative list is the [feature matrix](feature-matrix.md). In summary:
 | Workbook and sheets | New/open/save/save as/close, insert/delete/rename sheets, freeze panes, zoom, gridline/heading toggles, status-bar statistics |
 | File I/O | `.xlsx` and `.xlsm` round-trip, CSV, encrypted rejection, external-link and macro preservation, drag-and-drop open, print/PDF |
 | Read-only fidelity | Comments, hyperlinks, validation, tables, pivots, protection, hidden rows/columns/sheets, themes and named styles, defined names |
-| Platform | Desktop Chromium contract; Firefox/Safari best-effort; static host and Go launcher; no backend |
+| Platform | Desktop Chromium on Windows and Linux; Firefox best-effort; no macOS support; static host plus Go launcher for Windows and Linux; no backend |
 
 ## 6. Key user journeys
 
@@ -76,6 +75,8 @@ Everything marked **V2** or **NEVER** in the feature matrix. Highlights:
 - Authoring or editing of tables, data validation, advanced/colour/Top-10 filters and conditional formatting; imported parts are preserved.
 - Authoring of comments, hyperlinks, defined names, protection, themes and named styles.
 - Paste Special, fill series, split view, full page setup, localization and dark mode.
+- Assistive-technology support and a WCAG conformance claim; v1 keeps keyboard operation and visible focus but makes no accessibility claim.
+- macOS support: no artifact, no testing and no claim. The hosted build may still load in a browser there, unsupported.
 - R1C1, 3D ranges, structured references, external-link refresh, dynamic arrays/spill, iterative/manual calculation and union/intersection operators.
 - Native desktop wrappers, mobile/touch apps, `.xls`, `.xlsb` and ODS; encrypted workbooks are rejected with a clear message rather than opened.
 - Store listings, auto-update and marketing as part of the build; the hosted static build is a release artifact.
@@ -85,8 +86,8 @@ Everything marked **V2** or **NEVER** in the feature matrix. Highlights:
 - **Browser app.** Static files, no backend, no server-side logic.
 - **Single user, one workbook per tab.** The model is sync-ready but co-authoring is not built.
 - **GPL-3.0-only.** HyperFormula's GPLv3 edition is the binding dependency.
-- **Desktop Chromium is the performance contract.** Firefox and Safari work with the download fallback but carry no performance claim; mobile and touch are out.
-- **Distribution.** Static host plus a Go launcher on `127.0.0.1:47823`; Windows signed `.exe`, macOS notarized universal `.app`, Linux tarball.
+- **Desktop Chromium on Windows and Linux is the performance contract.** Firefox works with the download fallback but carries no claim; macOS, mobile and touch are out.
+- **Distribution.** Static host plus a Go launcher on `127.0.0.1:47823`; Windows portable `.exe` and a Linux tarball, unsigned, with the SmartScreen warning documented.
 - **Local-first.** No accounts, telemetry or workbook uploads.
 - **English only.** Localization is v2.
 - **No pixel-perfect requirement.** Near-identical chrome is enough.
@@ -99,14 +100,14 @@ Everything marked **V2** or **NEVER** in the feature matrix. Highlights:
 4. Sort, AutoFilter and conditional formatting behave as specified and round-trip.
 5. The grid supports the keyboard, editing, fill, resize, freeze, merges and selection journeys.
 6. A 250k-cell workbook meets the performance budgets; 1M cells opens in degraded mode.
-7. The accessibility contract passes: NVDA/Chrome and VoiceOver/Safari sign off before the grid milestone, and the full four-combination matrix (adding NVDA/Firefox and JAWS/Chrome) signs off before release.
-8. The launcher runs offline on all three OSes and keeps a stable origin.
+7. Keyboard operation covers every command without a pointer. v1 makes no assistive-technology claim; the accessibility contract is v2.
+8. The Windows and Linux launchers run offline and keep a stable origin.
 9. No P0, P1 or data-loss bug remains at release.
 10. Every known deviation is documented and pinned by a test.
 
 ## 10. Release definition
 
-v1 is done when the [release gate](testing-conformance.md) passes in full, every feature-matrix IN item is present, the launcher artifacts are signed or notarized, the spec package is complete, manual AT sign-off is recorded, and no P0/P1 or data-loss bug remains. The [milestone plan](milestones.md) carries the phase-by-phase gates.
+v1 is done when the [release gate](testing-conformance.md) passes in full, every feature-matrix IN item is present, the launcher artifacts are built and published, the spec package is complete, and no P0/P1 or data-loss bug remains. The [milestone plan](milestones.md) carries the phase-by-phase gates.
 
 ## 11. Open questions
 
@@ -119,18 +120,17 @@ These are deliberately outside v1 and must not block the build:
 ## 12. Risks
 
 - **OOXML fidelity tail.** The range-transform and preservation work is the largest engineering risk; the walking skeleton and the M3 prototype are the mitigations.
-- **Accessibility mirror.** A canvas grid is unproven with screen readers; the AT spike and DOM-cell fallback are the mitigations.
 - **Formula shims.** HyperFormula deviations must be pinned; the contract tests and 52-function gate are the mitigation.
 - **Performance at 1M cells.** The degraded envelope is close to the memory ceiling; the benchmark corpus and degradation ladder are the mitigation.
 - **Conformance tail.** The last 10% of Excel edge cases can take as long as the first 90%; the M8 reserve and continuous golden suite are the mitigation.
-- **Signing and notarization.** External dependencies can delay release; start early in M7.
+- **Unsigned builds.** Windows shows a SmartScreen warning until reputation builds; it is documented in the README and the About dialog.
 
 ## 13. Success measures
 
 - **Conformance:** the release gate is green; no undocumented deviation.
 - **Data safety:** zero data-loss bugs; no silent drops.
 - **Performance:** all budgets on the reference machine.
-- **Accessibility:** axe clean; AT sign-off.
+- **Platforms:** the Windows and Linux launchers run offline from a single download, unsigned, with the warning documented.
 - **Fidelity:** the core journeys complete without Excel.
 - **Trust:** no workbook leaves the machine; no telemetry.
 

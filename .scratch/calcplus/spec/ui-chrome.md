@@ -76,11 +76,11 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 | `--disabled` | `#A19F9D` | disabled controls |
 - Near-identical chrome, not pixel-perfect.
 
-## 7. Accessibility
+## 7. Keyboard and focus
 
-- Ribbon: `role="tablist"` / `tab` / `tabpanel`; menus: `role="menu"` / `menuitem`; dialogs: `role="dialog"` with a focus trap.
-- Focus zones and Esc behaviour follow [command-system](command-system.md).
-- Visible focus at all times; screen-reader grid mirror per tickets 05 and 22.
+- Every command is reachable by keyboard; focus zones and Esc behaviour follow [command-system](command-system.md).
+- Visible focus at all times; dialogs trap focus and Esc closes them.
+- Assistive-technology support (ARIA roles, screen-reader mirror) is v2; see [accessibility](accessibility.md).
 
 ## 8. Deferred
 

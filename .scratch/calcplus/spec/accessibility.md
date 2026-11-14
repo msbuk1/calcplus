@@ -1,4 +1,6 @@
-# calcplus v1 — accessibility contract
+# calcplus — accessibility contract (v2)
+
+**Status: v2 — not part of v1.** v1 keeps keyboard operation, visible focus and the default contrast tokens as ordinary usability, and makes no assistive-technology claim: the canvas exposes nothing to a screen reader. This contract is retained unchanged for the next release.
 
 Resolved by [22 — Accessibility target for the grid](../issues/22-accessibility.md) on 2026-11-13. It builds on the [grid spike](grid-spike.md), the [UI chrome](ui-chrome.md) and the [command system](command-system.md).
 
@@ -175,7 +177,7 @@ Every command in the registry is reachable without a pointer:
 
 **Manual**
 
-NVDA/Chrome and VoiceOver/Safari gate the grid milestone; NVDA/Firefox and JAWS/Chrome are added at the M7 accessibility pass and gate the release.
+The full four-combination matrix gates the v2 accessibility release: NVDA/Chrome, NVDA/Firefox, JAWS/Chrome and VoiceOver/Safari (VoiceOver when macOS support returns).
 
 - NVDA with Chrome and Firefox on Windows 11.
 - JAWS with Chrome on Windows 11.
@@ -209,8 +211,8 @@ NVDA/Chrome and VoiceOver/Safari gate the grid milestone; NVDA/Firefox and JAWS/
 10. The chrome reflows to the compact bar below 900 px; the grid uses the two-dimensional exception.
 11. Chrome controls meet 24 × 24 target size; grid and resize targets have keyboard alternatives.
 12. axe-core reports no serious or critical violations on the chrome, dialogs, menus and the mirror.
-13. The manual AT script passes with NVDA/Chrome and VoiceOver/Safari before the grid milestone is accepted, and with the full four-combination matrix — adding NVDA/Firefox and JAWS/Chrome — before release.
-14. If the mirror fails AT testing, the DOM-cell fallback is built behind `RenderFrame` and the milestone is not accepted without it.
+13. The manual AT script passes for the v2 release with NVDA/Chrome, NVDA/Firefox, JAWS/Chrome and VoiceOver/Safari (VoiceOver when macOS support returns).
+14. If the mirror fails AT testing, the DOM-cell fallback is built behind `RenderFrame` and the v2 release is not accepted without it.
 15. Author formatting is documented as a content caveat; the cell value is always exposed.
 
 ## 13. Deliberate deviations

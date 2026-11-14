@@ -28,7 +28,7 @@ Summary:
 - **Build:** Vite (MIT), TypeScript (Apache-2.0), esbuild (MIT), PostCSS and
   plugins (MIT).
 - **Test only:** Vitest (MIT), Playwright (Apache-2.0), fast-check (MIT),
-  axe-core (MPL-2.0), openpyxl (MIT), LibreOffice (MPL-2.0), `ssf`
+  axe-core (MPL-2.0; v2 only), openpyxl (MIT), LibreOffice (MPL-2.0), `ssf`
   (Apache-2.0), Python (PSF-2.0).
 - **Evaluated, not used:** Univer (Apache-2.0), GenOffice (Apache-2.0 except
   proprietary `ee/`), IronCalc (MIT/Apache-2.0), SheetJS CE (Apache-2.0),

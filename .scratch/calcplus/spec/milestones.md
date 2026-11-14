@@ -8,14 +8,14 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - **Walking skeleton first.** The real OOXML package layer, the canonical model and a minimal grid are integrated in milestone 1. No interim lossy library.
 - **A demo and a gate per milestone.** A milestone is not done because the code merges; it is done when its exit criteria pass.
 - **Continuous quality.** Accessibility, performance and conformance tests are built with the features, not after them.
-- **Risk spikes are scheduled.** The five risks that can invalidate an architecture have explicit spikes, not hopes.
+- **Risk spikes are scheduled.** The four risks that can invalidate an architecture have explicit spikes, not hopes.
 - **The feature matrix is the scope fence.** Anything marked V2 or NEVER does not enter a milestone.
 
 ## 2. Team and estimates
 
 - **Three engineers in parallel:** one on grid and rendering, one on model, engine and commands, one on file I/O and chrome. Part-time design and QA.
 - **Person-weeks, not calendar dates.** The plan stays useful whatever the start date. A range is a planning estimate, not a commitment.
-- **Total:** about **70-100 person-weeks**, plus a **20% contingency**, for roughly **84-120 person-weeks**. With three engineers and the dependencies below, that is about **28-40 working weeks** — seven to ten months — if the tracks stay staffed.
+- **Total:** about **64-94 person-weeks**, plus a **20% contingency**, for roughly **77-113 person-weeks**. With three engineers and the dependencies below, that is about **26-38 working weeks** — six to nine months — if the tracks stay staffed.
 - The conformance tail is the largest uncertainty. Milestone 8 carries an explicit reserve.
 
 ## 3. Overview
@@ -23,12 +23,12 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 | # | Milestone | Demoable outcome | Effort (pw) | Main risk |
 |---|---|---|---:|---|
 | 1 | Walking skeleton | Open a small `.xlsx`, see it, edit a cell, undo, save with untouched parts byte-identical | 4-6 | Package parsing and model shape |
-| 2 | Grid foundation | Keyboard and screen-reader navigation, editing, frozen panes, 1M-row scroll | 12-16 | Accessibility mirror |
+| 2 | Grid foundation | Keyboard navigation, editing, frozen panes, 1M-row scroll | 8-12 | Canvas rendering at scale |
 | 3 | Formula engine and model depth | Formulas recalculate, 52-function subset passes, undo/redo, dates and names | 8-12 | HyperFormula shims and fan-out |
 | 4 | Formatting and workbook | Format a report, number formats, merges, multiple sheets, find and Go To | 8-12 | Number-format seams |
 | 5 | Data tools | Sort, AutoFilter, conditional formatting, clipboard, fill, insert/delete | 8-12 | Range transforms and clipboard |
 | 6 | File fidelity | Charts, pivots and macros survive a round-trip; Excel opens without repair | 14-20 | Structural edits and preservation |
-| 7 | Output and hardening | Print/PDF, accessibility pass, 250k-cell performance, signed launcher | 10-14 | Print fidelity and signing |
+| 7 | Output and hardening | Print/PDF, 250k-cell performance, launcher | 8-12 | Print fidelity |
 | 8 | Conformance and release | Release candidate with every gate green | 6-8 + reserve | The long tail |
 
 ## 4. Milestones
@@ -44,7 +44,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - Minimal canvas grid: render values, click to select, type to edit, commit with Enter.
 - Minimal command registry and one undoable `cell.set`.
 - File open and save through the File System Access API with a download fallback.
-- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), Microsoft 365 and JAWS licences provisioned, value and error golden generation scripted, and the browser memory harness from ticket 11 (testing-conformance §2). Sort-collation, CF-paint and print-pagination goldens are added by M5 and M7, when those features exist.
+- Conformance infrastructure stands up: Windows runner with Excel 365 (COM/PowerShell harness), the maintainer's own Excel 365 on a self-hosted Windows runner, value and error golden generation scripted, and the browser memory harness from ticket 11 (testing-conformance §2). Sort-collation, CF-paint and print-pagination goldens are added by M5 and M7, when those features exist.
 
 **Demo:** open a small workbook, see its values, edit a cell, undo, save, reopen in Excel; the untouched package parts are byte-identical, and the chart, drawing and extension children of the edited sheet survive.
 
@@ -57,7 +57,7 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 5. The app opens in Chromium and saves through the file API or a download.
 6. Unit and smoke tests run in CI.
 
-### M2 — Grid foundation (12-16 pw)
+### M2 — Grid foundation (8-12 pw)
 
 **Build**
 
@@ -66,20 +66,15 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 - Selection, active cell, fill handle, headers, merged-range rendering.
 - DOM in-cell editor with IME, formula bar, name box, commit/cancel.
 - Keyboard navigation, focus zones and the shortcut map's navigation subset.
-- Accessibility mirror: `role="grid"`, absolute indices, roving tabindex, live region.
 - Basic formatting rendering: font, fill, alignment and number formats from the style table.
 
-**Spike:** the accessibility mirror with NVDA/Chrome and VoiceOver/Safari. If it fails, build the DOM-cell renderer behind `RenderFrame` before the milestone gate.
-
-**Demo:** a keyboard-only user navigates, selects, edits and scrolls; a screen reader reads the address, value and selection; a 250k-touched-cell sheet scrolls at the frame budget and a 1M-row sparse sheet scrolls without allocating the grid.
+**Demo:** a keyboard-only user navigates, selects, edits and scrolls; a 250k-touched-cell sheet scrolls at the frame budget and a 1M-row sparse sheet scrolls without allocating the grid.
 
 **Exit criteria**
 
 1. Selection, editing, formula bar, freeze panes and keyboard navigation work.
 2. Scroll holds the ticket 11 frame budget on a 250k-cell sheet.
-3. The mirror exposes rows, cells, headers, selection and the active cell.
-4. AT sign-off is recorded for NVDA/Chrome and VoiceOver/Safari, or the DOM-cell fallback is in place and accepted; NVDA/Firefox and JAWS/Chrome are scheduled for M7.
-5. The focus model and Esc/F6 paths pass the keyboard suite.
+3. The focus model, Esc/F6 paths and the shortcut subset pass the keyboard suite.
 
 ### M3 — Formula engine and model depth (8-12 pw)
 
@@ -176,15 +171,14 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 6. `.xlsm` macros survive; `.xlsm` → `.xlsx` requires confirmation.
 7. Hostile inputs fail safely within the caps.
 
-### M7 — Output and hardening (10-14 pw)
+### M7 — Output and hardening (8-12 pw)
 
 **Build**
 
 - Print/PDF: `PrintPlanner`/`PrintPlan`, print area, orientation, fit-to-width, margins; SVG preview; PDFKit vector export; 300 DPI canvas fallback.
-- Accessibility hardening: full mirror, live regions, forced colours, zoom, target sizes, and the four-combination AT matrix (NVDA/Chrome, NVDA/Firefox, JAWS/Chrome, VoiceOver/Safari).
 - Performance hardening: corpus, fan-out, memory, worker queue, degradation ladder.
 - Persistence: autosave recovery copy, recent list, external-edit conflict, close prompt, stable origin.
-- Launcher: Go static server on `127.0.0.1:47823`, Windows signed `.exe`, macOS notarized universal `.app` in a DMG, Linux tarball.
+- Launcher: Go static server on `127.0.0.1:47823`, Windows portable `.exe` and a Linux tarball, unsigned with the SmartScreen warning documented.
 - Documentation skeleton: PRD, technical design, ADR index, known deviations.
 
 **Spike:** vector print/PDF fidelity and font embedding.
@@ -194,10 +188,9 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 **Exit criteria**
 
 1. Print and PDF match the preview and honour the page setup.
-2. The accessibility contract passes, including the manual AT matrix.
-3. The performance budgets hold on the reference machine.
-4. Recovery, conflict and close prompts work.
-5. Launcher artifacts build, sign/notarize and run on all three OSes.
+2. The performance budgets hold on the reference machine.
+3. Recovery, conflict and close prompts work.
+4. Launcher artifacts build and run on Windows and Linux; unsigned builds carry the documented SmartScreen note.
 
 ### M8 — Conformance and release (6-8 pw + reserve)
 
@@ -205,8 +198,8 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 - Full 52-function golden suite and generated cases.
 - Error/coercion/operator, date, reference, lookup and circular-reference suites.
-- Full file corpus, producer matrix, visual baselines, axe and keyboard suites.
-- Manual Excel repair check; manual AT sign-off.
+- Full file corpus, producer matrix, visual baselines and keyboard suites.
+- Manual Excel repair check.
 - Known-deviations list with a pinning test for each.
 - PRD, technical design, milestone record and release notes.
 - Release gate review.
@@ -250,12 +243,12 @@ Integration points are the end of every milestone. Tracks may overlap inside a m
 | Milestone | Feature-matrix sections |
 |---|---|
 | M1 | Workbook: new, open, save; grid basics |
-| M2 | Grid and editing: selection, editing, formula bar, keyboard; view: freeze; accessibility |
+| M2 | Grid and editing: selection, editing, formula bar, keyboard; view: freeze |
 | M3 | Formulas and names; undo/redo; dates |
 | M4 | Formatting; workbook and sheets; view; find and Go To |
 | M5 | Data: sort and AutoFilter; conditional formatting; clipboard; fill; insert/delete |
 | M6 | File I/O and read-only fidelity |
-| M7 | Print/PDF; persistence; distribution; performance; accessibility |
+| M7 | Print/PDF; persistence; distribution; performance |
 | M8 | The full release gate |
 
 A milestone gate fails if any acceptance criterion in its section fails, even if the demo looks good.
@@ -264,14 +257,13 @@ A milestone gate fails if any acceptance criterion in its section fails, even if
 
 | Risk | Impact | Mitigation | Where |
 |---|---|---|---|
-| Accessibility mirror fails real screen readers | Grid architecture invalidated | Spike in M2; DOM-cell renderer behind `RenderFrame`; milestone blocked without a fallback | M2 |
 | OOXML range transforms corrupt references or anchors | Data loss; broken charts/pivots | Prototype in M3; full transform in M6; block unsafe edits; fixtures | M3, M6 |
 | HyperFormula shims or fan-out miss the contract | Wrong results or slow builds | Contract tests; 52-function gate; fan-out benchmark; worker | M3 |
 | Number-format seams diverge from Excel | Visible formatting errors | `ssf` differential oracle; conformance corpus; built-in ID table | M4 |
 | Clipboard interop with Excel is unreliable | Copy/paste loses formulas or formats | HTML-first dialect; TSV fallback; `.xlsx` is the fidelity channel | M5 |
 | Print/PDF vector fidelity or fonts fail | Output does not match preview | Spike in M7; SVG preview; PDFKit; 300 DPI fallback | M7 |
 | Performance at 250k/1M cells | Product misses its envelope | Continuous benchmarks; fan-out case; degradation ladder | M2-M7 |
-| Signing and notarization | Launcher blocked on Windows/macOS | Start certificates and notarization early in M7 | M7 |
+| Unsigned Windows build | SmartScreen warns until reputation builds | Documented in the README and About dialog; signing stays optional | M7 |
 | Conformance tail | Release slips | Continuous golden suite; M8 reserve; no late scope | M8 |
 
 ## 8. Definition of v1 done
@@ -280,12 +272,11 @@ v1 is done when **all** of these are true:
 
 1. The [testing and conformance release gate](testing-conformance.md) passes in full.
 2. Every feature-matrix **IN** item is present and meets its acceptance criterion.
-3. The Windows, macOS and Linux launcher artifacts are built and signed or notarized as [distribution](distribution.md) requires.
+3. The Windows and Linux launcher artifacts are built and published as [distribution](distribution.md) requires.
 4. The PRD, technical design, ADRs and milestone record are complete and consistent.
 5. Every known deviation is documented and has a pinning test.
-6. Manual AT sign-off is recorded.
-7. No P0, P1 or data-loss bug remains.
-8. The hosted static build and launcher checksums are published.
+6. No P0, P1 or data-loss bug remains.
+7. The hosted static build and launcher checksums are published.
 
 Store listings, auto-update and marketing are post-release.
 
@@ -302,9 +293,9 @@ Store listings, auto-update and marketing are post-release.
 2. Milestone 1 is a walking skeleton with real OOXML, model, grid, edit and undo.
 3. The dependency graph keeps the model, command and file contracts frozen before M4.
 4. Every milestone's exit criteria are tied to the feature matrix.
-5. The five risk spikes are scheduled in M2, M3, M5 and M7.
+5. The four risk spikes are scheduled in M3, M5 and M7.
 6. Estimates are person-week ranges with a 20% contingency and no calendar dates.
-7. The definition of v1 done includes the conformance gate, launcher artifacts, docs and AT sign-off.
+7. The definition of v1 done includes the conformance gate, launcher artifacts and docs.
 8. V2 and NEVER features are excluded from every milestone.
 9. Each milestone produces a demoable state, not only internal plumbing.
 10. The plan is build-ready: no milestone depends on an unresolved decision ticket.
