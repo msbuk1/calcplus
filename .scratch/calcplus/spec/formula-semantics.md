@@ -73,12 +73,14 @@ Match Excel exactly.
 
 ## 9. Storage and round-trip
 
-- Keep the **exact formula text as authored**. Never normalise, rewrite or re-serialise it.
+- Keep the **exact formula text as authored**. Never normalise, rewrite or re-serialise it for storage. Reference updates from model commands (sheet rename, row/column transforms) are edits in the command sense, not rewrites: they change the authored text deliberately and are undoable like any other edit.
 - Keep the **cached result** from the file.
 - Recalculate when the formula uses only supported functions and references and the inputs are known. Otherwise display the cached result and mark it "not recalculated".
 - Unsupported function with no cached result: show `#NAME?`. With a cached result: show the cached result marked stale.
 - Preserve `_xlfn.` prefixes and shared-formula structures in the file; the model stores the authored text.
 - The formula bar shows the authored text; the engine parses an internal form for calculation only.
+- A formula the engine **cannot parse at all** — `@` implicit intersection, unknown constructs, malformed text — takes the unsupported-construct path above: authored text and cached result kept, cell marked stale, never recalculated. The text is never handed to the engine, so nothing can rewrite it. Excel-365-saved files commonly carry `@` forms; they are expected, not errors.
+- Dependants recalculate against the cached result and are marked stale in turn.
 
 ## 10. Acceptance and conformance
 
@@ -95,4 +97,8 @@ Match Excel exactly.
 - Circular references show a warning plus `#CIRC!` instead of Excel's `0` plus a warning.
 - Unsupported functions are never approximated; they show `#NAME?` or a stale cached result.
 - Legacy array formulas are read-only.
+- `@` implicit intersection and other unparseable constructs keep the cached result and are never recalculated (§9). calcplus never strips `@` to force a recalculation, because implicit-intersection edge semantics would silently diverge from Excel.
+- A self-reference in a statically dead `IF` branch (for example `=IF(FALSE(),A1,0)` in A1) is flagged `#CIRC!` although Excel evaluates it to a number.
+- `INDEX` with `row=0` or `column=0` — Excel returns the whole row or column — returns `#VALUE!` in v1.
+- Empty-string coercion edge cases (`""+1` and kin) follow the error/coercion table (ticket 02); unlisted cases are tested against Excel and added to the table before release.
 - No dynamic arrays/spill, R1C1, 3D ranges, structured table references, external-link refresh, iterative calculation, manual calculation mode, or union/intersection operators in v1.

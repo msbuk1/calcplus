@@ -85,10 +85,10 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 ### 3.5 Formula engine
 
 - HyperFormula GPL-3.0-only behind a narrow `FormulaEngine` port, in a Web Worker.
-- Configuration: `licenseKey: 'gpl-v3'`, `leapYear1900`, `nullDate` for 1900/1904, `useArrayArithmetic: false`, `ignoreWhiteSpace: 'any'`, `evaluateNullToZero`, `caseSensitive: false`, `useWildcards`, `matchWholeCell`, comma arguments, dot decimal.
+- Configuration: `licenseKey: 'gpl-v3'`, `leapYear1900`, `maxRows: 1_048_576`, `maxColumns: 16_384`, `nullDate` for 1900/1904, `useArrayArithmetic: false`, `ignoreWhiteSpace: 'any'`, `evaluateNullToZero`, `caseSensitive: false`, `useWildcards`, `matchWholeCell`, comma arguments, dot decimal.
 - Registry gated to the 52 published functions; everything else is `#NAME?`.
-- Shims: wildcard exact lookup, `INT` floors toward negative infinity, `CHOOSE` out-of-range → `#VALUE!`, `#CYCLE!` → `#CIRC!`, no `#ERROR!`/`#SPILL!`/`#CALC!`/`#LIC!` in the model or file.
-- The model owns authored text and cached results; the engine's rewritten text is never saved.
+- Shims: wildcard exact lookup, `INT` floors toward negative infinity, `CHOOSE` out-of-range → `#VALUE!`, `#CYCLE!` → `#CIRC!` (kept where formula-semantics §11 documents the dead-branch deviation), bare `TRUE`/`FALSE` as named expressions (`=TRUE()`, `=FALSE()`), `INDEX(...,0)` → `#VALUE!`, `""+1` coercion per the ticket-02 error/coercion table, no `#ERROR!`/`#SPILL!`/`#CALC!`/`#LIC!` in the model or file.
+- The model owns authored text and cached results; the engine’s rewritten text never reaches the model or the file. Sheet renames and structural reference rewrites are model commands (workbook-model §8), not engine rewrites. Unparseable authored text is never sent to the engine (formula-semantics §9).
 - Volatile `TODAY`/`NOW`; circular-reference warning; no spill; legacy arrays read-only.
 - Contract: [formula semantics](formula-semantics.md).
 

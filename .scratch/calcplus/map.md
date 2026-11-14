@@ -55,7 +55,7 @@ These are recorded so they are not lost; none blocks the v1 build:
 
 - Localization of the UI and of function names.
 - Formula-bar and name-box edge behaviours.
-- Grid interaction edge cases not fixed by the matrix: fill-handle options, merged-range selection, IME/bidi text, selection scrolling.
+- Grid interaction edge cases not fixed by the matrix: fill-handle options, merged-range selection, complex bidi text layout, selection scrolling. IME input is in scope via the DOM in-cell editor; bidi layout is deferred.
 
 ## Out of scope
 

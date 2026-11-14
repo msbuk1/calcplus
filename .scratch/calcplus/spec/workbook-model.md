@@ -76,10 +76,10 @@ Resolved by [07 — Workbook data model](../issues/07-workbook-model.md) on 2026
 
 ## 6. Serialization
 
-- The canonical snapshot is versioned JSON: workbook, sheets, cells, styles, names, side tables, view settings and opaque-part metadata.
+- The canonical snapshot is versioned JSON: workbook, sheets, cells, styles, names, side tables, view settings, opaque-part metadata and opaque-part payloads (the original bytes).
 - `.xlsx` import maps the modelled parts into the model and stores everything else as original bytes, with an anchor index where the part is positioned on a sheet.
 - `.xlsx` export patches only dirty parts. Untouched parts are byte-identical; style and shared-string tables are append-only.
-- The snapshot is used for autosave, crash recovery, tests and a future sync layer. It is not the interchange format.
+- The snapshot is used for autosave, crash recovery, tests and a future sync layer. It is not the interchange format. Because it carries opaque-part payloads, restore → save is lossless (persistence.md §2).
 
 ## 7. Edits and undo
 

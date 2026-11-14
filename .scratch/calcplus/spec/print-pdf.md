@@ -48,7 +48,9 @@ window.print()
 - **Margins:** top, bottom, left, right in points.
 - **Scaling:** uniform; no independent X/Y scale in v1.
 - **Page count:** computed from the plan, not by the browser.
-- **Gridlines and headings:** follow the sheet view settings.
+- **Gridlines and headings:** follow the sheet’s **print** settings (`printOptions.gridLines` / `gridLinesSet` / `headings`); the view-gridlines state never drives print output (research/21).
+- **Multiple print areas:** each defined print area prints as its own page set, matching Excel (research/21).
+- **Font subsets are renamed at export** (for example `CALP+Selawik`) so no modified font ships under a reserved name (licensing.md); PDFKit’s default subsetting is kept.
 - **Merged cells:** clipped per page; content appears on the page containing the anchor.
 - **Row heights, column widths, borders, fills, fonts and number formats:** rendered from the same cell display records as the grid.
 - **Conditional formatting:** rendered from the same CF layer.
@@ -57,7 +59,7 @@ window.print()
 ## 5. Fidelity limits
 
 - Paper printing is advisory: the browser dialog can override paper size, margins, scale, headers/footers and background graphics. Excel has the same printer caveat.
-- PDF substitutes fonts. There is no Aptos metric clone in v1; the closest bundled metric-compatible font is used.
+- PDF substitutes fonts. There is no Aptos metric clone in v1; the closest bundled metric-compatible font is used. **Pinned v1 deviation (PRD AC10):** Aptos falls back to Carlito, which is *not* metric-compatible with Aptos — line and column widths can differ from Excel. It is the only non-metric font substitution in v1, and it is listed in the compatibility report.
 - Safari before 18.2 does not honour `@page`; the preview still works, but paper geometry may differ.
 - Excel's exact fit-to-page edge cases need golden workbooks; the plan follows the documented behaviour and is pinned by fixtures.
 - Images and charts are v2; the layout reserves their anchors but does not render them.

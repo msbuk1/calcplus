@@ -27,12 +27,14 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 
 ## 2. Autosave and recovery
 
-- Autosave writes a **recovery copy** — the canonical JSON snapshot from the workbook model — to IndexedDB.
+- Autosave writes a **recovery copy** — the canonical JSON snapshot from the workbook model, including opaque-part payloads (the original bytes) and their metadata — to IndexedDB.
 - Cadence: debounced about 3 seconds after the last document edit, plus on `visibilitychange` (hidden) and `pagehide`.
 - One latest recovery copy per open document, keyed by document ID.
 - The user's file is written only on explicit Save or Save As. Autosave never writes the file.
 - On startup, if an unsaved recovery copy exists, offer **Restore** or **Discard**.
 - Delete the recovery copy after a successful save.
+- Restore is complete and lossless: it rebuilds the model exactly as at open plus unsaved commands, and a later Save writes a full-fidelity `.xlsx` whose Tier B parts (charts, pivots, macros, external links) survive byte-identical. Recovery must never violate the no-silent-loss goal.
+- Restore never re-reads the user’s file; a file changed or deleted while the tab was closed cannot alter or block recovery.
 - Request persistent storage (`navigator.storage.persist()`) and handle quota errors by warning and keeping the last good snapshot.
 - Recovery copies are local only; nothing is uploaded.
 - **Origin stability:** the launcher must keep a stable scheme, host and port. Recovery copies, recent entries and file handles are origin-scoped; a random port would look like data loss. `--port N` creates a separate storage area and must say so.
@@ -79,7 +81,7 @@ Resolved by [08 — File handling and persistence](../issues/08-file-persistence
 
 1. Chrome/Edge: open `.xlsx`, edit, `Ctrl+S` writes back to the same file; Save As creates a new file.
 2. Safari/Firefox: open via picker, save via download; the limitation is explained.
-3. Kill the tab mid-edit; reopen; the recovery prompt restores the unsaved changes.
+3. Kill the tab mid-edit; reopen; the recovery prompt restores the unsaved changes, and a subsequent save writes charts, pivots, macros and external links byte-identical.
 4. Autosave never writes the user's file; only explicit Save does.
 5. Recent entries reopen with permission; denied permission prompts and can be removed.
 6. An external edit is detected on save; the user chooses reload, overwrite or Save As.

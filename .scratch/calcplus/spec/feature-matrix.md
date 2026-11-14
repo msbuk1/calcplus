@@ -66,6 +66,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | Feature | v1 | Acceptance criterion |
 |---|---|---|
 | Formula bar, in-cell entry, automatic calculation | IN | Covered by the grid/editing criteria above. |
+| AutoSum (`Alt+=`, command `formula.autosum`) | IN | Inserts `=SUM(...)` over the adjacent range; Home → Editing group. |
 | Function autocomplete and signature hints | IN | Typing `=` and a function name suggests matching functions; choosing one shows argument signatures; keyboard navigation works. |
 | Defined names: evaluate, preserve, use in formulas and Go To | IN | Names in imported workbooks resolve and round-trip; no editor in v1. |
 | Name Manager / name creation and editing | V2 | — |
