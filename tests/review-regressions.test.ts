@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
 import { DocumentSession } from '@commands/session';
-import { editorHasChanges } from '@grid/CanvasGrid';
+import { editorHasChanges } from '@grid/editor';
 import { confirmReplaceDocument } from '@io/confirm';
 import { numberValue, textValue } from '@model/value';
 import { setCellSnapshot, type Cell } from '@model/types';

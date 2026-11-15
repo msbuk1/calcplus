@@ -1,42 +1,19 @@
-import { readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { openWorkbook } from '../../src/ooxml/open';
+import { clickCell, fixtureBytes, fixturePath, openFixture } from './grid-helpers';
 
-const fixturePath = new URL('../../fixtures/compat/m1-chart-unknown.xlsx', import.meta.url);
-const fixtureBytes = new Uint8Array(readFileSync(fixturePath));
-
-async function openFixture(page: import('@playwright/test').Page): Promise<void> {
-  await page.goto('/?fsa=0');
-  await page.getByTestId('file-input').setInputFiles(fileURLToPath(fixturePath));
-  await expect(page.getByTestId('file-name')).toHaveText('m1-chart-unknown.xlsx');
-  await expect(page.getByTestId('grid-canvas')).toBeVisible();
-}
-
-async function readDownload(
-  download: import('@playwright/test').Download,
-  outputPath: string,
-): Promise<Uint8Array> {
-  await download.saveAs(outputPath);
-  return new Uint8Array(readFileSync(outputPath));
-}
+const fixtureName = 'm1-chart-unknown.xlsx';
 
 test('opens a workbook, renders values, edits, commits and undoes', async ({ page }) => {
-  await openFixture(page);
+  await openFixture(page, fixtureName);
   await expect(page.getByTestId('compat-banner')).toContainText('Charts are preserved');
 
-  const before = await page.evaluate(() =>
-    (
-      window as unknown as { __calcplus: { getCellDisplay(r: number, c: number): string } }
-    ).__calcplus.getCellDisplay(1, 1),
-  );
+  const before = await page.evaluate(() => window.__calcplus.getCellDisplay(1, 1));
   expect(before).toBe('42.5');
 
-  const canvas = page.getByTestId('grid-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(box!.x + 48 + 104 + 20, box!.y + 24 + 22 + 10);
+  await clickCell(page, 1, 1);
   await expect(page.getByTestId('active-cell')).toHaveText('B2');
 
   await page.keyboard.type('43');
@@ -44,42 +21,36 @@ test('opens a workbook, renders values, edits, commits and undoes', async ({ pag
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
-  const afterEdit = await page.evaluate(() =>
-    (
-      window as unknown as { __calcplus: { getCellDisplay(r: number, c: number): string } }
-    ).__calcplus.getCellDisplay(1, 1),
-  );
+  const afterEdit = await page.evaluate(() => window.__calcplus.getCellDisplay(1, 1));
   expect(afterEdit).toBe('43');
 
   await page.getByTestId('undo-button').click();
-  const afterUndo = await page.evaluate(() =>
-    (
-      window as unknown as { __calcplus: { getCellDisplay(r: number, c: number): string } }
-    ).__calcplus.getCellDisplay(1, 1),
-  );
+  const afterUndo = await page.evaluate(() => window.__calcplus.getCellDisplay(1, 1));
   expect(afterUndo).toBe('42.5');
 });
 
 test('no-op save downloads the original bytes exactly', async ({ page }, testInfo) => {
-  await openFixture(page);
+  await openFixture(page, fixtureName);
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('save-button').click();
-  const saved = await readDownload(await downloadPromise, testInfo.outputPath('identity.xlsx'));
-  expect(Buffer.compare(Buffer.from(saved), Buffer.from(fixtureBytes))).toBe(0);
+  const download = await downloadPromise;
+  await download.saveAs(testInfo.outputPath('identity.xlsx'));
+  const saved = new Uint8Array(readFileSync(testInfo.outputPath('identity.xlsx')));
+  expect(Buffer.compare(Buffer.from(saved), Buffer.from(fixtureBytes(fixtureName)))).toBe(0);
 });
 
 test('edited save downloads a workbook that preserves Tier B parts', async ({ page }, testInfo) => {
-  await openFixture(page);
-  const canvas = page.getByTestId('grid-canvas');
-  const box = await canvas.boundingBox();
-  await page.mouse.click(box!.x + 48 + 104 + 20, box!.y + 24 + 22 + 10);
+  await openFixture(page, fixtureName);
+  await clickCell(page, 1, 1);
   await page.keyboard.type('43');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('save-button').click();
-  const saved = await readDownload(await downloadPromise, testInfo.outputPath('edited.xlsx'));
+  const download = await downloadPromise;
+  await download.saveAs(testInfo.outputPath('edited.xlsx'));
+  const saved = new Uint8Array(readFileSync(testInfo.outputPath('edited.xlsx')));
   const reopened = openWorkbook(saved);
   expect(reopened.workbook.sheets[0]!.cells.get('1:1')?.value).toEqual({
     type: 'number',
@@ -88,14 +59,13 @@ test('edited save downloads a workbook that preserves Tier B parts', async ({ pa
   expect(
     Buffer.compare(
       Buffer.from(reopened.workbook.opaqueParts.get('xl/charts/chart1.xml')!.bytes),
-      Buffer.from(fixtureBytes.length > 0 ? readChart(fixtureBytes) : new Uint8Array()),
+      Buffer.from(
+        openWorkbook(fixtureBytes(fixtureName)).workbook.opaqueParts.get('xl/charts/chart1.xml')!
+          .bytes,
+      ),
     ),
   ).toBe(0);
 });
-
-function readChart(bytes: Uint8Array): Uint8Array {
-  return openWorkbook(bytes).workbook.opaqueParts.get('xl/charts/chart1.xml')!.bytes;
-}
 
 test('creates a new blank workbook and saves it through Save As', async ({ page }, testInfo) => {
   await page.goto('/?fsa=0');
@@ -103,17 +73,16 @@ test('creates a new blank workbook and saves it through Save As', async ({ page 
   await expect(page.getByTestId('file-name')).toHaveText('Untitled.xlsx');
   await expect(page.getByTestId('grid-canvas')).toBeVisible();
 
-  const canvas = page.getByTestId('grid-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(box!.x + 48 + 20, box!.y + 24 + 10);
+  await clickCell(page, 0, 0);
   await page.keyboard.type('Hello');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('save-as-button').click();
-  const saved = await readDownload(await downloadPromise, testInfo.outputPath('untitled.xlsx'));
+  const download = await downloadPromise;
+  await download.saveAs(testInfo.outputPath('untitled.xlsx'));
+  const saved = new Uint8Array(readFileSync(testInfo.outputPath('untitled.xlsx')));
   const reopened = openWorkbook(saved);
   expect(reopened.workbook.sheets).toHaveLength(1);
   expect(reopened.workbook.sheets[0]!.name).toBe('Sheet1');
@@ -124,15 +93,12 @@ test('creates a new blank workbook and saves it through Save As', async ({ page 
 });
 
 test('F2 and Enter without a change does not rewrite a formula cell', async ({ page }) => {
-  await openFixture(page);
-  const canvas = page.getByTestId('grid-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
+  await openFixture(page, fixtureName);
   // B3 is the formula cell B2*2 with cached value 85.
-  await page.mouse.click(box!.x + 48 + 104 + 20, box!.y + 24 + 22 + 22 + 10);
+  await clickCell(page, 2, 1);
   await expect(page.getByTestId('active-cell')).toHaveText('B3');
   await page.keyboard.press('F2');
-  await expect(page.getByTestId('cell-editor')).toHaveValue('85');
+  await expect(page.getByTestId('cell-editor')).toHaveValue('B2*2');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toHaveCount(0);
   const formula = await page.evaluate(
@@ -147,22 +113,19 @@ test('F2 and Enter without a change does not rewrite a formula cell', async ({ p
 });
 
 test('prompts and keeps the current document when opening with unsaved edits', async ({ page }) => {
-  await openFixture(page);
-  const canvas = page.getByTestId('grid-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  await page.mouse.click(box!.x + 48 + 20, box!.y + 24 + 10);
+  await openFixture(page, fixtureName);
+  await clickCell(page, 0, 0);
   await page.keyboard.type('changed');
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
   const dialogPromise = page.waitForEvent('dialog');
-  await page.getByTestId('file-input').setInputFiles(fileURLToPath(fixturePath));
+  await page.getByTestId('file-input').setInputFiles(fixturePath(fixtureName));
   const dialog = await dialogPromise;
   expect(dialog.message()).toMatch(/unsaved changes/i);
   await dialog.dismiss();
 
   await expect(page.getByTestId('status-message')).toContainText('Unsaved changes were kept');
-  await expect(page.getByTestId('file-name')).toHaveText('m1-chart-unknown.xlsx');
+  await expect(page.getByTestId('file-name')).toHaveText(fixtureName);
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 });

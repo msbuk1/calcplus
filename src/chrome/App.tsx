@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
+import appIcon from '../../assets/icons/icon-64.png';
 import { DocumentSession } from '@commands/session';
-import type { CellAddress, SheetId } from '@model/types';
-import { formatCellRef, cellKey } from '@model/types';
-import { parseUserValue } from '@model/value';
+import type { SheetId } from '@model/types';
+import { formatCellRef, cellKey, createCell } from '@model/types';
+import { parseUserValue, BLANK } from '@model/value';
 import { openBlankWorkbook } from '@ooxml/blank';
 import type { CompatibilityInfo } from '@ooxml/open';
 import { openWorkbook } from '@ooxml/open';
@@ -15,6 +16,13 @@ import { confirmReplaceDocument } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
 import { CanvasGrid } from '@grid/CanvasGrid';
 import { GRID_METRICS } from '@grid/frame';
+import type { GridCellAddress, GridSelection } from '@grid/frame';
+import { gridDebugState } from '@grid/debug';
+import { cellRect } from '@grid/panes';
+import { collapseSelection } from '@grid/selection';
+import { FormulaBar } from '@chrome/FormulaBar';
+import { NameBox } from '@chrome/NameBox';
+import { nextFocusZone, type FocusZone } from '@chrome/focus';
 import {
   canUseFileSystemAccess,
   pickWorkbookFile,
@@ -38,11 +46,17 @@ const FORCE_FALLBACK =
 export function App(): JSX.Element {
   const [document, setDocument] = useState<LoadedDocument | null>(null);
   const [version, setVersion] = useState(0);
-  const [active, setActive] = useState<CellAddress>({ row: 0, col: 0 });
+  const [selection, setSelection] = useState<GridSelection>(collapseSelection({ row: 0, col: 0 }));
+  const [focusZone, setFocusZone] = useState<FocusZone>('grid');
   const [status, setStatus] = useState('Open an .xlsx workbook to begin.');
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const nameBoxRef = useRef<HTMLInputElement | null>(null);
+  const formulaBarRef = useRef<HTMLInputElement | null>(null);
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
+
+  const active = selection.focus;
 
   const projection = useMemo(() => {
     if (document === null) return null;
@@ -67,7 +81,8 @@ export function App(): JSX.Element {
       sheetId: opened.initialSheetId,
       compatibility: opened.compatibility,
     });
-    setActive({ row: 0, col: 0 });
+    setSelection(collapseSelection({ row: 0, col: 0 }));
+    setFocusZone('grid');
     setVersion((value) => value + 1);
     setStatus(`Opened ${fileName}.`);
     recoveryRef.current = null;
@@ -148,7 +163,7 @@ export function App(): JSX.Element {
         fileName: outcome.fileName,
         handle: outcome.handle ?? document.handle,
       });
-      setVersion((value) => value + 1);
+      setVersion((current) => current + 1);
       recoveryRef.current = null;
       setStatus(result.noOp ? 'Saved. No changes to write.' : 'Saved.');
     } catch (error) {
@@ -165,17 +180,22 @@ export function App(): JSX.Element {
     }
   };
 
-  const runCellSet = (address: CellAddress, rawText: string): void => {
+  const runCellSet = (address: GridCellAddress, rawText: string): void => {
     if (document === null) return;
-    const value = parseUserValue(rawText);
+    // A leading equals sign means the user authored a formula. The engine
+    // arrives with the model-depth milestone; calcplus stores the authored
+    // text and lets the saved file ask Excel to recalculate.
+    const isFormula = rawText.startsWith('=');
+    const formula = isFormula ? rawText.slice(1) : null;
+    const value = isFormula ? BLANK : parseUserValue(rawText);
     const result = document.session.dispatch('cell.set', {
       sheetId: document.sheetId,
       row: address.row,
       col: address.col,
       value,
+      formula,
     });
     setVersion((current) => current + 1);
-    setActive(address);
     if (result.ui?.message !== undefined) {
       setStatus(result.ui.message);
       return;
@@ -213,8 +233,20 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
 
+  const focusZoneRef = useRef<FocusZone>(focusZone);
+  focusZoneRef.current = focusZone;
+
   useEffect(() => {
     const listener = (event: KeyboardEvent): void => {
+      if (event.key === 'F6') {
+        event.preventDefault();
+        setFocusZone((zone) => nextFocusZone(zone, event.shiftKey));
+        return;
+      }
+      if (event.key === 'Escape' && focusZoneRef.current !== 'grid') {
+        setFocusZone('grid');
+        return;
+      }
       if (!event.ctrlKey && !event.metaKey) return;
       const target = event.target as HTMLElement | null;
       const inTextInput =
@@ -238,6 +270,103 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('keydown', listener);
   });
 
+  // One focus owner: the zone decides which control holds the keyboard.
+  useEffect(() => {
+    if (focusZone === 'grid') {
+      shellRef.current?.focus();
+      return;
+    }
+    if (focusZone === 'name-box') {
+      nameBoxRef.current?.focus();
+      return;
+    }
+    formulaBarRef.current?.focus();
+  }, [focusZone]);
+
+  const navigateToAddress = useCallback(
+    (text: string): string | null => {
+      const trimmed = text.trim();
+      if (trimmed === '') return null;
+      const match = /^([A-Za-z]{1,3})([0-9]{1,7})$/.exec(trimmed);
+      if (match === null) {
+        setStatus(`"${trimmed}" is not a cell address.`);
+        return null;
+      }
+      const column = lettersToColumn(match[1] ?? '');
+      const row = Number(match[2] ?? '0') - 1;
+      if (projection === null) return null;
+      if (row < 0 || row >= projection.rowCount || column >= projection.columnCount) {
+        setStatus(`"${trimmed}" is outside the sheet.`);
+        return null;
+      }
+      setSelection(collapseSelection({ row, col: column }));
+      // The name box hands the focus back to the grid (command-system §7).
+      setFocusZone('grid');
+      setStatus(`Selected ${formatCellRef(row, column)}.`);
+      return formatCellRef(row, column);
+    },
+    [projection],
+  );
+
+  const loadBenchmarkSheet = (options: {
+    rows: number;
+    cols: number;
+    seed?: number;
+    /** When set, only every nth row holds a cell: a sparse sheet. */
+    touchedEvery?: number;
+  }): number => {
+    const opened = openBlankWorkbook();
+    const sheet = opened.workbook.sheets[0];
+    if (sheet === undefined) return 0;
+    let state = (options.seed ?? 1) >>> 0;
+    const random = (): number => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state / 4_294_967_296;
+    };
+    for (let index = 1; index < 6; index += 1) {
+      opened.workbook.styles.push({
+        id: index,
+        numFmtId: index === 3 ? 4 : 0,
+        fontId: 0,
+        fillId: 0,
+        borderId: 0,
+        xfId: 0,
+        rawXml: '',
+        font: {
+          name: 'Calibri',
+          size: index === 2 ? 14 : 11,
+          bold: index === 1,
+          italic: false,
+          underline: false,
+          strike: false,
+          color: index === 4 ? '#b00020' : null,
+        },
+        fill:
+          index === 5 ? { pattern: 'solid', color: '#fff2cc' } : { pattern: 'none', color: null },
+        alignment: {
+          horizontal: index === 3 ? 'right' : 'general',
+          vertical: 'bottom',
+          wrapText: false,
+          indent: 0,
+          textRotation: 0,
+        },
+        numFmtCode: index === 3 ? '#,##0.00' : null,
+      });
+    }
+    let count = 0;
+    const step = options.touchedEvery ?? 1;
+    for (let row = 0; row < options.rows; row += step) {
+      for (let col = 0; col < options.cols; col += 1) {
+        const value = Math.round(random() * 100_000) / 100;
+        sheet.cells.set(`${row}:${col}`, createCell({ type: 'number', value }, (row + col) % 6));
+        count += 1;
+      }
+    }
+    loadOpened(opened, 'benchmark.xlsx', null);
+    setStatus(`Loaded a benchmark sheet with ${count} touched cells.`);
+    return count;
+  };
+
   useEffect(() => {
     const debugWindow = window as unknown as {
       __calcplus?: Record<string, unknown>;
@@ -249,6 +378,8 @@ export function App(): JSX.Element {
         dirty: document?.session.hasUnsavedChanges ?? false,
         version: document?.session.version ?? 0,
         active,
+        selection,
+        focusZone,
         canUndo: document?.session.canUndo ?? false,
         canRedo: document?.session.canRedo ?? false,
         status,
@@ -263,6 +394,41 @@ export function App(): JSX.Element {
         return cell ?? null;
       },
       hasRecoverySnapshot: () => recoveryRef.current !== null,
+      loadBenchmarkSheet,
+      getCellRect: (row: number, col: number) => {
+        if (projection === null) return null;
+        const layout = gridDebugState.layout;
+        if (layout === null) return null;
+        return cellRect(
+          projection,
+          layout,
+          gridDebugState.scrollX,
+          gridDebugState.scrollY,
+          row,
+          col,
+        );
+      },
+      getScroll: () => ({
+        x: gridDebugState.scrollX,
+        y: gridDebugState.scrollY,
+      }),
+      getFreeze: () => ({
+        rows: projection?.freezeRows ?? 0,
+        cols: projection?.freezeCols ?? 0,
+      }),
+      getCellStyle: (row: number, col: number) => {
+        const cell = projection?.cellAt(row, col);
+        if (cell === undefined || cell === null) return null;
+        return {
+          font: cell.style.font,
+          fill: cell.style.fill,
+          alignment: cell.style.alignment,
+          numberFormat: cell.style.numberFormat,
+          displayText: cell.displayText,
+          merge: cell.merge,
+        };
+      },
+      getFillHandle: () => gridDebugState.fillHandle,
     };
   });
 
@@ -270,8 +436,9 @@ export function App(): JSX.Element {
     <div className="app">
       <header className="app-header">
         <div className="brand">
+          <img className="brand-icon" src={appIcon} alt="" width={28} height={28} />
           <span className="brand-name">calcplus</span>
-          <span className="brand-phase">M1 walking skeleton</span>
+          <span className="brand-phase">M2 grid foundation</span>
         </div>
         <div className="file-meta">
           <span data-testid="file-name">{document?.fileName ?? 'No workbook open'}</span>
@@ -330,6 +497,34 @@ export function App(): JSX.Element {
         </button>
       </div>
 
+      <div className="formula-row">
+        <NameBox
+          value={projection === null ? '' : formatCellRef(active.row, active.col)}
+          onNavigate={navigateToAddress}
+          onCancel={() => setFocusZone('grid')}
+          onFocused={() => setFocusZone('name-box')}
+          inputRef={nameBoxRef}
+        />
+        <FormulaBar
+          text={projection?.rawTextAt(active.row, active.col) ?? ''}
+          onCommit={(text, options) => {
+            runCellSet(active, text);
+            if (options.moveDown && projection !== null) {
+              setSelection(
+                collapseSelection({
+                  row: Math.min(projection.rowCount - 1, active.row + 1),
+                  col: active.col,
+                }),
+              );
+            }
+            setFocusZone('grid');
+          }}
+          onCancel={() => setFocusZone('grid')}
+          onFocused={() => setFocusZone('formula-bar')}
+          inputRef={formulaBarRef}
+        />
+      </div>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -354,17 +549,19 @@ export function App(): JSX.Element {
         {document !== null && projection !== null ? (
           <CanvasGrid
             projection={projection}
-            active={active}
-            onSelect={setActive}
+            selection={selection}
+            onSelectionChange={setSelection}
             onCommit={runCellSet}
             onClear={(address) => runCellSet(address, '')}
+            shellRef={shellRef}
+            onFocusZone={() => setFocusZone('grid')}
           />
         ) : (
           <div className="empty-state">
             <h1>Open a small workbook</h1>
             <p>
-              The M1 walking skeleton opens a real <code>.xlsx</code>, renders its values, edits a
-              cell, undoes it, and saves without rewriting parts it does not understand.
+              The grid scrolls a full 1,048,576 by 16,384 sheet, freezes panes, and edits cells
+              without touching the parts of the package calcplus does not model.
             </p>
             <button type="button" onClick={() => void openFile()} data-testid="empty-open-button">
               Open workbook
@@ -385,6 +582,14 @@ export function App(): JSX.Element {
       </footer>
     </div>
   );
+}
+
+function lettersToColumn(letters: string): number {
+  let value = 0;
+  for (const character of letters.toUpperCase()) {
+    value = value * 26 + (character.charCodeAt(0) - 64);
+  }
+  return value - 1;
 }
 
 function dirtyKeysFromSnapshot(

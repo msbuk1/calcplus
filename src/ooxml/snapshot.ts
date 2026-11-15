@@ -16,6 +16,7 @@ import type {
   WorkbookProtectionRecord,
 } from '@model/types';
 import type { SharedStringsTable, WorkbookPackage } from './types';
+import { DEFAULT_ALIGNMENT, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -150,7 +151,7 @@ export function restoreWorkbook(snapshot: WorkbookSnapshot): {
     id: snapshot.workbook.id,
     sheets: snapshot.workbook.sheets.map(restoreSheet),
     names: snapshot.workbook.names.map(cloneDefinedName),
-    styles: snapshot.workbook.styles.map((style) => ({ ...style })),
+    styles: snapshot.workbook.styles.map(normalizeStyle),
     theme: {
       path: themePath,
       bytes: themePath === null ? null : (entries.get(themePath) ?? null),
@@ -250,6 +251,20 @@ function restoreSheet(sheet: SnapshotSheet): Sheet {
 
 function cloneDefinedName(name: DefinedName): DefinedName {
   return { ...name };
+}
+
+/**
+ * Fill in the style parts a snapshot written before the style table gained
+ * font, fill, alignment and number-format data.
+ */
+function normalizeStyle(style: StyleRecord): StyleRecord {
+  return {
+    ...style,
+    font: style.font ?? DEFAULT_FONT,
+    fill: style.fill ?? DEFAULT_FILL,
+    alignment: style.alignment ?? DEFAULT_ALIGNMENT,
+    numFmtCode: style.numFmtCode ?? null,
+  };
 }
 
 function cloneCellForSnapshot(cell: Cell): Cell {

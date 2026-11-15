@@ -26,8 +26,8 @@ body {
 }
 
 .app {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 
@@ -39,12 +39,21 @@ body {
   padding: 10px 16px;
   background: #ffffff;
   border-bottom: 1px solid #e1e3e6;
+  flex: none;
 }
 
 .brand {
   display: flex;
   align-items: baseline;
   gap: 10px;
+}
+
+.brand-icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  align-self: center;
+  border-radius: 6px;
 }
 
 .brand-name {
@@ -78,6 +87,7 @@ body {
   padding: 7px 16px;
   background: #ffffff;
   border-bottom: 1px solid #e1e3e6;
+  flex: none;
 }
 
 .toolbar button,
@@ -118,8 +128,88 @@ body {
 
 .grid-area {
   position: relative;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 12px;
+}
+
+.formula-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e1e3e6;
+  flex: none;
+}
+
+.name-box {
+  width: 120px;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  padding: 0 6px;
+  font:
+    13px system-ui,
+    sans-serif;
+  color: #111827;
+  background: #ffffff;
+}
+
+.name-box:focus,
+.formula-bar:focus {
+  outline: 2px solid #1a73e8;
+  outline-offset: -1px;
+}
+
+.formula-bar-group {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  color: #4b5563;
+  font:
+    italic 13px system-ui,
+    sans-serif;
+  background: #ffffff;
+}
+
+.formula-bar {
+  flex: 1;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  padding: 0 6px;
+  font:
+    13px system-ui,
+    sans-serif;
+  color: #111827;
+  background: #ffffff;
+}
+
+.formula-commit {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+  color: #4b5563;
+  font: inherit;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.formula-commit:hover {
+  background: #f3f4f6;
 }
 
 .grid-shell {
@@ -135,10 +225,60 @@ body {
 }
 
 .grid-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   cursor: cell;
+}
+
+.grid-shell:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: -2px;
+}
+
+.grid-scrollbar {
+  position: absolute;
+  background: #f3f3f3;
+  border-left: 1px solid #e1e1e1;
+  border-top: 1px solid #e1e1e1;
+}
+
+.grid-scrollbar-vertical {
+  top: 24px;
+  right: 0;
+  bottom: 12px;
+  width: 12px;
+}
+
+.grid-scrollbar-horizontal {
+  left: 48px;
+  right: 12px;
+  bottom: 0;
+  height: 12px;
+}
+
+.grid-scrollbar-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 6px;
+  background: #c1c1c1;
+}
+
+.grid-scrollbar-thumb:hover {
+  background: #a6a6a6;
+}
+
+.grid-scrollbar-vertical .grid-scrollbar-thumb {
+  left: 2px;
+  width: 8px;
+}
+
+.grid-scrollbar-horizontal .grid-scrollbar-thumb {
+  top: 2px;
+  height: 8px;
 }
 
 .cell-editor {
@@ -147,6 +287,8 @@ body {
   margin: 0;
   border: 2px solid #1a73e8;
   padding: 0 4px;
+  resize: none;
+  overflow: hidden;
   font:
     13px system-ui,
     sans-serif;
@@ -191,6 +333,7 @@ body {
   border-top: 1px solid #e1e3e6;
   color: #4b5563;
   font-size: 12px;
+  flex: none;
 }
 
 .status-spacer {

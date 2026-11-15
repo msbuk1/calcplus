@@ -78,27 +78,51 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 
 ### M3 — Formula engine and model depth (8-12 pw)
 
-**Build**
-
-- `FormulaEngine` port and HyperFormula adapter with the required configuration.
-- The 52-function registry gate; unsupported functions return `#NAME?` or a stale cached value.
-- Shims: wildcard exact lookup, `INT`, `CHOOSE`, `#CYCLE!` → `#CIRC!`, error mapping, authored-text preservation.
-- Dependency graph and incremental recalculation; volatile `TODAY`/`NOW`; circular-reference warning.
-- 1900 and 1904 date systems; serial 60.
-- Defined names, cross-sheet references, whole-column and whole-row references.
-- Full command registry, transaction boundaries and undo/redo for cell edits and formatting.
-- Style table depth: fonts, fills, borders, alignment and number-format references.
+M3 runs as three sub-slices: engine wiring, function coverage and model depth. Together they keep M3's total scope and its six exit criteria; each slice carries its own demo and gate, and M3 is done when all three slice gates pass.
 
 **Spikes:** HyperFormula fan-out, memory and worker behaviour at the ticket 11 sizes; a prototype of the OOXML range transform for insert/delete.
 
-**Demo:** enter formulas, watch dependents recalculate, undo and redo, switch between 1900 and 1904 workbooks, and run the 52-function golden subset.
+#### M3A — Engine wiring
 
-**Exit criteria**
+**Build**
+
+- `FormulaEngine` port and HyperFormula adapter with the required configuration.
+- Dependency graph and incremental recalculation; volatile `TODAY`/`NOW`; circular-reference warning.
+
+**Demo:** enter formulas and watch dependents recalculate.
+
+**Gate:** recalculation works after edits, volatiles update, circular warning shows.
+
+#### M3B — Function coverage
+
+**Build**
+
+- The 52-function registry gate; unsupported functions return `#NAME?` or a stale cached value.
+- Shims: wildcard exact lookup, `INT`, `CHOOSE`, `#CYCLE!` → `#CIRC!`, error mapping, authored-text preservation.
+
+**Demo:** the 52-function golden subset passes.
+
+**Gate:** M3 exit criteria 1, 2, 3 and 4 pass.
 
 1. The 52-function golden subset passes within tolerance.
 2. The error/coercion/operator table passes.
 3. Date, reference, lookup and circular-reference tests pass.
 4. Every shim has a passing test.
+
+#### M3C — Model depth
+
+**Build**
+
+- 1900 and 1904 date systems; serial 60.
+- Defined names, cross-sheet references, whole-column and whole-row references.
+- Full command registry, transaction boundaries and undo/redo for cell edits and formatting.
+- Style table depth: fonts, fills, borders, alignment and number-format references.
+- A prototype of the OOXML range transform for insert/delete.
+
+**Demo:** switch between 1900 and 1904 workbooks, use names across sheets, undo and redo, and run the range-transform prototype rewrite.
+
+**Gate:** M3 exit criteria 5 and 6 pass.
+
 5. Undo/redo restores the exact prior state for cell and formatting commands.
 6. The range-transform prototype rewrites formulas, merges and names correctly and meets the structural-edit rebuild budget on the 250k shape ([performance §3.2](performance.md)).
 

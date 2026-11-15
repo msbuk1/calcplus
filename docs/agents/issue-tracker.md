@@ -1,30 +1,14 @@
-# Issue tracker: Local Markdown
+# Project records
 
-Issues and specs (you may know a spec as a PRD) for this repo live as markdown files in `.scratch/`.
+Use these paths only when the task asks for a research note, decision, or build-status record. Do not create tickets as routine documentation.
 
-## Conventions
+- Product decisions and resolved specification questions: `.scratch/calcplus/`; the map is `map.md`, the contracts are in `spec/`, and decision records are in `issues/`.
+- Implementation and milestone status: `.scratch/calcplus-build/issues/`.
+- Research notes: `.scratch/calcplus/research/`.
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+Follow the format of nearby files and preserve their status fields. Read the referenced ticket when the user provides a path or number. Do not reopen a resolved decision ticket unless asked.
 
-## When a skill says "publish to the issue tracker"
-
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
-
-## When a skill says "fetch the relevant ticket"
-
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
-
-## Wayfinding operations
-
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
-
-- **Map**: `.scratch/<effort>/map.md` — the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+- For a new decision ticket or build-status record, use the next unused number in that directory. Record research notes with a descriptive file name.
+- Record a decision under `## Answer`; update the map only when an approved product decision changes.
+- Preserve milestone gate evidence. Mark a milestone accepted only after every exit criterion passes.
+- Each milestone uses a light sense check only. Deeper hardening runs only when the user explicitly kicks it off, and nothing automatic starts it.

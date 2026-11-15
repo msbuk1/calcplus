@@ -1,4 +1,27 @@
-import type { Sheet, SheetId, SheetView, StyleRecord, Workbook, WorkbookId } from './types';
+import type {
+  AlignmentStyle,
+  FillStyle,
+  FontStyle,
+  Sheet,
+  SheetId,
+  SheetView,
+  StyleRecord,
+  Workbook,
+  WorkbookId,
+} from './types';
+import { DEFAULT_ALIGNMENT, DEFAULT_FILL, DEFAULT_FONT } from './style';
+
+/** A style record as it is appended; the visual parts default to the base style. */
+export type StyleRecordInput = Omit<
+  StyleRecord,
+  'id' | 'font' | 'fill' | 'alignment' | 'numFmtCode'
+> & {
+  readonly id?: number;
+  readonly font?: FontStyle;
+  readonly fill?: FillStyle;
+  readonly alignment?: AlignmentStyle;
+  readonly numFmtCode?: string | null;
+};
 
 export const DEFAULT_ROW_HEIGHT_POINTS = 15;
 export const DEFAULT_COLUMN_WIDTH_CHARS = 8.43;
@@ -61,6 +84,10 @@ export function createDefaultStyle(id = 0): StyleRecord {
     borderId: 0,
     xfId: 0,
     rawXml: '',
+    font: DEFAULT_FONT,
+    fill: DEFAULT_FILL,
+    alignment: DEFAULT_ALIGNMENT,
+    numFmtCode: null,
   };
 }
 
@@ -83,10 +110,7 @@ export function createEmptyWorkbook(): Workbook {
  * Append-only style table. Existing ids are never renumbered or replaced.
  * Returns the new style id.
  */
-export function appendStyle(
-  workbook: Workbook,
-  style: Omit<StyleRecord, 'id'> & { id?: number },
-): number {
+export function appendStyle(workbook: Workbook, style: StyleRecordInput): number {
   const id = style.id ?? workbook.styles.length;
   if (workbook.styles.some((existing) => existing.id === id)) {
     throw new Error(`Style id ${id} already exists; the style table is append-only`);
@@ -94,7 +118,14 @@ export function appendStyle(
   if (id !== workbook.styles.length) {
     throw new Error('Appended styles must use the next contiguous id');
   }
-  workbook.styles.push({ ...style, id });
+  workbook.styles.push({
+    ...style,
+    id,
+    font: style.font ?? DEFAULT_FONT,
+    fill: style.fill ?? DEFAULT_FILL,
+    alignment: style.alignment ?? DEFAULT_ALIGNMENT,
+    numFmtCode: style.numFmtCode ?? null,
+  });
   return id;
 }
 

@@ -1,5 +1,5 @@
 import type { DefinedName, Sheet, Workbook } from '@model/types';
-import { createWorkbookId } from '@model/workbook';
+import { createDefaultStyle, createWorkbookId } from '@model/workbook';
 import { WorkbookOpenError } from './errors';
 import { parseStylesXml } from './styles-xml';
 import { parseSharedStringsXml } from './shared-strings';
@@ -129,9 +129,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     id: createWorkbookId(),
     sheets,
     names: definedNames,
-    styles: stylesInfo?.styles ?? [
-      { id: 0, numFmtId: 0, fontId: 0, fillId: 0, borderId: 0, xfId: 0, rawXml: '' },
-    ],
+    styles: stylesInfo?.styles ?? [createDefaultStyle(0)],
     theme: { path: themePath, bytes: themeBytes ?? null },
     namedStyles: stylesInfo?.namedStyles ?? [],
     protection: null,

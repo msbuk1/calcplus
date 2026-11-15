@@ -132,6 +132,42 @@ export interface Sheet {
   readonly opaqueParts: Map<string, OpaquePart>;
 }
 
+/** A font, resolved for display. Workbook-model §2: the style table holds the font. */
+export interface FontStyle {
+  readonly name: string;
+  /** Size in points. */
+  readonly size: number;
+  readonly bold: boolean;
+  readonly italic: boolean;
+  readonly underline: boolean;
+  readonly strike: boolean;
+  /** CSS colour, or `null` for the automatic colour. */
+  readonly color: string | null;
+}
+
+/** A fill, resolved for display. Only solid fills are painted in M2. */
+export interface FillStyle {
+  /** The OOXML pattern type, for example `none`, `gray125` or `solid`. */
+  readonly pattern: string;
+  /** CSS colour of the foreground, or `null` when the fill paints nothing. */
+  readonly color: string | null;
+}
+
+export type HorizontalAlignment =
+  'general' | 'left' | 'center' | 'right' | 'fill' | 'justify' | 'centerContinuous' | 'distributed';
+
+export type VerticalAlignment = 'top' | 'center' | 'bottom' | 'justify' | 'distributed';
+
+/** Cell alignment, resolved for display. */
+export interface AlignmentStyle {
+  readonly horizontal: HorizontalAlignment;
+  readonly vertical: VerticalAlignment;
+  readonly wrapText: boolean;
+  readonly indent: number;
+  /** Degrees, clockwise, 0-180. */
+  readonly textRotation: number;
+}
+
 export interface StyleRecord {
   readonly id: StyleId;
   readonly numFmtId: number;
@@ -141,6 +177,12 @@ export interface StyleRecord {
   readonly xfId: number;
   /** Original `<xf>` XML. The append-only table never renumbers existing ids. */
   readonly rawXml: string;
+  /** The font, fill and alignment this style points at, resolved for display. */
+  readonly font: FontStyle;
+  readonly fill: FillStyle;
+  readonly alignment: AlignmentStyle;
+  /** The authored number-format code, or `null` when the style uses the general format. */
+  readonly numFmtCode: string | null;
 }
 
 export interface NamedStyleRecord {

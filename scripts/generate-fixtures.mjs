@@ -6,9 +6,11 @@ import { zipSync } from 'fflate';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const compatDir = join(root, 'fixtures', 'compat');
 const expectedDir = join(root, 'fixtures', 'expected');
+const manualDir = join(root, 'fixtures', 'manual');
 const oracleDir = join(root, 'fixtures', 'oracle');
 mkdirSync(compatDir, { recursive: true });
 mkdirSync(expectedDir, { recursive: true });
+mkdirSync(manualDir, { recursive: true });
 mkdirSync(oracleDir, { recursive: true });
 
 const XML_HEADER = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -359,6 +361,134 @@ const identityPackage = packageEntries({
   sharedStrings: identitySharedStrings,
 });
 
+// M2 grid fixture: frozen row and column, a merged range, imported row and
+// column sizes, and the font, fill, alignment and number-format styles the
+// grid renders in the grid-foundation milestone.
+const m2StylesXml = `${XML_HEADER}
+<styleSheet xmlns="${SPREADSHEET_NS}">
+  <numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>
+  <fonts count="4">
+    <font><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+    <font><i/><sz val="14"/><color rgb="FFB00020"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="14"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="6">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+    <xf numFmtId="10" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+const m2SharedStringsXml = `${XML_HEADER}
+<sst xmlns="${SPREADSHEET_NS}" count="0" uniqueCount="0"/>`;
+
+const m2Rows = [];
+m2Rows.push(
+  '<row r="1" ht="30" customHeight="1"><c r="A1" t="inlineStr" s="4"><is><t>Quarterly report</t></is></c><c r="B1" s="4"/></row>',
+);
+m2Rows.push(
+  '<row r="2">' +
+    '<c r="A2" t="inlineStr" s="1"><is><t>Item</t></is></c>' +
+    '<c r="B2" t="inlineStr" s="1"><is><t>Amount</t></is></c>' +
+    '<c r="C2" t="inlineStr" s="1"><is><t>Share</t></is></c>' +
+    '<c r="D2" t="inlineStr" s="1"><is><t>Note</t></is></c>' +
+    '</row>',
+);
+for (let index = 0; index < 300; index += 1) {
+  const row = index + 3;
+  const amount = ((index * 37) % 1000) + 0.25;
+  const share = ((index * 13) % 100) / 100;
+  const note = index % 25 === 0 ? 'checked' : '';
+  m2Rows.push(
+    `<row r="${row}">` +
+      `<c r="A${row}" t="inlineStr"><is><t>Item ${index + 1}</t></is></c>` +
+      `<c r="B${row}" s="2"><v>${amount}</v></c>` +
+      `<c r="C${row}" s="5"><v>${share}</v></c>` +
+      (note === '' ? '' : `<c r="D${row}" t="inlineStr" s="3"><is><t>${note}</t></is></c>`) +
+      '</row>',
+  );
+}
+
+const m2SheetXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <dimension ref="A1:D302"/>
+  <sheetViews><sheetView tabSelected="1" workbookViewId="0">\${m2Pane}</sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="14" customWidth="1"/></cols>
+  <sheetData>
+    ${m2Rows.join('\n    ')}
+  </sheetData>
+  <mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells>
+</worksheet>`;
+
+const m2WorkbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="${REL_NS}/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="${REL_NS}/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`;
+
+// Three freeze shapes over the same sheet: both axes, rows only, columns only.
+const m2Package = packageEntries({
+  workbook: workbookXml,
+  workbookRels: m2WorkbookRels,
+  sheets: [
+    [
+      'xl/worksheets/sheet1.xml',
+      m2SheetXml.replace(
+        '${m2Pane}',
+        '<pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/>',
+      ),
+    ],
+  ],
+  sharedStrings: m2SharedStringsXml,
+  extra: { 'xl/styles.xml': m2StylesXml },
+});
+
+const m2FreezeRowPackage = packageEntries({
+  workbook: workbookXml,
+  workbookRels: m2WorkbookRels,
+  sheets: [
+    [
+      'xl/worksheets/sheet1.xml',
+      m2SheetXml.replace(
+        '${m2Pane}',
+        '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>',
+      ),
+    ],
+  ],
+  sharedStrings: m2SharedStringsXml,
+  extra: { 'xl/styles.xml': m2StylesXml },
+});
+
+const m2FreezeColumnPackage = packageEntries({
+  workbook: workbookXml,
+  workbookRels: m2WorkbookRels,
+  sheets: [
+    [
+      'xl/worksheets/sheet1.xml',
+      m2SheetXml.replace(
+        '${m2Pane}',
+        '<pane xSplit="1" topLeftCell="B1" activePane="topRight" state="frozen"/>',
+      ),
+    ],
+  ],
+  sharedStrings: m2SharedStringsXml,
+  extra: { 'xl/styles.xml': m2StylesXml },
+});
+
 const oraclePackage = packageEntries({
   workbook: workbookXml,
   workbookRels: oracleWorkbookRels,
@@ -369,8 +499,269 @@ const oraclePackage = packageEntries({
   },
 });
 
+// Manual smoke workbook. It is not a conformance fixture: a person opens it,
+// scrolls, selects, finds, and checks the frozen panes, fills, formats and
+// cached formula results by eye. Keep every value plain and synthetic.
+const manualStylesXml = `${XML_HEADER}
+<styleSheet xmlns="${SPREADSHEET_NS}">
+  <numFmts count="5">
+    <numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>
+    <numFmt numFmtId="165" formatCode="yyyy-mm-dd hh:mm"/>
+    <numFmt numFmtId="166" formatCode="#,##0.00"/>
+    <numFmt numFmtId="167" formatCode="0.0%"/>
+    <numFmt numFmtId="168" formatCode="$#,##0.00"/>
+  </numFmts>
+  <fonts count="5">
+    <font><sz val="11"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FF1F1F1F"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Calibri"/><family val="2"/></font>
+    <font><i/><sz val="10"/><color rgb="FF595959"/><name val="Calibri"/><family val="2"/></font>
+  </fonts>
+  <fills count="6">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD9E2F3"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFE2EFDA"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left/><right/><top/><bottom style="thin"><color rgb="FFBFBFBF"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="15">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="168" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+    <xf numFmtId="166" fontId="0" fillId="5" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+const manualDateSerial = Math.floor(Date.UTC(2026, 10, 15) / 86_400_000) + 25_569;
+
+const manualCoverRows = [
+  '<row r="1" ht="28" customHeight="1">' +
+    '<c r="A1" t="inlineStr" s="1"><is><t>General manual test workbook</t></is></c>' +
+    '<c r="B1" s="1"/><c r="C1" s="1"/><c r="D1" s="1"/>' +
+    '</row>',
+  '<row r="2" ht="20" customHeight="1">' +
+    '<c r="A2" t="inlineStr" s="2"><is><t>Case</t></is></c>' +
+    '<c r="B2" t="inlineStr" s="2"><is><t>Value</t></is></c>' +
+    '<c r="C2" t="inlineStr" s="2"><is><t>Format</t></is></c>' +
+    '<c r="D2" t="inlineStr" s="2"><is><t>Notes</t></is></c>' +
+    '</row>',
+  '<row r="3">' +
+    '<c r="A3" t="inlineStr" s="3"><is><t>Text</t></is></c>' +
+    '<c r="B3" t="inlineStr" s="4"><is><t>Plain synthetic text</t></is></c>' +
+    '<c r="C3" t="inlineStr" s="4"><is><t>General</t></is></c>' +
+    '<c r="D3" t="inlineStr" s="14"><is><t>Left-aligned text</t></is></c>' +
+    '</row>',
+  '<row r="4">' +
+    '<c r="A4" t="inlineStr" s="3"><is><t>Number</t></is></c>' +
+    '<c r="B4" s="5"><v>1234.5678</v></c>' +
+    '<c r="C4" t="inlineStr" s="4"><is><t>#,##0.00</t></is></c>' +
+    '<c r="D4" t="inlineStr" s="14"><is><t>Two decimal places</t></is></c>' +
+    '</row>',
+  '<row r="5">' +
+    '<c r="A5" t="inlineStr" s="3"><is><t>Integer</t></is></c>' +
+    '<c r="B5" s="6"><v>42</v></c>' +
+    '<c r="C5" t="inlineStr" s="4"><is><t>0</t></is></c>' +
+    '<c r="D5" t="inlineStr" s="14"><is><t>Whole number</t></is></c>' +
+    '</row>',
+  '<row r="6">' +
+    '<c r="A6" t="inlineStr" s="3"><is><t>Boolean true</t></is></c>' +
+    '<c r="B6" t="b" s="7"><v>1</v></c>' +
+    '<c r="C6" t="inlineStr" s="4"><is><t>General</t></is></c>' +
+    '<c r="D6" t="inlineStr" s="14"><is><t>Boolean cell</t></is></c>' +
+    '</row>',
+  '<row r="7">' +
+    '<c r="A7" t="inlineStr" s="3"><is><t>Boolean false</t></is></c>' +
+    '<c r="B7" t="b" s="7"><v>0</v></c>' +
+    '<c r="C7" t="inlineStr" s="4"><is><t>General</t></is></c>' +
+    '<c r="D7" t="inlineStr" s="14"><is><t>Boolean cell</t></is></c>' +
+    '</row>',
+  '<row r="8">' +
+    '<c r="A8" t="inlineStr" s="3"><is><t>Error #DIV/0!</t></is></c>' +
+    '<c r="B8" t="e" s="8"><v>#DIV/0!</v></c>' +
+    '<c r="C8" t="inlineStr" s="4"><is><t>Error</t></is></c>' +
+    '<c r="D8" t="inlineStr" s="14"><is><t>Error cell</t></is></c>' +
+    '</row>',
+  '<row r="9">' +
+    '<c r="A9" t="inlineStr" s="3"><is><t>Error #N/A</t></is></c>' +
+    '<c r="B9" t="e" s="8"><v>#N/A</v></c>' +
+    '<c r="C9" t="inlineStr" s="4"><is><t>Error</t></is></c>' +
+    '<c r="D9" t="inlineStr" s="14"><is><t>Error cell</t></is></c>' +
+    '</row>',
+  '<row r="10">' +
+    '<c r="A10" t="inlineStr" s="3"><is><t>Date</t></is></c>' +
+    `<c r="B10" s="9"><v>${manualDateSerial}</v></c>` +
+    '<c r="C10" t="inlineStr" s="4"><is><t>yyyy-mm-dd</t></is></c>' +
+    '<c r="D10" t="inlineStr" s="14"><is><t>Date number format</t></is></c>' +
+    '</row>',
+  '<row r="11">' +
+    '<c r="A11" t="inlineStr" s="3"><is><t>Date and time</t></is></c>' +
+    `<c r="B11" s="10"><v>${manualDateSerial + 0.4895833333333333}</v></c>` +
+    '<c r="C11" t="inlineStr" s="4"><is><t>yyyy-mm-dd hh:mm</t></is></c>' +
+    '<c r="D11" t="inlineStr" s="14"><is><t>Date and time</t></is></c>' +
+    '</row>',
+  '<row r="12">' +
+    '<c r="A12" t="inlineStr" s="3"><is><t>Percent</t></is></c>' +
+    '<c r="B12" s="11"><v>0.256</v></c>' +
+    '<c r="C12" t="inlineStr" s="4"><is><t>0.0%</t></is></c>' +
+    '<c r="D12" t="inlineStr" s="14"><is><t>25.6%</t></is></c>' +
+    '</row>',
+  '<row r="13">' +
+    '<c r="A13" t="inlineStr" s="3"><is><t>Currency</t></is></c>' +
+    '<c r="B13" s="12"><v>1234.5</v></c>' +
+    '<c r="C13" t="inlineStr" s="4"><is><t>$#,##0.00</t></is></c>' +
+    '<c r="D13" t="inlineStr" s="14"><is><t>Currency display</t></is></c>' +
+    '</row>',
+  '<row r="14">' +
+    '<c r="A14" t="inlineStr" s="3"><is><t>Formula</t></is></c>' +
+    '<c r="B14" s="13"><f>B4*2</f><v>2469.1356</v></c>' +
+    '<c r="C14" t="inlineStr" s="4"><is><t>#,##0.00</t></is></c>' +
+    '<c r="D14" t="inlineStr" s="14"><is><t>Cached result 2469.14</t></is></c>' +
+    '</row>',
+  '<row r="15">' +
+    '<c r="A15" t="inlineStr" s="3"><is><t>Formula sum</t></is></c>' +
+    '<c r="B15" s="13"><f>SUM(B4:B5)</f><v>1276.5678</v></c>' +
+    '<c r="C15" t="inlineStr" s="4"><is><t>#,##0.00</t></is></c>' +
+    '<c r="D15" t="inlineStr" s="14"><is><t>Cached result 1276.57</t></is></c>' +
+    '</row>',
+];
+
+const manualCoverSheetXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:D15"/>
+  <sheetViews><sheetView tabSelected="1" workbookViewId="0"><pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/><selection pane="bottomRight" activeCell="B2" sqref="B2"/></sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols>
+    <col min="1" max="1" width="20" customWidth="1"/>
+    <col min="2" max="2" width="22" customWidth="1"/>
+    <col min="3" max="3" width="22" customWidth="1"/>
+    <col min="4" max="4" width="30" customWidth="1"/>
+  </cols>
+  <sheetData>
+    ${manualCoverRows.join('\n    ')}
+  </sheetData>
+  <mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells>
+</worksheet>`;
+
+const manualDataRows = [];
+manualDataRows.push(
+  '<row r="1" ht="20" customHeight="1">' +
+    '<c r="A1" t="inlineStr" s="2"><is><t>ID</t></is></c>' +
+    '<c r="B1" t="inlineStr" s="2"><is><t>Name</t></is></c>' +
+    '<c r="C1" t="inlineStr" s="2"><is><t>Amount</t></is></c>' +
+    '<c r="D1" t="inlineStr" s="2"><is><t>Ratio</t></is></c>' +
+    '<c r="E1" t="inlineStr" s="2"><is><t>Date</t></is></c>' +
+    '<c r="F1" t="inlineStr" s="2"><is><t>Flag</t></is></c>' +
+    '<c r="G1" t="inlineStr" s="2"><is><t>Status</t></is></c>' +
+    '<c r="H1" t="inlineStr" s="2"><is><t>Error</t></is></c>' +
+    '<c r="I1" t="inlineStr" s="2"><is><t>Double</t></is></c>' +
+    '</row>',
+);
+const manualStatuses = ['Open', 'Closed', 'Pending', 'Review'];
+const manualErrors = ['#N/A', '#VALUE!', '#DIV/0!'];
+for (let index = 0; index < 400; index += 1) {
+  const row = index + 2;
+  const amount = ((((index + 1) * 37) % 10_000) / 100 + 0.25).toFixed(2);
+  const ratio = ((((index + 1) * 13) % 100) / 100).toFixed(2);
+  const date = manualDateSerial + (index % 365);
+  const flag = index % 2 === 0 ? 1 : 0;
+  const status = manualStatuses[index % manualStatuses.length];
+  const error =
+    index > 0 && index % 31 === 0
+      ? manualErrors[Math.floor(index / 31) % manualErrors.length]
+      : null;
+  manualDataRows.push(
+    `<row r="${row}">` +
+      `<c r="A${row}" s="6"><v>${index + 1}</v></c>` +
+      `<c r="B${row}" t="inlineStr" s="4"><is><t>Item ${String(index + 1).padStart(3, '0')}</t></is></c>` +
+      `<c r="C${row}" s="5"><v>${amount}</v></c>` +
+      `<c r="D${row}" s="11"><v>${ratio}</v></c>` +
+      `<c r="E${row}" s="9"><v>${date}</v></c>` +
+      `<c r="F${row}" t="b" s="7"><v>${flag}</v></c>` +
+      (index > 0 && index % 17 === 0
+        ? ''
+        : `<c r="G${row}" t="inlineStr" s="4"><is><t>${status}</t></is></c>`) +
+      (error ? `<c r="H${row}" t="e" s="8"><v>${error}</v></c>` : '') +
+      `<c r="I${row}" s="13"><f>C${row}*2</f><v>${(Number(amount) * 2).toFixed(2)}</v></c>` +
+      '</row>',
+  );
+}
+
+const manualDataSheetXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:I401"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols>
+    <col min="1" max="1" width="8" customWidth="1"/>
+    <col min="2" max="2" width="18" customWidth="1"/>
+    <col min="3" max="3" width="14" customWidth="1"/>
+    <col min="4" max="4" width="10" customWidth="1"/>
+    <col min="5" max="5" width="12" customWidth="1"/>
+    <col min="6" max="6" width="10" customWidth="1"/>
+    <col min="7" max="7" width="12" customWidth="1"/>
+    <col min="8" max="8" width="10" customWidth="1"/>
+    <col min="9" max="9" width="14" customWidth="1"/>
+  </cols>
+  <sheetData>
+    ${manualDataRows.join('\n    ')}
+  </sheetData>
+</worksheet>`;
+
+const manualWorkbookXml = `${XML_HEADER}
+<workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <workbookPr date1904="0"/>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets>
+    <sheet name="Cover" sheetId="1" r:id="rId1"/>
+    <sheet name="Data" sheetId="2" r:id="rId2"/>
+  </sheets>
+  <calcPr calcId="191029" fullCalcOnLoad="0"/>
+</workbook>`;
+
+const manualWorkbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="${REL_NS}/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="${REL_NS}/styles" Target="styles.xml"/>
+</Relationships>`;
+
+const manualPackage = packageEntries({
+  workbook: manualWorkbookXml,
+  workbookRels: manualWorkbookRels,
+  sheets: [
+    ['xl/worksheets/sheet1.xml', manualCoverSheetXml],
+    ['xl/worksheets/sheet2.xml', manualDataSheetXml],
+  ],
+  extra: {
+    'xl/styles.xml': manualStylesXml,
+  },
+});
+
 writeFileSync(join(compatDir, 'm1-chart-unknown.xlsx'), m1Package);
 writeFileSync(join(compatDir, 'identity-minimal.xlsx'), identityPackage);
+writeFileSync(join(compatDir, 'm2-grid.xlsx'), m2Package);
+writeFileSync(join(compatDir, 'm2-freeze-row.xlsx'), m2FreezeRowPackage);
+writeFileSync(join(compatDir, 'm2-freeze-column.xlsx'), m2FreezeColumnPackage);
+writeFileSync(join(manualDir, 'general-test.xlsx'), manualPackage);
 writeFileSync(join(oracleDir, 'm1-values-errors.xlsx'), oraclePackage);
 
 const expectedValues = {
@@ -421,6 +812,10 @@ writeFileSync(
 
 console.log(`Wrote ${join(compatDir, 'm1-chart-unknown.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'identity-minimal.xlsx')}`);
+console.log(`Wrote ${join(compatDir, 'm2-grid.xlsx')}`);
+console.log(`Wrote ${join(compatDir, 'm2-freeze-row.xlsx')}`);
+console.log(`Wrote ${join(compatDir, 'm2-freeze-column.xlsx')}`);
+console.log(`Wrote ${join(manualDir, 'general-test.xlsx')}`);
 console.log(`Wrote ${join(oracleDir, 'm1-values-errors.xlsx')}`);
 console.log(`Wrote ${join(expectedDir, 'm1-values.json')}`);
 console.log(`Wrote ${join(root, 'fixtures', 'oracle-manifest.json')}`);

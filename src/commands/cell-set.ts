@@ -2,7 +2,7 @@ import { arrayFormulaForCell } from '@model/formula-ranges';
 import { invalidXmlCharacterMessage } from '@model/text';
 import type { Cell } from '@model/types';
 import { cellStateEquals, cloneCell } from '@model/types';
-import type { CellValue } from '@model/value';
+import { BLANK, type CellValue } from '@model/value';
 import type { CommandChange, CommandDefinition, CommandResult } from './types';
 
 export interface CellSetArgs {
@@ -10,6 +10,12 @@ export interface CellSetArgs {
   readonly row: number;
   readonly col: number;
   readonly value: CellValue;
+  /**
+   * The authored formula, when the user typed one. The formula engine
+   * arrives with the model-depth milestone, so calcplus stores the text and
+   * drops the cached result; the saved file asks Excel to recalculate.
+   */
+  readonly formula?: string | null;
 }
 
 export const cellSetCommand: CommandDefinition<CellSetArgs> = {
@@ -73,7 +79,7 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
         };
       }
     }
-    const after = nextCellState(before, args.value);
+    const after = nextCellState(before, args.value, args.formula ?? null);
     if (cellStateEquals(before, after)) {
       return { changes: [] };
     }
@@ -96,7 +102,21 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
   },
 };
 
-function nextCellState(before: Cell | null, value: CellValue): Cell | null {
+function nextCellState(before: Cell | null, value: CellValue, formula: string | null): Cell | null {
+  if (formula !== null) {
+    // The authored text is stored as it was typed. The formula engine arrives
+    // with the model-depth milestone, so the cached result is dropped and the
+    // saved file asks Excel to recalculate (file-compat §6.1).
+    const unchanged = before !== null && before.formula === formula;
+    return {
+      value: before?.value ?? BLANK,
+      formula,
+      formulaDerived: false,
+      savedResult: unchanged ? before.savedResult : null,
+      styleId: before?.styleId ?? 0,
+      richText: null,
+    };
+  }
   if (value.type === 'blank') {
     if (before === null) return null;
     if (before.styleId === 0) return null;
