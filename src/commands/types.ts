@@ -29,6 +29,14 @@ export interface CellSetChange {
 
 export type CommandChange = CellSetChange;
 
+/**
+ * The calculation layer observes committed changes. It never participates in
+ * the command transaction; derived results are applied separately.
+ */
+export interface CalculationScheduler {
+  afterChanges(changes: readonly CommandChange[]): void;
+}
+
 export interface CommandDefinition<Args = unknown> {
   readonly id: string;
   readonly label: string;

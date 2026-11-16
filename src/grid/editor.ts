@@ -1,10 +1,23 @@
-import type { GridCellAddress } from './frame';
+import type { SheetProjection } from '@view/types';
+import type { GridCellAddress, GridRange } from './frame';
 
 /**
  * The in-cell editor. Editing a cell is a DOM overlay; this module holds the
  * rules that decide what a key does, so they can be tested without a browser.
  */
 export type EditorCommitDirection = 'down' | 'up' | 'right' | 'left' | 'none';
+
+/**
+ * The reference the pointer or keyboard is currently pointing at. The token
+ * offsets identify the reference text in the editor, so moving the selection
+ * replaces that reference instead of appending a second one.
+ */
+export interface EditorPointing {
+  readonly anchor: GridCellAddress;
+  readonly focus: GridCellAddress;
+  readonly start: number;
+  readonly end: number;
+}
 
 export interface EditorSession {
   /** Identifies the editing session, so the view can focus it once. */
@@ -19,6 +32,8 @@ export interface EditorSession {
   readonly commitIfChanged: boolean;
   /** True while an input method is composing. */
   readonly composing: boolean;
+  /** The reference the formula is currently pointing at, or `null`. */
+  readonly pointing: EditorPointing | null;
 }
 
 export interface EditorKeyEvent {
@@ -50,6 +65,7 @@ export function startEdit(
     initialText: text,
     commitIfChanged,
     composing: false,
+    pointing: null,
   };
 }
 
@@ -61,9 +77,88 @@ export function editorHasChanges(session: {
   return !session.commitIfChanged || session.text !== session.initialText;
 }
 
+/** True while the editor holds a formula that can point at cells. */
+export function isFormulaEntry(session: EditorSession): boolean {
+  return session.text.startsWith('=');
+}
+
+/**
+ * True when the caret sits where a reference belongs, so an arrow key starts
+ * pointing instead of moving the caret. This is the Enter-mode entry point
+ * (`=`, an operator, an opening parenthesis or an argument comma).
+ */
+export function isPointingBoundary(session: { readonly text: string }, caret: number): boolean {
+  const before = session.text.slice(0, caret).trimEnd();
+  return /[=+\-*/^&<>:,([{]$/.test(before);
+}
+
+/** The ordered rectangle covered by a pointed anchor and focus. */
+export function pointingRange(anchor: GridCellAddress, focus: GridCellAddress): GridRange {
+  return {
+    startRow: Math.min(anchor.row, focus.row),
+    startCol: Math.min(anchor.col, focus.col),
+    endRow: Math.max(anchor.row, focus.row),
+    endCol: Math.max(anchor.col, focus.col),
+  };
+}
+
+/**
+ * The reference text a formula pointing gesture inserts: one cell for a click,
+ * the ordered rectangle for a drag or a Shift-extended range.
+ */
+export function pointingReference(
+  projection: SheetProjection,
+  anchor: GridCellAddress,
+  focus: GridCellAddress,
+): string {
+  const range = pointingRange(anchor, focus);
+  const start = `${projection.columnLabel(range.startCol)}${projection.rowLabel(range.startRow)}`;
+  if (range.startRow === range.endRow && range.startCol === range.endCol) return start;
+  return `${start}:${projection.columnLabel(range.endCol)}${projection.rowLabel(range.endRow)}`;
+}
+
+/**
+ * Replace the text occupied by the previous pointing token, or insert at the
+ * caret when the gesture starts. The caret lands after the inserted reference.
+ */
+export function applyPointing(
+  session: EditorSession,
+  reference: string,
+  anchor: GridCellAddress,
+  focus: GridCellAddress,
+  token: { readonly start: number; readonly end: number } | null,
+): EditorSession {
+  const start =
+    token?.start ??
+    session.pointing?.start ??
+    // A new gesture inserts at the caret. The caller may supply a token when
+    // the caret moved since the last gesture.
+    session.text.length;
+  const end = token?.end ?? session.pointing?.end ?? start;
+  const text = `${session.text.slice(0, start)}${reference}${session.text.slice(end)}`;
+  const nextStart = start;
+  return {
+    ...session,
+    text,
+    pointing: { anchor, focus, start: nextStart, end: nextStart + reference.length },
+  };
+}
+
+const ARROW_DIRECTIONS: Readonly<Record<string, EditorCommitDirection>> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+};
+
 /**
  * Decide what a key does inside the editor. While an input method composes,
  * Enter confirms the candidate and must not commit the cell.
+ *
+ * Direct typing is Excel's enter mode, so an arrow key commits and moves in
+ * that direction. F2 starts in edit mode and keeps the arrows for the caret;
+ * formula pointing resolves the arrows in the view after this returns
+ * "ignore".
  */
 export function resolveEditorAction(session: EditorSession, event: EditorKeyEvent): EditorAction {
   if (session.composing || event.isComposing) return { type: 'ignore' };
@@ -72,6 +167,12 @@ export function resolveEditorAction(session: EditorSession, event: EditorKeyEven
       return { type: 'commit', direction: event.shiftKey ? 'up' : 'down' };
     case 'Tab':
       return { type: 'commit', direction: event.shiftKey ? 'left' : 'right' };
+    case 'ArrowUp':
+    case 'ArrowDown':
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (session.commitIfChanged || isFormulaEntry(session)) return { type: 'ignore' };
+      return { type: 'commit', direction: ARROW_DIRECTIONS[event.key] ?? 'none' };
     case 'Escape':
       return { type: 'cancel' };
     default:

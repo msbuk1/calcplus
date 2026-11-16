@@ -86,8 +86,58 @@ export class CanvasRenderFrame implements RenderFrame {
     for (const pane of panes) {
       this.paintPane(pane, projection, layout, scrollX, scrollY);
     }
+    this.paintPointing(state, layout, panes, scrollX, scrollY);
     this.paintSelection(state, layout, panes, scrollX, scrollY);
     this.paintHeaders(state, layout, panes, scrollX, scrollY);
+  }
+
+  /**
+   * While a formula is being pointed at the sheet, the reference range is
+   * tinted even though keyboard focus stays in the in-cell editor.
+   */
+  private paintPointing(
+    state: GridRenderState,
+    layout: PaneLayout,
+    panes: readonly Pane[],
+    scrollX: number,
+    scrollY: number,
+  ): void {
+    const range = state.pointing ?? null;
+    if (range === null) return;
+    const { context } = this;
+    context.fillStyle = COLORS.selectionFill;
+    for (const pane of panes) {
+      const startRow = Math.max(range.startRow, pane.startRow);
+      const endRow = Math.min(range.endRow, pane.endRow);
+      const startCol = Math.max(range.startCol, pane.startCol);
+      const endCol = Math.min(range.endCol, pane.endCol);
+      if (startRow > endRow || startCol > endCol) continue;
+      const topLeft = cellRect(state.projection, layout, scrollX, scrollY, startRow, startCol);
+      const bottomRight = cellRect(state.projection, layout, scrollX, scrollY, endRow, endCol);
+      context.fillRect(
+        topLeft.x,
+        topLeft.y,
+        bottomRight.x + bottomRight.width - topLeft.x,
+        bottomRight.y + bottomRight.height - topLeft.y,
+      );
+    }
+    context.strokeStyle = COLORS.selectionBorder;
+    context.lineWidth = 2;
+    for (const pane of panes) {
+      const startRow = Math.max(range.startRow, pane.startRow);
+      const endRow = Math.min(range.endRow, pane.endRow);
+      const startCol = Math.max(range.startCol, pane.startCol);
+      const endCol = Math.min(range.endCol, pane.endCol);
+      if (startRow > endRow || startCol > endCol) continue;
+      const topLeft = cellRect(state.projection, layout, scrollX, scrollY, startRow, startCol);
+      const bottomRight = cellRect(state.projection, layout, scrollX, scrollY, endRow, endCol);
+      context.strokeRect(
+        topLeft.x + 1,
+        topLeft.y + 1,
+        Math.max(0, bottomRight.x + bottomRight.width - topLeft.x - 2),
+        Math.max(0, bottomRight.y + bottomRight.height - topLeft.y - 2),
+      );
+    }
   }
 
   private paintPane(

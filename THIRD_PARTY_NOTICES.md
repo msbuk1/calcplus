@@ -5,7 +5,7 @@ runtime, build and test dependency, its licence and the obligations that
 come with it. The release build must include the full licence texts for every
 distributed component; this file is the human-readable index.
 
-The audit was last reviewed on **2026-11-14** for the M1 walking skeleton.
+The audit was last reviewed on **2026-11-15** for the M3A engine wiring.
 Re-run it whenever a dependency is added, removed or upgraded. The local
 licence gate (`scripts/licence-gate.mjs`) checks the lockfile before each
 commit.
@@ -14,15 +14,18 @@ commit.
 
 | Component | Version | Licence | Use | Obligations |
 |---|---|---|---|---|
+| HyperFormula | 3.5.0 | GPL-3.0-only | Formula engine (worker) | The project is GPL-3.0-only because of this dependency. Include the copyright and licence text; publish the corresponding source. |
+| chevrotain | 6.5.0 | Apache-2.0 | Parser runtime (via HyperFormula) | Include the Apache-2.0 licence text; state any modified files. |
+| tiny-emitter | 2.1.0 | MIT | Event emitter (via HyperFormula) | Include the copyright and permission notice. |
 | React / React DOM | 19.3.x | MIT | UI shell | Include the copyright and permission notice. |
 | fflate | 0.8.x | MIT | ZIP read/write | Include the copyright and permission notice. |
 | saxes | 6.0.x | ISC | XML parsing | Include the copyright and permission notice. |
 
-Later milestones add HyperFormula (GPL-3.0-only), `numfmt` (MIT), PDFKit (MIT),
-the Go standard library launcher (BSD-3-Clause) and the OFL-1.1 fonts. They are
-not installed by the M1 walking skeleton; their notices and obligations are
-recorded in [licensing §2](.scratch/calcplus/spec/licensing.md) and must
-be added here when the dependency lands.
+Later milestones add `numfmt` (MIT), PDFKit (MIT), the Go standard library
+launcher (BSD-3-Clause) and the OFL-1.1 fonts. They are not installed yet;
+their notices and obligations are recorded in
+[licensing §2](.scratch/calcplus/spec/licensing.md) and must be added here when
+the dependency lands.
 
 The bundled icon sets are original SVG artwork drawn for calcplus. They are
 not copied from Microsoft or any other product.
@@ -83,10 +86,10 @@ list needs a review note and a change to the local licence gate.
 
 - **GPL-3.0-only** is compatible with MIT, ISC, BSD-3-Clause, Apache-2.0,
   MPL-2.0, OFL-1.1, Python-2.0 and BlueOak-1.0.0.
-- **HyperFormula GPL-3.0-only is the binding constraint** when the formula
-  engine lands. It is why the project is GPLv3. A proprietary calcplus would
-  require a commercial HyperFormula licence and permission from every
-  contributor to relicense.
+- **HyperFormula GPL-3.0-only is the binding constraint.** The formula engine
+  is distributed with the browser bundle. It is why the project is GPLv3. A
+  proprietary calcplus would require a commercial HyperFormula licence and
+  permission from every contributor to relicense.
 - **Apache-2.0** is compatible with GPLv3, but not with GPLv2. This project is
   GPLv3-only, so that distinction does not bite.
 - **MPL-2.0** is file-level copyleft and GPLv3-compatible. axe-core and

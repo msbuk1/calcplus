@@ -1,8 +1,23 @@
 import type { Cell, CellAddress, SheetId, Workbook } from '@model/types';
 import { cellStateEquals, cloneCell, getSheetById, setCellSnapshot } from '@model/types';
-import type { CommandChange, CommandContext, CommandResult } from './types';
+import { cellValueEquals, errorValue, type CellValue } from '@model/value';
+import type { CalculationScheduler, CommandChange, CommandContext, CommandResult } from './types';
 import { changeCells, inverseChange } from './types';
 import { createCommandRegistry } from './registry';
+
+/** A derived result leaving the formula engine. Formula text never travels with it. */
+export interface CalculationCellUpdate {
+  readonly sheetId: SheetId;
+  readonly row: number;
+  readonly col: number;
+  readonly value: CellValue;
+  readonly status: 'value' | 'circular';
+  /**
+   * `true` when the value came from an input the engine did not evaluate.
+   * The cached result is preserved and the cell is marked not recalculated.
+   */
+  readonly stale: boolean;
+}
 
 export interface Transaction {
   readonly seq: number;
@@ -21,8 +36,10 @@ export class DocumentSession {
   private readonly undoStack: Transaction[] = [];
   private readonly redoStack: Transaction[] = [];
   private readonly dirtyCells = new Map<SheetId, Set<string>>();
+  private calculationScheduler: CalculationScheduler | null = null;
   private nextSeq = 1;
   private documentVersion = 1;
+  private editVersionCounter = 0;
 
   constructor(workbook: Workbook) {
     this.workbook = workbook;
@@ -31,6 +48,19 @@ export class DocumentSession {
 
   get version(): number {
     return this.documentVersion;
+  }
+
+  /** Bumped only by commands, undo and redo; calculation results leave it alone. */
+  get editVersion(): number {
+    return this.editVersionCounter;
+  }
+
+  setCalculationScheduler(scheduler: CalculationScheduler | null): void {
+    this.calculationScheduler = scheduler;
+  }
+
+  clearCalculationScheduler(scheduler: CalculationScheduler): void {
+    if (this.calculationScheduler === scheduler) this.calculationScheduler = null;
   }
 
   get canUndo(): boolean {
@@ -105,6 +135,8 @@ export class DocumentSession {
     this.applyChanges(result.changes, 'after');
     this.record(commandId, result.changes);
     this.documentVersion += 1;
+    this.editVersionCounter += 1;
+    this.calculationScheduler?.afterChanges(result.changes);
     return result;
   }
 
@@ -116,6 +148,8 @@ export class DocumentSession {
     this.trimHistory();
     this.markDirty(transaction.changes);
     this.documentVersion += 1;
+    this.editVersionCounter += 1;
+    this.calculationScheduler?.afterChanges(transaction.inverseChanges);
   }
 
   redo(): void {
@@ -126,6 +160,8 @@ export class DocumentSession {
     this.trimHistory();
     this.markDirty(transaction.changes);
     this.documentVersion += 1;
+    this.editVersionCounter += 1;
+    this.calculationScheduler?.afterChanges(transaction.changes);
   }
 
   /**
@@ -150,6 +186,97 @@ export class DocumentSession {
       if (dirty.size === 0) this.dirtyCells.delete(sheetId);
     }
     this.documentVersion += 1;
+  }
+
+  /**
+   * Apply derived engine results. They are not undoable transactions: the
+   * authored text and the command history stay authoritative (technical design
+   * §4.4). Circular results only change the in-app value and never the cached
+   * result that can reach the file.
+   *
+   * A stale result is displayed but keeps the cached result untouched. A
+   * fresh result becomes both the displayed value and the cached result
+   * (file-compat §6.1).
+   */
+  applyCalculationResults(
+    updates: readonly CalculationCellUpdate[],
+    options: { readonly markDirty?: boolean } = {},
+  ): number {
+    let changed = 0;
+    for (const update of updates) {
+      const sheet = this.workbook.sheets.find((candidate) => candidate.id === update.sheetId);
+      if (sheet === undefined) continue;
+      const key = `${update.row}:${update.col}`;
+      const cell = sheet.cells.get(key);
+      if (cell === undefined) continue;
+      if (cell.formula === null && cell.formulaSource === undefined) continue;
+
+      if (cell.formulaSource !== undefined || cell.richText !== null) {
+        // Shared groups, legacy arrays and rich text are never recalculated.
+        // Only the derived stale marker changes; their stored value and cached
+        // result stay exactly as imported.
+        if (!update.stale || cell.stale === true) continue;
+        setCellSnapshot(sheet, update.row, update.col, { ...cell, stale: true });
+        changed += 1;
+        continue;
+      }
+
+      if (update.status === 'circular') {
+        const circular = errorValue('#CIRC!');
+        if (cellValueEquals(cell.value, circular) && cell.stale === true) continue;
+        setCellSnapshot(sheet, update.row, update.col, {
+          ...cell,
+          value: circular,
+          stale: true,
+        });
+        changed += 1;
+        continue;
+      }
+
+      if (update.value.type === 'error' && update.value.value === '#CIRC!') continue;
+
+      if (update.stale) {
+        if (cellValueEquals(cell.value, update.value) && cell.stale === true) continue;
+        setCellSnapshot(sheet, update.row, update.col, {
+          ...cell,
+          value: update.value,
+          stale: true,
+        });
+        changed += 1;
+        if (options.markDirty === true) this.markCellDirty(update.sheetId, update.row, update.col);
+        continue;
+      }
+
+      const next: Cell = {
+        ...cell,
+        value: update.value,
+        savedResult: update.value,
+        stale: false,
+      };
+      if (
+        cellValueEquals(cell.value, next.value) &&
+        nullableCellValueEquals(cell.savedResult, next.savedResult) &&
+        cell.stale === false
+      ) {
+        continue;
+      }
+      setCellSnapshot(sheet, update.row, update.col, next);
+      changed += 1;
+      if (options.markDirty === true) this.markCellDirty(update.sheetId, update.row, update.col);
+    }
+    if (changed > 0) this.documentVersion += 1;
+    return changed;
+  }
+
+  /** Cells whose displayed value is not a fully evaluated result. */
+  staleCellCount(): number {
+    let count = 0;
+    for (const sheet of this.workbook.sheets) {
+      for (const cell of sheet.cells.values()) {
+        if (cell.stale === true) count += 1;
+      }
+    }
+    return count;
   }
 
   private record(commandId: string, changes: readonly CommandChange[]): void {
@@ -208,6 +335,17 @@ export class DocumentSession {
       this.dirtyCells.set(change.sheetId, cells);
     }
   }
+
+  private markCellDirty(sheetId: SheetId, row: number, col: number): void {
+    const cells = this.dirtyCells.get(sheetId) ?? new Set<string>();
+    cells.add(`${row}:${col}`);
+    this.dirtyCells.set(sheetId, cells);
+  }
+}
+
+function nullableCellValueEquals(left: CellValue | null, right: CellValue | null): boolean {
+  if (left === null || right === null) return left === right;
+  return cellValueEquals(left, right);
 }
 
 function estimateBytes(changes: readonly CommandChange[]): number {

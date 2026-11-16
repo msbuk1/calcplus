@@ -21,6 +21,7 @@
       "@model/*": ["src/model/*"],
       "@ooxml/*": ["src/ooxml/*"],
       "@commands/*": ["src/commands/*"],
+      "@engine/*": ["src/engine/*"],
       "@view/*": ["src/view/*"],
       "@grid/*": ["src/grid/*"],
       "@chrome/*": ["src/chrome/*"],

@@ -43,7 +43,7 @@ test('selects the whole column from the column header', async ({ page }) => {
 
   // The active cell stays near the top: the view did not scroll to the far
   // edge of the sheet.
-  await expect(page.getByTestId('name-box')).toHaveValue(/^B[0-9]{1,3}$/);
+  await expect(page.getByTestId('name-box')).toHaveValue('B:B');
   expect(await focusedTestId(page)).toBe('grid-shell');
 });
 
@@ -59,7 +59,7 @@ test('selects the whole row from the row header', async ({ page }) => {
   expect(tinted.r).toBeLessThan(255);
   expect(tinted.b).toBeGreaterThan(tinted.r);
 
-  await expect(page.getByTestId('name-box')).toHaveValue(/^[A-Z]{1,3}[0-9]{1,3}$/);
+  await expect(page.getByTestId('name-box')).toHaveValue('3:3');
   expect(await focusedTestId(page)).toBe('grid-shell');
 });
 

@@ -11,9 +11,10 @@ export interface CellSetArgs {
   readonly col: number;
   readonly value: CellValue;
   /**
-   * The authored formula, when the user typed one. The formula engine
-   * arrives with the model-depth milestone, so calcplus stores the text and
-   * drops the cached result; the saved file asks Excel to recalculate.
+   * The authored formula, when the user typed one. The model keeps the exact
+   * text; the engine recalculates the cell asynchronously. The cached result
+   * is dropped on a formula change so a save before recalculation asks Excel
+   * to recalculate (file-compat §6.1).
    */
   readonly formula?: string | null;
 }
@@ -104,9 +105,9 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
 
 function nextCellState(before: Cell | null, value: CellValue, formula: string | null): Cell | null {
   if (formula !== null) {
-    // The authored text is stored as it was typed. The formula engine arrives
-    // with the model-depth milestone, so the cached result is dropped and the
-    // saved file asks Excel to recalculate (file-compat §6.1).
+    // The authored text is stored as it was typed. The formula engine
+    // recalculates it asynchronously; until then the dropped cached result
+    // keeps the saved file asking Excel to recalculate (file-compat §6.1).
     const unchanged = before !== null && before.formula === formula;
     return {
       value: before?.value ?? BLANK,
@@ -115,6 +116,7 @@ function nextCellState(before: Cell | null, value: CellValue, formula: string | 
       savedResult: unchanged ? before.savedResult : null,
       styleId: before?.styleId ?? 0,
       richText: null,
+      stale: unchanged ? (before?.stale ?? true) : true,
     };
   }
   if (value.type === 'blank') {
@@ -127,6 +129,7 @@ function nextCellState(before: Cell | null, value: CellValue, formula: string | 
       savedResult: null,
       styleId: before.styleId,
       richText: null,
+      stale: false,
     };
   }
   return {
@@ -136,5 +139,6 @@ function nextCellState(before: Cell | null, value: CellValue, formula: string | 
     savedResult: null,
     styleId: before?.styleId ?? 0,
     richText: null,
+    stale: false,
   };
 }

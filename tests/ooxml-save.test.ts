@@ -8,7 +8,7 @@ import { saveWorkbook } from '@ooxml/save';
 import { WorkbookSaveError } from '@ooxml/errors';
 import { createPartInventory } from '@ooxml/inventory';
 import { MAX_TREE_PATCH_BYTES } from '@ooxml/xml';
-import { numberValue, textValue } from '@model/value';
+import { errorValue, numberValue, textValue } from '@model/value';
 import { findSheet } from '@model/workbook';
 import { buildXlsx, directChildNames, elementRanges, unzipPart } from './helpers/build-xlsx';
 
@@ -313,6 +313,32 @@ describe('dirty worksheet patch', () => {
     expect(openWorkbook(result.bytes).workbook.sheets[0]!.cells.get('0:0')?.value).toEqual({
       type: 'text',
       value: 'first',
+    });
+  });
+
+  it('writes a typed #CIRC! literal as text, never as an error value', () => {
+    const worksheet =
+      '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>';
+    const opened = openWorkbook(buildXlsx(worksheet));
+    const session = new DocumentSession(opened.workbook);
+    const sheet = opened.workbook.sheets[0]!;
+    editCell(session, sheet.id, 0, 0, errorValue('#CIRC!'));
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    // The authored literal survives as text, not as an error value or a cached
+    // <v>; no value is omitted, so the workbook needs no recalculation flag.
+    const savedXml = unzipPart(result.bytes, 'xl/worksheets/sheet1.xml');
+    expect(savedXml).not.toContain('t="e"');
+    expect(savedXml).not.toContain('<v>#CIRC!</v>');
+    expect(savedXml).toContain(
+      '<c r="A1" t="inlineStr"><is><t xml:space="preserve">#CIRC!</t></is></c>',
+    );
+    expect(openWorkbook(result.bytes).workbook.sheets[0]!.cells.get('0:0')?.value).toEqual({
+      type: 'text',
+      value: '#CIRC!',
     });
   });
 

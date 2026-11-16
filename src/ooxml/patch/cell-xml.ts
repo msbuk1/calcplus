@@ -1,5 +1,5 @@
 import type { Cell, FormulaStorageKind } from '@model/types';
-import type { CellValue } from '@model/value';
+import { textValue, type CellValue } from '@model/value';
 import { WorkbookSaveError } from '../errors';
 import { escapeXmlAttribute, escapeXmlText } from '../xml';
 import type { SharedStringsAppender } from './shared-strings-patch';
@@ -43,16 +43,25 @@ export function cellToXml(
   }
 
   const formulaXml = serializeFormula(cell, options.original, tag);
-  const type = cellType(cell.value, cell.savedResult, formula, options.sharedStrings);
+  // Only a true literal can become text. A formula-backed cell with no authored
+  // text (a shared follower) must keep its formula storage and cached result.
+  const literalCell = formula === null && cell.formulaSource === undefined;
+  const storedValue = literalCell ? storedLiteral(cell.value) : cell.value;
+  const type = cellType(storedValue, cell.savedResult, formula, options.sharedStrings);
   if (type !== null) attributes.push(`t="${type}"`);
 
   const children: string[] = [];
   if (formulaXml !== null) children.push(formulaXml);
-  const value = formula !== null ? cell.savedResult : cell.value;
-  if (formula === null && cell.value.type === 'text' && options.sharedStrings === null) {
+  const value = formula !== null ? cell.savedResult : storedValue;
+  if (
+    formula === null &&
+    value !== null &&
+    value.type === 'text' &&
+    options.sharedStrings === null
+  ) {
     children.push(
       `<${tag('is')}><${tag('t')} xml:space="preserve">${escapeXmlText(
-        cell.value.value,
+        value.value,
       )}</${tag('t')}></${tag('is')}>`,
     );
   } else if (value !== null && value.type !== 'blank') {
@@ -70,6 +79,19 @@ export function cellToXml(
   const open = `<${tag('c')} ${attributes.join(' ')}`;
   if (children.length === 0) return `${open}/>`;
   return `${open}>${children.join('')}</${tag('c')}>`;
+}
+
+/**
+ * Formula semantics §6: #CIRC! is an in-app-only error. A literal cell cannot
+ * store it as an error value, so the authored literal is written as text.
+ * Formula cells keep their authored text and cached <v> instead.
+ */
+function storedLiteral(value: CellValue): CellValue {
+  return isCircularError(value) ? textValue('#CIRC!') : value;
+}
+
+function isCircularError(value: CellValue): boolean {
+  return value.type === 'error' && value.value === '#CIRC!';
 }
 
 function serializeBlankOrNull(original: CellOriginal | null, ref: string): string | null {
@@ -181,6 +203,7 @@ function cellType(
 ): string | null {
   if (formula !== null) {
     if (savedResult === null) return null;
+    if (isCircularError(savedResult)) return null;
     switch (savedResult.type) {
       case 'text':
         return 'str';
@@ -199,7 +222,7 @@ function cellType(
     case 'boolean':
       return 'b';
     case 'error':
-      return 'e';
+      return isCircularError(value) ? null : 'e';
     case 'number':
     case 'blank':
       return null;
@@ -220,7 +243,7 @@ function serializedValue(
     case 'boolean':
       return value.value ? '1' : '0';
     case 'error':
-      return value.value;
+      return isCircularError(value) ? null : value.value;
     case 'blank':
       return null;
   }
@@ -235,7 +258,9 @@ function serializedFormulaValue(value: CellValue): string | null {
     case 'boolean':
       return value.value ? '1' : '0';
     case 'error':
-      return value.value;
+      // Formula semantics §6: #CIRC! is an in-app-only error. A formula cell
+      // keeps its authored text and its previous cached <v>, never #CIRC!.
+      return isCircularError(value) ? null : value.value;
     case 'blank':
       return null;
   }

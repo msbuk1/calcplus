@@ -12,6 +12,7 @@ entry date is fixed and the XML payloads are handwritten.
 | `manual/general-test.xlsx` | Manual smoke workbook. `Cover` has text, numbers, booleans, errors, dates, formulas with cached results, a merged header, a frozen top row and first column, fills and number formats. `Data` has 400 synthetic mixed-value rows under a frozen header for scrolling, selection, find and freeze-pane checks. |
 | `oracle/m1-values-errors.xlsx` | Excel-openable value and error oracle fixture: text, inline string, number, boolean, constant errors, a formula with a cached result, a formula with an error result and text beginning with `=` both as a constant and as a formula result. The manual local Excel capture uses this workbook; its narrow error column makes display text unusable as error identity. |
 | `expected/m1-values.json` | **Hand-authored** M1 fixture expectations produced by the fixture generator, compared with `1e-9` relative / `1e-12` absolute tolerance. They are not Excel 365 oracle goldens. |
+| `expected/m3b-formulas.json` | **Hand-authored** M3B function, error/coercion/operator, date, reference, lookup and shim expectations, plus the data sheet those formulas read. `tests/engine-m3b.test.ts` compares them with `1e-9` relative / `1e-12` absolute tolerance. They are not Excel 365 oracle goldens. |
 | `oracle-manifest.json` | Stub manifest for stored Excel-oracle goldens. Status is `not-configured`: no Excel version, locale or committed golden exists yet. |
 
 No real or personal workbook data is stored here. The Excel 365 oracle goldens

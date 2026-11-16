@@ -10,13 +10,18 @@ import type { SheetProjection } from '@view/types';
 import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
 import { gridDebugState } from './debug';
 import {
+  applyPointing,
   editorHasChanges,
+  isFormulaEntry,
+  isPointingBoundary,
+  pointingRange,
+  pointingReference,
   resolveEditorAction,
   startEdit,
   type EditorCommitDirection,
   type EditorSession,
 } from './editor';
-import type { GridCellAddress, GridSelection, RenderFrame } from './frame';
+import type { GridCellAddress, GridRange, GridSelection, RenderFrame } from './frame';
 import { mergeAnchor, resolveNavigation } from './navigation';
 import {
   cellRect,
@@ -36,6 +41,18 @@ export interface CanvasGridProps {
   readonly onSelectionChange: (selection: GridSelection) => void;
   readonly onCommit: (address: GridCellAddress, text: string) => void;
   readonly onClear: (address: GridCellAddress) => void;
+  /**
+   * Reports the live editor text, or `null` once the edit ends, so the formula
+   * bar mirrors in-cell typing before the cell is committed.
+   */
+  readonly onEditorChange?: (text: string | null) => void;
+  /**
+   * The formula bar holds a formula draft and points at cells. A press inserts
+   * a reference into the bar draft while the bar keeps the keyboard.
+   */
+  readonly formulaBarPointing?: {
+    readonly onPoint: (anchor: GridCellAddress, focus: GridCellAddress) => void;
+  } | null;
   /**
    * The focus owner hands the grid shell to the focus manager.
    */
@@ -59,6 +76,8 @@ export function CanvasGrid({
   onSelectionChange,
   onCommit,
   onClear,
+  onEditorChange,
+  formulaBarPointing,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -74,6 +93,17 @@ export function CanvasGrid({
   const stateRef = useRef({ projection, selection });
   const editorSessionRef = useRef<EditorSession | null>(null);
   const dragRef = useRef<{ axis: 'x' | 'y'; start: number; origin: number } | null>(null);
+  const selectionDragRef = useRef<{
+    readonly pointerId: number;
+    readonly anchor: GridCellAddress;
+    focus: GridCellAddress;
+  } | null>(null);
+  const formulaDragRef = useRef<{
+    readonly pointerId: number;
+    readonly anchor: GridCellAddress;
+  } | null>(null);
+  const pointingRangeRef = useRef<GridRange | null>(null);
+  const pendingCaretRef = useRef<number | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ width: 800, height: 480 });
   const [editor, setEditor] = useState<EditorSession | null>(null);
 
@@ -94,6 +124,7 @@ export function CanvasGrid({
     frame.render({
       projection: current.projection,
       selection: current.selection,
+      pointing: pointingRangeRef.current,
       scrollX: scroll.x,
       scrollY: scroll.y,
       width: viewport.width,
@@ -194,6 +225,18 @@ export function CanvasGrid({
     element.setSelectionRange(length, length);
   }, [editorId]);
 
+  // Pointing rewrites the formula text, so the caret follows the reference
+  // that was just inserted or extended.
+  useLayoutEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null || editor === null) return;
+    pendingCaretRef.current = null;
+    const element = editorRef.current;
+    if (element === null) return;
+    element.focus();
+    element.setSelectionRange(caret, caret);
+  }, [editor]);
+
   // The wheel listener is registered natively so the event stays cancelable.
   useEffect(() => {
     const container = containerRef.current;
@@ -220,35 +263,56 @@ export function CanvasGrid({
     [shellRef],
   );
 
+  /**
+   * The single place the editor session changes. The live text goes to the
+   * formula bar on every keystroke and pointing insertion; `null` marks the end
+   * of the edit so the bar returns to the committed cell text.
+   */
+  const updateEditorSession = (session: EditorSession | null): void => {
+    editorSessionRef.current = session;
+    setEditor(session);
+    onEditorChange?.(session?.text ?? null);
+  };
+
   const beginEditing = (address: GridCellAddress, text: string, commitIfChanged: boolean): void => {
     // Editing always happens on the anchor of a merged range.
     const target = mergeAnchor(stateRef.current.projection, address);
     const session = startEdit(target, text, commitIfChanged);
-    editorSessionRef.current = session;
-    setEditor(session);
+    pointingRangeRef.current = null;
+    pendingCaretRef.current = null;
+    updateEditorSession(session);
   };
 
   const updateEditorText = (text: string): void => {
     const session = editorSessionRef.current;
     if (session === null) return;
-    const next = { ...session, text };
-    editorSessionRef.current = next;
-    setEditor(next);
+    // Typing ends the pointing gesture: the next reference starts at the caret
+    // instead of replacing the reference the pointer inserted.
+    const next = { ...session, text, pointing: null };
+    pointingRangeRef.current = null;
+    pendingCaretRef.current = null;
+    updateEditorSession(next);
+    schedulePaint();
   };
 
   const setComposing = (composing: boolean): void => {
     const session = editorSessionRef.current;
     if (session === null) return;
     const next = { ...session, composing };
-    editorSessionRef.current = next;
-    setEditor(next);
+    updateEditorSession(next);
+  };
+
+  const clearPointing = (): void => {
+    pointingRangeRef.current = null;
+    pendingCaretRef.current = null;
+    schedulePaint();
   };
 
   const commitEditor = (direction: EditorCommitDirection): void => {
     const session = editorSessionRef.current;
     if (session === null) return;
-    editorSessionRef.current = null;
-    setEditor(null);
+    updateEditorSession(null);
+    clearPointing();
     if (editorHasChanges(session)) onCommit(session.address, session.text);
     const target = moveAfterCommit(session.address, direction, projection);
     if (target !== null) onSelectionChange(collapseSelection(target));
@@ -256,9 +320,190 @@ export function CanvasGrid({
   };
 
   const cancelEditor = (): void => {
-    editorSessionRef.current = null;
-    setEditor(null);
+    updateEditorSession(null);
+    clearPointing();
     containerRef.current?.focus();
+  };
+
+  /** The textarea selection, where a fresh pointing reference is inserted. */
+  const editorCaretToken = (): { readonly start: number; readonly end: number } | null => {
+    const element = editorRef.current;
+    if (element === null) return null;
+    return { start: element.selectionStart, end: element.selectionEnd };
+  };
+
+  /**
+   * Return the keyboard to the in-cell editor. A pointing gesture inserts
+   * text into the editor, so focus and the caret must survive the pointer
+   * press and release instead of moving to the grid shell.
+   */
+  const restoreEditorFocus = (session: EditorSession | null): void => {
+    const element = editorRef.current;
+    if (element === null) return;
+    element.focus();
+    if (session !== null && session.pointing !== null) {
+      element.setSelectionRange(session.pointing.end, session.pointing.end);
+    }
+  };
+
+  /** Reveal a pointed cell the same way selection navigation does. */
+  const revealPointedCell = (cell: GridCellAddress): void => {
+    const layout = layoutRef.current;
+    if (layout === null) return;
+    scrollRef.current = scrollToReveal(
+      stateRef.current.projection,
+      layout,
+      scrollRef.current.x,
+      scrollRef.current.y,
+      cell,
+    );
+  };
+
+  /**
+   * Insert or replace the reference text and leave the caret after it. The
+   * editor keeps the keyboard focus; only the tinted pointing range moves.
+   */
+  const setPointing = (
+    session: EditorSession,
+    anchor: GridCellAddress,
+    focus: GridCellAddress,
+    token: { readonly start: number; readonly end: number } | null,
+  ): EditorSession => {
+    const reference = pointingReference(stateRef.current.projection, anchor, focus);
+    const next = applyPointing(session, reference, anchor, focus, token);
+    updateEditorSession(next);
+    pointingRangeRef.current = pointingRange(anchor, focus);
+    pendingCaretRef.current = next.pointing?.end ?? null;
+    revealPointedCell(focus);
+    schedulePaint();
+    return next;
+  };
+
+  /** The cell under a viewport pointer position, for a drag gesture. */
+  const cellAtClientPoint = (clientX: number, clientY: number): GridCellAddress | null => {
+    const canvas = canvasRef.current;
+    const layout = layoutRef.current;
+    if (canvas === null || layout === null) return null;
+    const rect = canvas.getBoundingClientRect();
+    return cellAtPoint(
+      stateRef.current.projection,
+      layout,
+      clientX - rect.left,
+      clientY - rect.top,
+      scrollRef.current.x,
+      scrollRef.current.y,
+    );
+  };
+
+  /** Extend the ordinary selection from the press cell as the pointer moves. */
+  const beginSelectionDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    anchor: GridCellAddress,
+    focus: GridCellAddress,
+  ): void => {
+    if (event.button !== 0) return;
+    const drag = { pointerId: event.pointerId, anchor, focus };
+    selectionDragRef.current = drag;
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+      if (address === null) return;
+      const target = mergeAnchor(stateRef.current.projection, address);
+      if (target.row === drag.focus.row && target.col === drag.focus.col) return;
+      drag.focus = target;
+      onSelectionChange(extendSelection(collapseSelection(drag.anchor), target));
+    };
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      if (selectionDragRef.current === drag) selectionDragRef.current = null;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
+  /** Drag a formula reference from the pressed cell to the cell under the pointer. */
+  const beginFormulaDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    anchor: GridCellAddress,
+  ): void => {
+    if (event.button !== 0) return;
+    const drag = { pointerId: event.pointerId, anchor };
+    formulaDragRef.current = drag;
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      const session = editorSessionRef.current;
+      const pointing = session?.pointing ?? null;
+      if (session === null || !isFormulaEntry(session) || pointing === null) return;
+      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+      if (address === null) return;
+      const target = mergeAnchor(stateRef.current.projection, address);
+      if (target.row === pointing.focus.row && target.col === pointing.focus.col) return;
+      setPointing(session, drag.anchor, target, {
+        start: pointing.start,
+        end: pointing.end,
+      });
+    };
+    function end(upEvent: PointerEvent): void {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      stopTracking();
+      // The release ends the gesture, not the edit. A repaint or a focus
+      // change during the press must not take the keyboard away from the
+      // textarea that just received the reference.
+      const current = editorSessionRef.current;
+      if (current !== null && current.pointing !== null) restoreEditorFocus(current);
+    }
+    // A window that loses focus may never deliver the release. Forget the
+    // gesture so a later click can still commit the edit.
+    function cancel(): void {
+      if (formulaDragRef.current === drag) formulaDragRef.current = null;
+      stopTracking();
+    }
+    function stopTracking(): void {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('blur', cancel);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('blur', cancel);
+  };
+
+  /**
+   * Drag a reference from the pressed cell into the formula bar draft. The bar
+   * keeps the keyboard; only the selection and the reference text change.
+   */
+  const beginFormulaBarDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    anchor: GridCellAddress,
+    focus: GridCellAddress,
+  ): void => {
+    if (event.button !== 0) return;
+    const drag = { pointerId: event.pointerId, anchor, focus };
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+      if (address === null) return;
+      const target = mergeAnchor(stateRef.current.projection, address);
+      if (target.row === drag.focus.row && target.col === drag.focus.col) return;
+      drag.focus = target;
+      onSelectionChange(extendSelection(collapseSelection(drag.anchor), target));
+      formulaBarPointing?.onPoint(drag.anchor, target);
+    };
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
@@ -267,9 +512,55 @@ export function CanvasGrid({
     const rect = event.currentTarget.getBoundingClientRect();
     const pointX = event.clientX - rect.left;
     const pointY = event.clientY - rect.top;
-    containerRef.current?.focus();
     const current = stateRef.current.projection;
     const scroll = scrollRef.current;
+    const session = editorSessionRef.current;
+
+    // A formula edit points at cells: a press inserts a reference and a drag
+    // extends it. The textarea keeps the focus, so the edit is not committed.
+    if (
+      session !== null &&
+      isFormulaEntry(session) &&
+      event.button === 0 &&
+      pointX >= layout.headerWidth &&
+      pointY >= layout.headerHeight
+    ) {
+      const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
+      if (address === null) return;
+      event.preventDefault();
+      const target = mergeAnchor(current, address);
+      const anchor = event.shiftKey && session.pointing !== null ? session.pointing.anchor : target;
+      const token = session.pointing === null ? editorCaretToken() : null;
+      // Track the gesture before the state update, so a focus change during
+      // the pointing render cannot commit the half-finished formula.
+      beginFormulaDrag(event, anchor);
+      setPointing(session, anchor, target, token);
+      return;
+    }
+
+    // The formula bar owns a formula draft: a press inserts a reference into
+    // that draft. The bar keeps the keyboard, so the press must not focus the
+    // grid or start an in-cell edit.
+    if (
+      session === null &&
+      formulaBarPointing !== null &&
+      formulaBarPointing !== undefined &&
+      event.button === 0 &&
+      pointX >= layout.headerWidth &&
+      pointY >= layout.headerHeight
+    ) {
+      const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
+      if (address === null) return;
+      event.preventDefault();
+      const target = mergeAnchor(current, address);
+      const anchor = event.shiftKey ? stateRef.current.selection.anchor : target;
+      onSelectionChange(extendSelection(collapseSelection(anchor), target));
+      formulaBarPointing.onPoint(anchor, target);
+      beginFormulaBarDrag(event, anchor, target);
+      return;
+    }
+
+    containerRef.current?.focus();
 
     if (pointY < layout.headerHeight && pointX >= layout.headerWidth) {
       const col = columnAtHeader(current, layout, pointX, scroll.x);
@@ -284,25 +575,24 @@ export function CanvasGrid({
       return;
     }
 
-    const address = cellAtPoint(
-      current,
-      layout,
-      pointX,
-      pointY,
-      scrollRef.current.x,
-      scrollRef.current.y,
-    );
+    const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
     if (address === null) return;
     const merge = current.mergeAt(address.row, address.col);
     const target = merge === null ? address : { row: merge.anchorRow, col: merge.anchorCol };
     if (event.shiftKey) {
-      onSelectionChange(extendSelection(stateRef.current.selection, target));
+      const base = stateRef.current.selection;
+      onSelectionChange(extendSelection(base, target));
+      beginSelectionDrag(event, base.anchor, target);
       return;
     }
     onSelectionChange(collapseSelection(target));
+    beginSelectionDrag(event, target, target);
   };
 
   const handleDoubleClick = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
+    // A double-click while pointing must not abandon the formula edit.
+    if (editorSessionRef.current !== null) return;
+    if (formulaBarPointing !== null && formulaBarPointing !== undefined) return;
     const layout = layoutRef.current;
     if (layout === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -393,7 +683,48 @@ export function CanvasGrid({
     if (action.type === 'cancel') {
       event.preventDefault();
       cancelEditor();
+      return;
     }
+    if (session.composing || event.nativeEvent.isComposing) return;
+    // Typed entry points at cells; F2 starts in edit mode and keeps the arrow
+    // keys for moving the caret unless the caret sits where a reference
+    // belongs. Once a point gesture starts, both modes move or extend it.
+    if (!isFormulaEntry(session)) return;
+    if (!POINTING_KEYS.has(event.key)) return;
+    const caret = editorRef.current?.selectionStart ?? session.text.length;
+    if (session.pointing === null && session.commitIfChanged && !isPointingBoundary(session, caret))
+      return;
+
+    const layout = layoutRef.current;
+    const projection = stateRef.current.projection;
+    const pageRows =
+      layout === null
+        ? 20
+        : Math.max(1, Math.floor(layout.scrollRegionHeight / projection.rowHeight(0)));
+    const pageCols = layout === null ? 10 : Math.max(1, Math.floor(layout.scrollRegionWidth / 64));
+    const pointing = session.pointing;
+    const outcome = resolveNavigation({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      selection:
+        pointing === null
+          ? collapseSelection(session.address)
+          : {
+              anchor: pointing.anchor,
+              focus: pointing.focus,
+              extent: { kind: 'cells' },
+            },
+      projection,
+      pageRows,
+      pageCols,
+    });
+    if (outcome.kind === 'none') return;
+    event.preventDefault();
+    const token =
+      pointing === null ? editorCaretToken() : { start: pointing.start, end: pointing.end };
+    setPointing(session, outcome.selection.anchor, outcome.selection.focus, token);
   };
 
   const beginThumbDrag = (axis: 'x' | 'y', event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -566,7 +897,16 @@ export function CanvasGrid({
           onCompositionEnd={() => setComposing(false)}
           onKeyDown={handleEditorKeyDown}
           onBlur={() => {
-            if (editorSessionRef.current !== null) commitEditor('none');
+            const session = editorSessionRef.current;
+            if (session === null) return;
+            // A pointer gesture is still inserting or extending a reference.
+            // If the press moved focus before the release, take it back
+            // instead of committing a half-finished formula.
+            if (formulaDragRef.current !== null && session.pointing !== null) {
+              restoreEditorFocus(session);
+              return;
+            }
+            commitEditor('none');
           }}
           data-testid="cell-editor"
         />
@@ -574,6 +914,17 @@ export function CanvasGrid({
     </div>
   );
 }
+
+const POINTING_KEYS: ReadonlySet<string> = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
 
 /**
  * Windows and Linux input methods report the keys they process with keyCode

@@ -80,6 +80,7 @@ describe('user value parsing', () => {
     expect(parseUserValue('42.5')).toEqual({ type: 'number', value: 42.5 });
     expect(parseUserValue('TRUE')).toEqual({ type: 'boolean', value: true });
     expect(parseUserValue('#DIV/0!')).toEqual({ type: 'error', value: '#DIV/0!' });
+    expect(parseUserValue('#CIRC!')).toEqual({ type: 'error', value: '#CIRC!' });
     expect(parseUserValue('hello')).toEqual({ type: 'text', value: 'hello' });
     expect(parseUserValue('')).toEqual({ type: 'blank' });
   });

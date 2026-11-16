@@ -124,7 +124,7 @@ export function createSheetProjection(
       rawText: rawTextFor(cell),
       formula: cell.formula,
       styleId: cell.styleId,
-      stale: cell.formula !== null && cell.savedResult === null,
+      stale: cell.stale === true || (cell.formula !== null && cell.savedResult === null),
       style,
       merge: merges.get(cellKey(row, col)) ?? null,
     };

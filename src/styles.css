@@ -126,6 +126,14 @@ body {
   font-size: 12px;
 }
 
+.calc-warning {
+  padding: 7px 16px;
+  background: #fdecea;
+  border-bottom: 1px solid #f5c2bd;
+  color: #8a1c12;
+  font-size: 12px;
+}
+
 .grid-area {
   position: relative;
   flex: 1 1 auto;
@@ -338,4 +346,9 @@ body {
 
 .status-spacer {
   flex: 1;
+}
+
+.stale-marker {
+  color: #9a6700;
+  font-style: italic;
 }

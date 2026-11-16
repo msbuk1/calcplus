@@ -803,7 +803,7 @@ const oracleManifest = {
   },
   generatedAt: null,
   goldens: [],
-  note: 'No Excel 365 oracle goldens are committed or configured yet. See scripts/oracle/README.md. Hand-authored M1 fixture expectations live in fixtures/expected/ and are not oracle goldens.',
+  note: 'No Excel 365 oracle goldens are committed or configured yet. See scripts/oracle/README.md. Hand-authored expectations live in fixtures/expected/ and are not oracle goldens; M3B uses fixtures/expected/m3b-formulas.json.',
 };
 writeFileSync(
   join(root, 'fixtures', 'oracle-manifest.json'),

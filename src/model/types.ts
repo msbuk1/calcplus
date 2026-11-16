@@ -48,6 +48,14 @@ export interface Cell {
   savedResult: CellValue | null;
   styleId: StyleId;
   richText: RichTextPayload | null;
+  /**
+   * `true` when the displayed value is not a result the engine evaluated from
+   * evaluated inputs: an unsupported function, an unparseable construct, a
+   * shared/array/rich-text formula that is not recalculated, or a dependant of
+   * one. Stale cells show their value but are never saved from that input
+   * (formula semantics §9, file-compat §6.1).
+   */
+  stale?: boolean;
   /** Present only for shared groups and legacy array formulas. */
   readonly formulaSource?: FormulaSource;
 }
@@ -240,6 +248,7 @@ export function createCell(value: CellValue, styleId = 0): Cell {
     savedResult: null,
     styleId,
     richText: null,
+    stale: false,
   };
 }
 
@@ -252,6 +261,7 @@ export function cloneCell(cell: Cell | null): Cell | null {
     savedResult: cell.savedResult === null ? null : cloneCellValue(cell.savedResult),
     styleId: cell.styleId,
     richText: cell.richText === null ? null : { ...cell.richText },
+    stale: cell.stale === true,
     ...(cell.formulaSource === undefined ? {} : { formulaSource: { ...cell.formulaSource } }),
   };
 }
@@ -271,6 +281,8 @@ export function formulaSourceEquals(
 
 export function cellStateEquals(left: Cell | null, right: Cell | null): boolean {
   if (left === null || right === null) return left === right;
+  // `stale` is derived calculation state, not authored document state; the
+  // calculation layer compares it separately.
   return (
     cellValueEqualsForModel(left.value, right.value) &&
     left.formula === right.formula &&

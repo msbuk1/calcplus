@@ -46,6 +46,8 @@ export interface GridSelection {
 export interface GridRenderState {
   readonly projection: SheetProjection;
   readonly selection: GridSelection;
+  /** The range a formula edit is pointing at, when it is not the selection. */
+  readonly pointing?: GridRange | null;
   readonly scrollX: number;
   readonly scrollY: number;
   readonly width: number;

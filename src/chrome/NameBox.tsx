@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX, RefObject } from 'react';
 
 export interface NameBoxProps {
-  /** The address of the active cell. */
+  /** The address of the selection: one cell or a range such as `A1:B12`. */
   readonly value: string;
   /** Returns the normalised address, or `null` when the address is invalid. */
   readonly onNavigate: (text: string) => string | null;
@@ -12,8 +12,8 @@ export interface NameBoxProps {
 }
 
 /**
- * The name box. It shows the address of the active cell and accepts an
- * address to jump to. The Go To dialog itself is a chrome-milestone feature.
+ * The name box. It shows the address of the selection and accepts an address
+ * to jump to. The Go To dialog itself is a chrome-milestone feature.
  */
 export function NameBox({
   value,

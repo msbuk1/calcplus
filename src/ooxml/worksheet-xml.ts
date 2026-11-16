@@ -514,6 +514,7 @@ function cellFromAccumulator(
     savedResult,
     styleId: cell.styleId,
     richText: parsed.richText,
+    stale: false,
     ...(formulaSource === undefined ? {} : { formulaSource }),
   };
 }

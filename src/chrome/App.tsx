@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import appIcon from '../../assets/icons/icon-64.png';
 import { DocumentSession } from '@commands/session';
+import { CalculationController } from '@engine/calculation-controller';
+import type { EngineCellRef } from '@engine/port';
 import type { SheetId } from '@model/types';
-import { formatCellRef, cellKey, createCell } from '@model/types';
+import { formatCellRef, cellKey, columnToLetters, createCell } from '@model/types';
 import { parseUserValue, BLANK } from '@model/value';
 import { openBlankWorkbook } from '@ooxml/blank';
 import type { CompatibilityInfo } from '@ooxml/open';
@@ -14,13 +16,17 @@ import { adoptSavedPackage, saveWorkbook } from '@ooxml/save';
 import { snapshotWorkbook } from '@ooxml/snapshot';
 import { confirmReplaceDocument } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
+import type { SheetProjection } from '@view/types';
 import { CanvasGrid } from '@grid/CanvasGrid';
 import { GRID_METRICS } from '@grid/frame';
 import type { GridCellAddress, GridSelection } from '@grid/frame';
 import { gridDebugState } from '@grid/debug';
 import { cellRect } from '@grid/panes';
-import { collapseSelection } from '@grid/selection';
+import { collapseSelection, selectionRange } from '@grid/selection';
+import { isPointingBoundary, pointingReference } from '@grid/editor';
+import { resolveNavigation } from '@grid/navigation';
 import { FormulaBar } from '@chrome/FormulaBar';
+import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
 import { NameBox } from '@chrome/NameBox';
 import { nextFocusZone, type FocusZone } from '@chrome/focus';
 import {
@@ -38,21 +44,44 @@ interface LoadedDocument {
   readonly handle: FileHandleLike | null;
   readonly sheetId: string;
   readonly compatibility: CompatibilityInfo;
+  readonly calculation: CalculationController;
 }
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
+
+const FORMULA_BAR_POINT_KEYS: ReadonlySet<string> = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+]);
 
 export function App(): JSX.Element {
   const [document, setDocument] = useState<LoadedDocument | null>(null);
   const [version, setVersion] = useState(0);
   const [selection, setSelection] = useState<GridSelection>(collapseSelection({ row: 0, col: 0 }));
   const [focusZone, setFocusZone] = useState<FocusZone>('grid');
+  // The live text of an in-cell edit, so the formula bar mirrors typing before
+  // the cell commits. `null` means no edit is open.
+  const [liveEditText, setLiveEditText] = useState<string | null>(null);
+  // The formula bar's own draft. `null` mirrors the active cell, so clicking
+  // away returns the bar to the committed text.
+  const [barDraft, setBarDraft] = useState<string | null>(null);
+  const [barCaretRequest, setBarCaretRequest] = useState<{ readonly offset: number } | null>(null);
   const [status, setStatus] = useState('Open an .xlsx workbook to begin.');
+  const [calcWarning, setCalcWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nameBoxRef = useRef<HTMLInputElement | null>(null);
   const formulaBarRef = useRef<HTMLInputElement | null>(null);
+  const barEditAddressRef = useRef<GridCellAddress | null>(null);
+  const barPointingRef = useRef<{
+    readonly anchor: GridCellAddress;
+    readonly focus: GridCellAddress;
+    readonly start: number;
+    readonly end: number;
+  } | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
 
@@ -67,12 +96,28 @@ export function App(): JSX.Element {
     });
   }, [document, document?.sheetId, version]);
 
+  const nameBoxValue = projection === null ? '' : formatSelectionAddress(selection, projection);
+
   const loadOpened = (
     opened: ReturnType<typeof openWorkbook>,
     fileName: string,
     handle: FileHandleLike | null,
   ): void => {
+    document?.calculation.dispose();
     const session = new DocumentSession(opened.workbook);
+    const calculation = new CalculationController(session, {
+      onModelChanged: () => setVersion((value) => value + 1),
+      onCircular: (circular, sheetNames) => {
+        setCalcWarning(circularWarningMessage(circular, sheetNames));
+        setStatus(
+          circular.length === 0
+            ? 'Circular reference resolved.'
+            : 'Circular reference detected. Affected cells show #CIRC!.',
+        );
+      },
+      onError: (message) =>
+        setStatus(`Formula engine unavailable: ${message}. Cached results are shown.`),
+    });
     setDocument({
       session,
       pkg: opened.package,
@@ -80,12 +125,20 @@ export function App(): JSX.Element {
       handle,
       sheetId: opened.initialSheetId,
       compatibility: opened.compatibility,
+      calculation,
     });
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setFocusZone('grid');
+    setLiveEditText(null);
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    barEditAddressRef.current = null;
+    barPointingRef.current = null;
     setVersion((value) => value + 1);
     setStatus(`Opened ${fileName}.`);
+    setCalcWarning(null);
     recoveryRef.current = null;
+    calculation.start();
   };
 
   const loadPickedFile = (picked: {
@@ -182,9 +235,8 @@ export function App(): JSX.Element {
 
   const runCellSet = (address: GridCellAddress, rawText: string): void => {
     if (document === null) return;
-    // A leading equals sign means the user authored a formula. The engine
-    // arrives with the model-depth milestone; calcplus stores the authored
-    // text and lets the saved file ask Excel to recalculate.
+    // A leading equals sign means the user authored a formula. The model keeps
+    // the exact text; the worker engine recalculates it asynchronously.
     const isFormula = rawText.startsWith('=');
     const formula = isFormula ? rawText.slice(1) : null;
     const value = isFormula ? BLANK : parseUserValue(rawText);
@@ -222,6 +274,13 @@ export function App(): JSX.Element {
   };
 
   const dirty = document?.session.hasUnsavedChanges ?? false;
+  const calculation = document?.calculation.state() ?? null;
+  const staleCount = calculation?.staleCount ?? 0;
+  const activeCell = projection?.cellAt(active.row, active.col) ?? null;
+  // The bar's draft owns the text while it is editing; otherwise it mirrors an
+  // in-cell edit or the active cell.
+  const barText = barDraft ?? liveEditText ?? projection?.rawTextAt(active.row, active.col) ?? '';
+  const barFormulaActive = barDraft !== null && barDraft.startsWith('=');
 
   useEffect(() => {
     if (!dirty) return;
@@ -382,6 +441,7 @@ export function App(): JSX.Element {
         focusZone,
         canUndo: document?.session.canUndo ?? false,
         canRedo: document?.session.canRedo ?? false,
+        calculation: document?.calculation.state() ?? null,
         status,
       }),
       getCellDisplay: (row: number, col: number) =>
@@ -432,13 +492,102 @@ export function App(): JSX.Element {
     };
   });
 
+  const startFormulaBarEdit = (text: string): void => {
+    barEditAddressRef.current = active;
+    // The fx button may have queued a new formula draft just before focus; keep
+    // it instead of replacing it with the text the focus event saw.
+    setBarDraft((draft) => draft ?? text);
+    setFocusZone('formula-bar');
+  };
+
+  const stopFormulaBarEdit = (): void => {
+    barEditAddressRef.current = null;
+    barPointingRef.current = null;
+    setBarDraft(null);
+    setBarCaretRequest(null);
+  };
+
+  const changeFormulaBarText = (text: string): void => {
+    // Typing ends the pointing gesture: the next reference starts at the caret
+    // instead of replacing the reference the grid inserted.
+    barPointingRef.current = null;
+    setBarDraft(text);
+  };
+
+  /** Insert or replace the pointed range in the formula bar draft. */
+  const pointFormulaBarSelection = (anchor: GridCellAddress, focus: GridCellAddress): void => {
+    if (projection === null || barDraft === null || !barDraft.startsWith('=')) return;
+    const element = formulaBarRef.current;
+    const pointing = barPointingRef.current;
+    const start = pointing?.start ?? element?.selectionStart ?? barDraft.length;
+    const end = pointing?.end ?? element?.selectionEnd ?? start;
+    const reference = pointingReference(projection, anchor, focus);
+    const nextEnd = start + reference.length;
+    barPointingRef.current = { anchor, focus, start, end: nextEnd };
+    setBarDraft(`${barDraft.slice(0, start)}${reference}${barDraft.slice(end)}`);
+    setBarCaretRequest({ offset: nextEnd });
+  };
+
+  /** Move or extend the pointed range from the bar's keyboard. */
+  const pointFormulaBarFromKey = (key: string, modifiers: FormulaBarKeyModifiers): boolean => {
+    if (projection === null || barDraft === null || !barDraft.startsWith('=')) return false;
+    if (!FORMULA_BAR_POINT_KEYS.has(key)) return false;
+    const pointing = barPointingRef.current;
+    const caret = formulaBarRef.current?.selectionStart ?? barDraft.length;
+    if (pointing === null && !isPointingBoundary({ text: barDraft }, caret)) return false;
+    const selectionForKey =
+      pointing === null
+        ? collapseSelection(barEditAddressRef.current ?? active)
+        : { anchor: pointing.anchor, focus: pointing.focus, extent: { kind: 'cells' as const } };
+    const outcome = resolveNavigation({
+      key,
+      ctrlKey: modifiers.ctrlKey,
+      shiftKey: modifiers.shiftKey,
+      altKey: modifiers.altKey,
+      selection: selectionForKey,
+      projection,
+      pageRows: 20,
+      pageCols: 10,
+    });
+    if (outcome.kind === 'none') return false;
+    setSelection(outcome.selection);
+    pointFormulaBarSelection(outcome.selection.anchor, outcome.selection.focus);
+    return true;
+  };
+
+  const cancelFormulaBar = (): void => {
+    const origin = barEditAddressRef.current;
+    barPointingRef.current = null;
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    if (origin !== null) setSelection(collapseSelection(origin));
+    setFocusZone('grid');
+  };
+
+  const commitFormulaBar = (text: string, options: { readonly moveDown: boolean }): void => {
+    // A pointing gesture moves the selection, but the draft belongs to the cell
+    // where bar editing started.
+    const address = barEditAddressRef.current ?? active;
+    barPointingRef.current = null;
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    runCellSet(address, text);
+    if (projection !== null) {
+      const target = options.moveDown
+        ? { row: Math.min(projection.rowCount - 1, address.row + 1), col: address.col }
+        : address;
+      setSelection(collapseSelection(target));
+    }
+    setFocusZone('grid');
+  };
+
   return (
     <div className="app">
       <header className="app-header">
         <div className="brand">
           <img className="brand-icon" src={appIcon} alt="" width={28} height={28} />
           <span className="brand-name">calcplus</span>
-          <span className="brand-phase">M2 grid foundation</span>
+          <span className="brand-phase">M3B function coverage</span>
         </div>
         <div className="file-meta">
           <span data-testid="file-name">{document?.fileName ?? 'No workbook open'}</span>
@@ -499,28 +648,21 @@ export function App(): JSX.Element {
 
       <div className="formula-row">
         <NameBox
-          value={projection === null ? '' : formatCellRef(active.row, active.col)}
+          value={nameBoxValue}
           onNavigate={navigateToAddress}
           onCancel={() => setFocusZone('grid')}
           onFocused={() => setFocusZone('name-box')}
           inputRef={nameBoxRef}
         />
         <FormulaBar
-          text={projection?.rawTextAt(active.row, active.col) ?? ''}
-          onCommit={(text, options) => {
-            runCellSet(active, text);
-            if (options.moveDown && projection !== null) {
-              setSelection(
-                collapseSelection({
-                  row: Math.min(projection.rowCount - 1, active.row + 1),
-                  col: active.col,
-                }),
-              );
-            }
-            setFocusZone('grid');
-          }}
-          onCancel={() => setFocusZone('grid')}
-          onFocused={() => setFocusZone('formula-bar')}
+          text={barText}
+          onTextChange={changeFormulaBarText}
+          onCommit={commitFormulaBar}
+          onCancel={cancelFormulaBar}
+          onFocused={startFormulaBarEdit}
+          onStopEditing={stopFormulaBarEdit}
+          onPointKey={pointFormulaBarFromKey}
+          caretRequest={barCaretRequest}
           inputRef={formulaBarRef}
         />
       </div>
@@ -545,6 +687,12 @@ export function App(): JSX.Element {
         </div>
       ) : null}
 
+      {calcWarning !== null ? (
+        <div className="calc-warning" role="status" data-testid="calc-warning">
+          {calcWarning}
+        </div>
+      ) : null}
+
       <main className="grid-area">
         {document !== null && projection !== null ? (
           <CanvasGrid
@@ -553,6 +701,8 @@ export function App(): JSX.Element {
             onSelectionChange={setSelection}
             onCommit={runCellSet}
             onClear={(address) => runCellSet(address, '')}
+            onEditorChange={setLiveEditText}
+            formulaBarPointing={barFormulaActive ? { onPoint: pointFormulaBarSelection } : null}
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />
@@ -577,11 +727,41 @@ export function App(): JSX.Element {
         <span data-testid="active-value">
           {projection?.cellAt(active.row, active.col)?.displayText ?? ''}
         </span>
+        {activeCell?.stale ? (
+          <span className="stale-marker" data-testid="active-stale">
+            not recalculated
+          </span>
+        ) : null}
         <span className="status-spacer" />
+        {staleCount > 0 ? (
+          <span
+            className="stale-marker"
+            data-testid="stale-count"
+            title="Cells whose cached result was kept because it could not be recalculated"
+          >
+            {staleCount} not recalculated
+          </span>
+        ) : null}
         <span data-testid="status-message">{status}</span>
       </footer>
     </div>
   );
+}
+
+function formatSelectionAddress(selection: GridSelection, projection: SheetProjection): string {
+  const range = selectionRange(selection);
+  const { startRow, startCol, endRow, endCol } = range;
+  if (startRow === endRow && startCol === endCol) {
+    return formatCellRef(startRow, startCol);
+  }
+  // Excel labels a whole column as A:A and a whole row as 1:1.
+  if (startRow === 0 && endRow === projection.rowCount - 1) {
+    return `${columnToLetters(startCol)}:${columnToLetters(endCol)}`;
+  }
+  if (startCol === 0 && endCol === projection.columnCount - 1) {
+    return `${startRow + 1}:${endRow + 1}`;
+  }
+  return `${formatCellRef(startRow, startCol)}:${formatCellRef(endRow, endCol)}`;
 }
 
 function lettersToColumn(letters: string): number {
@@ -598,4 +778,17 @@ function dirtyKeysFromSnapshot(
   return new Map(
     [...snapshot.entries()].map(([sheetId, cells]) => [sheetId, new Set(cells.keys())]),
   );
+}
+
+function circularWarningMessage(
+  circular: readonly EngineCellRef[],
+  sheetNames: readonly string[],
+): string | null {
+  if (circular.length === 0) return null;
+  const labels = circular
+    .slice(0, 5)
+    .map((ref) => `${sheetNames[ref.sheet] ?? 'Sheet'}!${formatCellRef(ref.row, ref.col)}`);
+  const remainder =
+    circular.length > labels.length ? ` and ${circular.length - labels.length} more` : '';
+  return `Circular reference detected: ${labels.join(', ')}${remainder}. Affected cells show #CIRC!; the file keeps the authored text and cached result.`;
 }

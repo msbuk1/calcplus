@@ -53,6 +53,35 @@ describe('in-cell editor', () => {
     expect(resolveEditorAction(session, keyEvent({ key: 'a' }))).toEqual({ type: 'ignore' });
   });
 
+  it('commits typed entry with an arrow key and moves in that direction', () => {
+    const session = startEdit(address, 'x', false);
+    expect(resolveEditorAction(session, keyEvent({ key: 'ArrowDown' }))).toEqual({
+      type: 'commit',
+      direction: 'down',
+    });
+    expect(resolveEditorAction(session, keyEvent({ key: 'ArrowUp' }))).toEqual({
+      type: 'commit',
+      direction: 'up',
+    });
+    expect(resolveEditorAction(session, keyEvent({ key: 'ArrowRight' }))).toEqual({
+      type: 'commit',
+      direction: 'right',
+    });
+    expect(resolveEditorAction(session, keyEvent({ key: 'ArrowLeft' }))).toEqual({
+      type: 'commit',
+      direction: 'left',
+    });
+  });
+
+  it('keeps arrows for the caret in F2 mode and for formula pointing', () => {
+    const f2 = startEdit(address, 'x', true);
+    expect(resolveEditorAction(f2, keyEvent({ key: 'ArrowLeft' }))).toEqual({ type: 'ignore' });
+    const formula = startEdit(address, '=SUM(', false);
+    expect(resolveEditorAction(formula, keyEvent({ key: 'ArrowLeft' }))).toEqual({
+      type: 'ignore',
+    });
+  });
+
   it('never commits while an input method is composing', () => {
     const session = { ...startEdit(address, '', false), composing: true };
     expect(resolveEditorAction(session, keyEvent({ key: 'Enter' }))).toEqual({ type: 'ignore' });
