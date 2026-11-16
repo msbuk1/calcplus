@@ -1,5 +1,6 @@
 import type { CalculationScheduler, CommandChange } from '@commands/types';
 import { type CalculationCellUpdate, DocumentSession } from '@commands/session';
+import { absolutizeFormulaReferences } from '@model/references';
 import type { Cell, Workbook } from '@model/types';
 import { cellKey, parseCellKey } from '@model/types';
 import { BLANK, type CellValue, errorValue } from '@model/value';
@@ -10,6 +11,7 @@ import type {
   EngineCellInput,
   EngineCellRef,
   EngineEdit,
+  EngineNamedExpression,
   EngineWorkbookInput,
 } from './port';
 
@@ -79,27 +81,46 @@ export class CalculationController implements CalculationScheduler {
     if (this.disposed || this.started) return;
     this.started = true;
     setTimeout(() => {
-      if (this.disposed) return;
-      try {
-        const snapshot = snapshotWorkbook(this.session.workbook);
-        this.unsupportedCount = snapshot.unsupportedCount;
-        this.staleCount = this.session.staleCellCount();
-        this.client.initialize(snapshot.workbook, snapshot.cells, this.session.editVersion);
-      } catch (error) {
-        this.callbacks.onError(error instanceof Error ? error.message : String(error));
-      }
+      if (this.disposed || this.client.isReady) return;
+      this.buildFromWorkbook();
     }, 0);
+  }
+
+  /**
+   * Rebuild the derived dependency graph after a workbook-level change such
+   * as the 1900/1904 switch or a structural edit. The model stays untouched.
+   */
+  rebuild(): void {
+    if (this.disposed) return;
+    this.started = true;
+    this.buildFromWorkbook();
   }
 
   afterChanges(changes: readonly CommandChange[]): void {
     if (this.disposed || changes.length === 0) return;
-    const edits = editsForChanges(this.session.workbook, changes);
+    if (changes.some((change) => change.type === 'workbook.dateSystem')) {
+      this.rebuild();
+      return;
+    }
+    const cellChanges = changes.filter((change) => change.type === 'cell.set');
+    const edits = editsForChanges(this.session.workbook, cellChanges);
     if (edits.length === 0) return;
     const version = this.session.editVersion;
     const keys = this.editsByVersion.get(version) ?? new Set<string>();
     for (const edit of edits) keys.add(engineKey(edit));
     this.editsByVersion.set(version, keys);
     this.client.applyEdits(edits, version);
+  }
+
+  private buildFromWorkbook(): void {
+    try {
+      const snapshot = snapshotWorkbook(this.session.workbook);
+      this.unsupportedCount = snapshot.unsupportedCount;
+      this.staleCount = this.session.staleCellCount();
+      this.client.initialize(snapshot.workbook, snapshot.cells, this.session.editVersion);
+    } catch (error) {
+      this.callbacks.onError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   dispose(): void {
@@ -245,10 +266,37 @@ function snapshotWorkbook(workbook: Workbook): WorkbookSnapshot {
   }
 
   return {
-    workbook: { date1904: workbook.date1904, sheetNames },
+    workbook: {
+      date1904: workbook.date1904,
+      sheetNames,
+      namedExpressions: namedExpressionsFor(workbook),
+    },
     cells,
     unsupportedCount,
   };
+}
+
+/**
+ * The engine-only form of defined names. The model keeps the authored text;
+ * this copy is screened against the 52-function registry and absolutised
+ * because HyperFormula rejects relative references in named expressions.
+ */
+function namedExpressionsFor(workbook: Workbook): readonly EngineNamedExpression[] {
+  const expressions: EngineNamedExpression[] = [];
+  const add = (name: string, formula: string, sheet: number | null): void => {
+    const text = formula.trim().replace(/^=/, '');
+    if (text === '' || name.trim() === '') return;
+    const prepared = prepareFormula(text);
+    if (prepared.text === null) return;
+    const expression = absolutizeFormulaReferences(prepared.text);
+    if (expression.trim() === '') return;
+    expressions.push({ name, expression: `=${expression}`, sheet });
+  };
+  for (const name of workbook.names) add(name.name, name.formula, null);
+  for (const [sheetIndex, sheet] of workbook.sheets.entries()) {
+    for (const name of sheet.names) add(name.name, name.formula, sheetIndex);
+  }
+  return expressions;
 }
 
 function editsForChanges(
@@ -257,6 +305,7 @@ function editsForChanges(
 ): readonly EngineEdit[] {
   const edits = new Map<string, EngineEdit>();
   for (const change of changes) {
+    if (change.type !== 'cell.set') continue;
     const sheetIndex = workbook.sheets.findIndex((sheet) => sheet.id === change.sheetId);
     if (sheetIndex < 0) continue;
     const sheet = workbook.sheets[sheetIndex]!;

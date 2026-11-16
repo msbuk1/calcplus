@@ -3,6 +3,7 @@ import type { Cell, Sheet, SheetId, Workbook } from '@model/types';
 import {
   cellFormulaKey,
   cellKey,
+  cellStateEquals,
   formatCellRef,
   getCell,
   getSheetById,
@@ -17,10 +18,12 @@ import {
 } from './patch/shared-strings-patch';
 import { parseSharedStringsXml } from './shared-strings';
 import { parseWorksheetXml } from './worksheet-xml';
+import { parseStylesXml } from './styles-xml';
+import { parseWorkbookXml } from './workbook-xml';
 import { WorkbookSaveError } from './errors';
 import { validatePatchedPart } from './xml';
 import { writePackage } from './zip';
-import { removeCalcChain, setFullCalcOnLoad } from './patch/workbook-patch';
+import { removeCalcChain, setFullCalcOnLoad, setWorkbookDate1904 } from './patch/workbook-patch';
 
 export interface SaveWorkbookInput {
   readonly workbook: Workbook;
@@ -45,7 +48,14 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     .filter(([, cells]) => cells.size > 0)
     .map(([sheetId]) => sheetId);
 
-  if (dirtySheetIds.length === 0) {
+  let entries = new Map(input.package.entries);
+  const workbookPath = input.package.workbookPartPath;
+  const sourceWorkbookBytes = entries.get(workbookPath);
+  const dateSystemChanged =
+    sourceWorkbookBytes !== undefined &&
+    parseWorkbookXml(sourceWorkbookBytes, workbookPath).date1904 !== input.workbook.date1904;
+
+  if (dirtySheetIds.length === 0 && !dateSystemChanged) {
     const bytes = input.package.originalBytes ?? writePackage(input.package.entries);
     return {
       ok: true,
@@ -61,7 +71,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     };
   }
 
-  let entries = new Map(input.package.entries);
+  assertStylesAreWritable(input, entries);
   let relationships = new Map(input.package.relationships);
   const sharedStringsPath = input.package.sharedStringsPath;
   const sharedStringsBytes =
@@ -135,17 +145,34 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     modeByPart.set(sharedStringsPath, 'position');
   }
 
+  // The workbook date-system flag is document state; patch only the one
+  // attribute and keep every other byte of the workbook part.
+  if (dateSystemChanged) {
+    const workbookBytes = entries.get(workbookPath);
+    if (workbookBytes !== undefined) {
+      const patchedWorkbook = setWorkbookDate1904(
+        workbookBytes,
+        workbookPath,
+        input.workbook.date1904,
+      );
+      if (!bytesEqual(patchedWorkbook, workbookBytes)) {
+        entries.set(workbookPath, patchedWorkbook);
+        if (!patchedParts.includes(workbookPath)) patchedParts.push(workbookPath);
+        modeByPart.set(workbookPath, 'position');
+      }
+    }
+  }
+
   // File-compat §4/§6.1: an input edit can stale dependent formulas, so ask
   // Excel to recalculate while leaving their cached <v> results untouched.
   const hasFormulas = workbookHasFormulas(input.workbook);
   if (hasFormulas || formulaChanged) {
-    const workbookPath = input.package.workbookPartPath;
     const workbookBytes = entries.get(workbookPath);
     if (workbookBytes !== undefined) {
       const patchedWorkbook = setFullCalcOnLoad(workbookBytes, workbookPath);
       if (!bytesEqual(patchedWorkbook, workbookBytes)) {
         entries.set(workbookPath, patchedWorkbook);
-        patchedParts.push(workbookPath);
+        if (!patchedParts.includes(workbookPath)) patchedParts.push(workbookPath);
         modeByPart.set(workbookPath, 'position');
       }
     }
@@ -195,6 +222,39 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   };
 }
 
+/**
+ * M3C keeps the style table append-only in the model but does not yet append
+ * font/fill/border/cellXfs records to styles.xml (that is the formatting
+ * milestone). A cell that references a newly appended style would point at a
+ * non-existent index, so the save is refused rather than written corrupt.
+ */
+function assertStylesAreWritable(
+  input: SaveWorkbookInput,
+  entries: ReadonlyMap<string, Uint8Array>,
+): void {
+  const stylesPath = input.package.stylesPath;
+  const stylesBytes = stylesPath === null ? undefined : entries.get(stylesPath);
+  const sourceStyleCount =
+    stylesPath === null || stylesBytes === undefined
+      ? 0
+      : parseStylesXml(stylesBytes, stylesPath).styles.length;
+  for (const [sheetId, keys] of input.dirtyCells) {
+    if (keys.size === 0) continue;
+    const sheet = getSheetById(input.workbook, sheetId);
+    for (const key of keys) {
+      const address = parseCellKey(key);
+      const cell = getCell(sheet, address.row, address.col);
+      if (cell === null || cell.styleId === 0) continue;
+      if (cell.styleId >= sourceStyleCount) {
+        throw new WorkbookSaveError(
+          'unsupported-edit',
+          `The formatting at ${formatCellRef(address.row, address.col)} uses a style that this milestone can keep in memory but cannot append to the file yet. The file was not written.`,
+        );
+      }
+    }
+  }
+}
+
 function dirtyCellsChangeFormula(
   sourceBytes: Uint8Array,
   sheet: Sheet,
@@ -210,9 +270,10 @@ function dirtyCellsChangeFormula(
   for (const dirty of dirtyCells) {
     const original = parsed.sheet.cells.get(cellKey(dirty.row, dirty.col)) ?? null;
     // File-compat §6.1: shared and legacy array groups are read-only in M1.
-    // The command rejects them first; this save-level guard stops a direct
-    // model edit from rewriting a group (including its t="str" cached value).
-    if (original?.formulaSource !== undefined) {
+    // The command rejects content edits first; this save-level guard stops a
+    // direct model edit from rewriting a group (including its t="str" cached
+    // value). A style-only change keeps the group intact and is allowed.
+    if (original?.formulaSource !== undefined && !sameContentIgnoringStyle(original, dirty.cell)) {
       throw new WorkbookSaveError(
         'unsupported-edit',
         original.formulaSource.kind === 'array'
@@ -233,6 +294,11 @@ function dirtyCellsChangeFormula(
     if (cellFormulaKey(original) !== cellFormulaKey(dirty.cell)) formulaChanged = true;
   }
   return formulaChanged;
+}
+
+function sameContentIgnoringStyle(original: Cell | null, next: Cell | null): boolean {
+  if (original === null || next === null) return original === next;
+  return cellStateEquals(original, { ...next, styleId: original.styleId });
 }
 
 function workbookHasFormulas(workbook: Workbook): boolean {

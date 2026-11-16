@@ -128,26 +128,50 @@ M3 runs as three sub-slices: engine wiring, function coverage and model depth. T
 
 ### M4 — Formatting and workbook (8-12 pw)
 
+M4 runs as three sub-slices: cell formatting and number formats, workbook structure and view, and chrome and find. Together they keep M4's total scope and its six exit criteria; each slice carries its own demo and gate, and M4 is done when all three slice gates pass.
+
+#### M4A — Cell formatting and number formats
+
 **Build**
 
 - Full cell formatting: font family/size/bold/italic/underline/strike/colour, fills and patterns, borders, alignment, indent, wrap, shrink-to-fit and rotation (imported).
 - Number formats through `numfmt` plus the Excel seams: built-in IDs, 1904, width layout, colours, locale, invalid-format fallback.
 - Merges, row heights, column widths, autofit, hidden rows/columns (imported).
-- Multi-sheet insert, delete and rename; sheet tabs; tab order and visibility.
-- Zoom 10-400%, gridline and heading toggles, status-bar statistics.
-- Find & Replace and Go To; the Format Cells dialog; Format Painter.
-- Chrome: ribbon primary, compact bar below 900 px, dialogs, context menu, status bar.
 
-**Demo:** format a sales report end to end — fonts, fills, borders, currency and date formats, merged headers, column widths, three sheets, find and replace, Go To, zoom.
+**Demo:** format cells with fonts, fills, borders, currency and date formats.
 
-**Exit criteria**
+**Gate:** M4 exit criteria 1, 2 and 6 pass.
 
 1. Every formatting feature in the matrix renders and round-trips.
 2. The number-format conformance corpus passes.
+6. Visual baselines for the formatted sheet pass.
+
+#### M4B — Workbook structure and view
+
+**Build**
+
+- Multi-sheet insert, delete and rename; sheet tabs; tab order and visibility.
+- Zoom 10-400%, gridline and heading toggles, status-bar statistics.
+
+**Demo:** three sheets with zoom and toggles.
+
+**Gate:** M4 exit criterion 3 passes.
+
 3. Multi-sheet insert/delete/rename and undo work.
+
+#### M4C — Chrome and find
+
+**Build**
+
+- Chrome: ribbon primary, compact bar below 900 px, dialogs, context menu, status bar.
+- Find & Replace and Go To; the Format Cells dialog; Format Painter.
+
+**Demo:** ribbon and compact bar with find and dialog.
+
+**Gate:** M4 exit criteria 4 and 5 pass.
+
 4. Find/Replace, Go To and the Format Cells dialog pass the interaction suite.
 5. The ribbon and compact bar meet the UI chrome contract.
-6. Visual baselines for the formatted sheet pass.
 
 ### M5 — Data tools (8-12 pw)
 

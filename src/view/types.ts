@@ -1,9 +1,10 @@
 import type { CellValue } from '@model/value';
-import type { AlignmentStyle, FillStyle, FontStyle } from '@model/types';
+import type { AlignmentStyle, BorderStyle, FillStyle, FontStyle } from '@model/types';
 
 export interface ProjectedStyle {
   readonly font: FontStyle;
   readonly fill: FillStyle;
+  readonly border: BorderStyle;
   readonly alignment: AlignmentStyle;
   /** The authored number-format code, or `null` for the general format. */
   readonly numberFormat: string | null;

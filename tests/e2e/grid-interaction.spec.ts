@@ -99,7 +99,15 @@ test('keeps a frozen column painted while the columns beside it scroll', async (
   const frozenColumn = await cellRect(page, 2, 0);
   const scrollingColumn = await cellRect(page, 2, 1);
   const frozenBefore = await regionSignature(page, frozenColumn.x, frozenColumn.y, 60, 20);
-  const scrollingBefore = await regionSignature(page, scrollingColumn.x, scrollingColumn.y, 60, 20);
+  // Sample the whole scrolling column, including its right-aligned value, so
+  // a blank left edge cannot make the before and after regions look equal.
+  const scrollingBefore = await regionSignature(
+    page,
+    scrollingColumn.x,
+    scrollingColumn.y,
+    scrollingColumn.width,
+    20,
+  );
 
   const box = await page.getByTestId('grid-canvas').boundingBox();
   expect(box).not.toBeNull();
@@ -109,9 +117,9 @@ test('keeps a frozen column painted while the columns beside it scroll', async (
 
   // The frozen column still shows the same pixels; the columns beside it moved.
   expect(await regionSignature(page, frozenColumn.x, frozenColumn.y, 60, 20)).toBe(frozenBefore);
-  expect(await regionSignature(page, scrollingColumn.x, scrollingColumn.y, 60, 20)).not.toBe(
-    scrollingBefore,
-  );
+  expect(
+    await regionSignature(page, scrollingColumn.x, scrollingColumn.y, scrollingColumn.width, 20),
+  ).not.toBe(scrollingBefore);
 });
 
 test('edits a merged range through its anchor', async ({ page }) => {
@@ -135,6 +143,8 @@ test('opens the editor when an input method starts on the selected cell', async 
   await clickCell(page, 2, 1);
   await expect(page.getByTestId('cell-editor')).toHaveCount(0);
 
+  // Chromium dispatches compositionstart only to an editable focused host, so
+  // the shell itself is the editable target that starts the composition.
   const client = await page.context().newCDPSession(page);
   await client.send('Input.imeSetComposition', {
     text: 'ニ',

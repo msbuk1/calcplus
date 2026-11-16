@@ -16,7 +16,7 @@ import type {
   WorkbookProtectionRecord,
 } from '@model/types';
 import type { SharedStringsTable, WorkbookPackage } from './types';
-import { DEFAULT_ALIGNMENT, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
+import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -101,7 +101,7 @@ export function snapshotWorkbook(workbook: Workbook, pkg: WorkbookPackage): Work
       id: workbook.id,
       sheets: workbook.sheets.map(snapshotSheet),
       names: workbook.names.map(cloneDefinedName),
-      styles: workbook.styles.map((style) => ({ ...style })),
+      styles: workbook.styles.map(cloneStyleForSnapshot),
       themePath: workbook.theme.path,
       namedStyles: workbook.namedStyles.map((style) => ({ ...style })),
       protection: workbook.protection === null ? null : { ...workbook.protection },
@@ -262,8 +262,26 @@ function normalizeStyle(style: StyleRecord): StyleRecord {
     ...style,
     font: style.font ?? DEFAULT_FONT,
     fill: style.fill ?? DEFAULT_FILL,
+    border: style.border ?? DEFAULT_BORDER,
     alignment: style.alignment ?? DEFAULT_ALIGNMENT,
     numFmtCode: style.numFmtCode ?? null,
+  };
+}
+
+function cloneStyleForSnapshot(style: StyleRecord): StyleRecord {
+  return {
+    ...style,
+    font: { ...style.font },
+    fill: { ...style.fill },
+    border: {
+      ...style.border,
+      left: { ...style.border.left },
+      right: { ...style.border.right },
+      top: { ...style.border.top },
+      bottom: { ...style.border.bottom },
+      diagonal: { ...style.border.diagonal },
+    },
+    alignment: { ...style.alignment },
   };
 }
 

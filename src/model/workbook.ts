@@ -1,5 +1,6 @@
 import type {
   AlignmentStyle,
+  BorderStyle,
   FillStyle,
   FontStyle,
   Sheet,
@@ -9,16 +10,17 @@ import type {
   Workbook,
   WorkbookId,
 } from './types';
-import { DEFAULT_ALIGNMENT, DEFAULT_FILL, DEFAULT_FONT } from './style';
+import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from './style';
 
 /** A style record as it is appended; the visual parts default to the base style. */
 export type StyleRecordInput = Omit<
   StyleRecord,
-  'id' | 'font' | 'fill' | 'alignment' | 'numFmtCode'
+  'id' | 'font' | 'fill' | 'border' | 'alignment' | 'numFmtCode'
 > & {
   readonly id?: number;
   readonly font?: FontStyle;
   readonly fill?: FillStyle;
+  readonly border?: BorderStyle;
   readonly alignment?: AlignmentStyle;
   readonly numFmtCode?: string | null;
 };
@@ -86,6 +88,7 @@ export function createDefaultStyle(id = 0): StyleRecord {
     rawXml: '',
     font: DEFAULT_FONT,
     fill: DEFAULT_FILL,
+    border: DEFAULT_BORDER,
     alignment: DEFAULT_ALIGNMENT,
     numFmtCode: null,
   };
@@ -123,6 +126,7 @@ export function appendStyle(workbook: Workbook, style: StyleRecordInput): number
     id,
     font: style.font ?? DEFAULT_FONT,
     fill: style.fill ?? DEFAULT_FILL,
+    border: style.border ?? DEFAULT_BORDER,
     alignment: style.alignment ?? DEFAULT_ALIGNMENT,
     numFmtCode: style.numFmtCode ?? null,
   });

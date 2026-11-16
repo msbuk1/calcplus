@@ -11,6 +11,7 @@ import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
 import { gridDebugState } from './debug';
 import {
   applyPointing,
+  editorCommitText,
   editorHasChanges,
   isFormulaEntry,
   isPointingBoundary,
@@ -277,7 +278,14 @@ export function CanvasGrid({
   const beginEditing = (address: GridCellAddress, text: string, commitIfChanged: boolean): void => {
     // Editing always happens on the anchor of a merged range.
     const target = mergeAnchor(stateRef.current.projection, address);
-    const session = startEdit(target, text, commitIfChanged);
+    // F2 and double-click edit the cell's content. A formula cell shows the
+    // authored text without its leading `=` (as the sheet's own editor does);
+    // the formula stays intact until the edit commits.
+    const projection = stateRef.current.projection;
+    const formula = commitIfChanged
+      ? (projection.cellAt(target.row, target.col)?.formula ?? null)
+      : null;
+    const session = startEdit(target, formula ?? text, commitIfChanged, formula !== null);
     pointingRangeRef.current = null;
     pendingCaretRef.current = null;
     updateEditorSession(session);
@@ -313,7 +321,7 @@ export function CanvasGrid({
     if (session === null) return;
     updateEditorSession(null);
     clearPointing();
-    if (editorHasChanges(session)) onCommit(session.address, session.text);
+    if (editorHasChanges(session)) onCommit(session.address, editorCommitText(session));
     const target = moveAfterCommit(session.address, direction, projection);
     if (target !== null) onSelectionChange(collapseSelection(target));
     containerRef.current?.focus();
@@ -845,15 +853,25 @@ export function CanvasGrid({
       ref={setShellRef}
       className="grid-shell"
       tabIndex={0}
+      contentEditable
+      suppressContentEditableWarning
+      onBeforeInput={(event) => {
+        // The shell is editable only so an input method can begin a
+        // composition on the focused element. The composed text belongs in
+        // the textarea, never in the shell's own content.
+        if (event.target === event.currentTarget) event.preventDefault();
+      }}
       onKeyDown={handleKeyDown}
       onFocus={() => onFocusZone?.()}
       onCompositionStart={() => {
         // Fallback for an input method that starts composing without first
-        // reporting a process key: open the editor on the selected cell. The
-        // keydown path handles the usual case and opens it before composing.
+        // reporting a process key: open the editor on the selected cell. Mount
+        // and focus it before this event returns, so the composition text is
+        // inserted into the textarea rather than the shell. The keydown path
+        // handles the usual case and opens it before composing.
         if (editorSessionRef.current !== null) return;
         const active = stateRef.current.selection.focus;
-        beginEditing(active, '', false);
+        flushSync(() => beginEditing(active, '', false));
       }}
       data-testid="grid-shell"
     >

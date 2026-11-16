@@ -2,16 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import appIcon from '../../assets/icons/icon-64.png';
 import { DocumentSession } from '@commands/session';
+import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
 import type { EngineCellRef } from '@engine/port';
 import type { SheetId } from '@model/types';
 import { formatCellRef, cellKey, columnToLetters, createCell } from '@model/types';
+import { resolveReferenceText } from '@model/references';
+import type { StructuralEdit } from '@model/range-transform';
 import { parseUserValue, BLANK } from '@model/value';
 import { openBlankWorkbook } from '@ooxml/blank';
 import type { CompatibilityInfo } from '@ooxml/open';
 import { openWorkbook } from '@ooxml/open';
 import type { WorkbookPackage } from '@ooxml/types';
 import { WorkbookSaveError } from '@ooxml/errors';
+import { applyRangeTransformPrototype } from '@ooxml/range-transform';
 import { adoptSavedPackage, saveWorkbook } from '@ooxml/save';
 import { snapshotWorkbook } from '@ooxml/snapshot';
 import { confirmReplaceDocument } from '@io/confirm';
@@ -22,7 +26,7 @@ import { GRID_METRICS } from '@grid/frame';
 import type { GridCellAddress, GridSelection } from '@grid/frame';
 import { gridDebugState } from '@grid/debug';
 import { cellRect } from '@grid/panes';
-import { collapseSelection, selectionRange } from '@grid/selection';
+import { collapseSelection, selectionForRange, selectionRange } from '@grid/selection';
 import { isPointingBoundary, pointingReference } from '@grid/editor';
 import { resolveNavigation } from '@grid/navigation';
 import { FormulaBar } from '@chrome/FormulaBar';
@@ -345,26 +349,45 @@ export function App(): JSX.Element {
   const navigateToAddress = useCallback(
     (text: string): string | null => {
       const trimmed = text.trim();
-      if (trimmed === '') return null;
-      const match = /^([A-Za-z]{1,3})([0-9]{1,7})$/.exec(trimmed);
-      if (match === null) {
-        setStatus(`"${trimmed}" is not a cell address.`);
+      if (trimmed === '' || document === null) return null;
+      const resolved = resolveReferenceText(document.session.workbook, trimmed, document.sheetId);
+      if (resolved.kind === 'invalid') {
+        setStatus(resolved.message);
         return null;
       }
-      const column = lettersToColumn(match[1] ?? '');
-      const row = Number(match[2] ?? '0') - 1;
-      if (projection === null) return null;
-      if (row < 0 || row >= projection.rowCount || column >= projection.columnCount) {
+      const sheet = document.session.workbook.sheets.find(
+        (candidate) => candidate.id === resolved.sheetId,
+      );
+      if (sheet === undefined) {
+        setStatus(`"${trimmed}" points at a sheet that is no longer open.`);
+        return null;
+      }
+      const { range } = resolved;
+      if (
+        range.startRow < 0 ||
+        range.startCol < 0 ||
+        range.endRow >= 1_048_576 ||
+        range.endCol >= 16_384
+      ) {
         setStatus(`"${trimmed}" is outside the sheet.`);
         return null;
       }
-      setSelection(collapseSelection({ row, col: column }));
+      const single = range.startRow === range.endRow && range.startCol === range.endCol;
+      if (sheet.id !== document.sheetId) {
+        setDocument({ ...document, sheetId: sheet.id });
+      }
+      setSelection(
+        single
+          ? collapseSelection({ row: range.startRow, col: range.startCol })
+          : selectionForRange(range, { row: range.startRow, col: range.startCol }),
+      );
       // The name box hands the focus back to the grid (command-system §7).
       setFocusZone('grid');
-      setStatus(`Selected ${formatCellRef(row, column)}.`);
-      return formatCellRef(row, column);
+      const label = formatRangeAddress(range, resolved.wholeColumn, resolved.wholeRow);
+      setStatus(`Selected ${sheet.name}!${label}.`);
+      return label;
     },
-    [projection],
+    [document],
   );
 
   const loadBenchmarkSheet = (options: {
@@ -402,6 +425,15 @@ export function App(): JSX.Element {
         },
         fill:
           index === 5 ? { pattern: 'solid', color: '#fff2cc' } : { pattern: 'none', color: null },
+        border: {
+          left: { style: index === 5 ? 'thin' : 'none', color: null },
+          right: { style: index === 5 ? 'thin' : 'none', color: null },
+          top: { style: index === 5 ? 'thin' : 'none', color: null },
+          bottom: { style: index === 5 ? 'thin' : 'none', color: null },
+          diagonal: { style: 'none', color: null },
+          diagonalUp: false,
+          diagonalDown: false,
+        },
         alignment: {
           horizontal: index === 3 ? 'right' : 'general',
           vertical: 'bottom',
@@ -430,6 +462,25 @@ export function App(): JSX.Element {
     const debugWindow = window as unknown as {
       __calcplus?: Record<string, unknown>;
     };
+    const dispatchCommand = (
+      commandId: string,
+      args: unknown,
+      options?: Parameters<DocumentSession['dispatch']>[2],
+    ): unknown => {
+      if (document === null) return null;
+      const result = document.session.dispatch(commandId, args, {
+        activeSheetId: document.sheetId,
+        selection: selectionRange(selection),
+        activeCell: selection.focus,
+        ...options,
+      });
+      setVersion((value) => value + 1);
+      if (result.ui?.message !== undefined) setStatus(result.ui.message);
+      else if (commandId === 'workbook.dateSystem') {
+        setStatus(`Date system: ${dateSystemLabel(document.session.workbook)}.`);
+      } else setStatus(`${commandId} completed.`);
+      return result;
+    };
     debugWindow.__calcplus = {
       getState: () => ({
         fileName: document?.fileName ?? null,
@@ -443,7 +494,51 @@ export function App(): JSX.Element {
         canRedo: document?.session.canRedo ?? false,
         calculation: document?.calculation.state() ?? null,
         status,
+        dateSystem: document === null ? null : dateSystemLabel(document.session.workbook),
       }),
+      dispatchCommand,
+      setDateSystem: (date1904: boolean) => dispatchCommand('workbook.dateSystem', { date1904 }),
+      getDateSystem: () =>
+        document === null
+          ? null
+          : {
+              label: dateSystemLabel(document.session.workbook),
+              date1904: document.session.workbook.date1904,
+            },
+      getNames: () =>
+        document === null
+          ? null
+          : {
+              workbook: document.session.workbook.names.map((name) => ({
+                name: name.name,
+                formula: name.formula,
+              })),
+              sheets: document.session.workbook.sheets.map((sheet) => ({
+                sheet: sheet.name,
+                names: sheet.names.map((name) => ({
+                  name: name.name,
+                  formula: name.formula,
+                })),
+              })),
+            },
+      runRangeTransformPrototype: (
+        edit: Omit<StructuralEdit, 'sheetId'> & { sheetId?: string },
+      ) => {
+        if (document === null) return null;
+        const structuralEdit: StructuralEdit = {
+          ...edit,
+          sheetId: edit.sheetId ?? document.sheetId,
+        };
+        const result = applyRangeTransformPrototype({
+          workbook: document.session.workbook,
+          package: document.pkg,
+          edit: structuralEdit,
+        });
+        setStatus(
+          `Range transform prototype: ${result.report.formulaRewrites} formula rewrite(s), ${result.report.mergesRewritten} merge(s), ${result.report.namesRewritten} name(s).`,
+        );
+        return { report: result.report, plan: result.plan };
+      },
       getCellDisplay: (row: number, col: number) =>
         projection?.cellAt(row, col)?.displayText ?? null,
       getCell: (row: number, col: number) => {
@@ -482,6 +577,7 @@ export function App(): JSX.Element {
         return {
           font: cell.style.font,
           fill: cell.style.fill,
+          border: cell.style.border,
           alignment: cell.style.alignment,
           numberFormat: cell.style.numberFormat,
           displayText: cell.displayText,
@@ -587,7 +683,7 @@ export function App(): JSX.Element {
         <div className="brand">
           <img className="brand-icon" src={appIcon} alt="" width={28} height={28} />
           <span className="brand-name">calcplus</span>
-          <span className="brand-phase">M3B function coverage</span>
+          <span className="brand-phase">M3C model depth</span>
         </div>
         <div className="file-meta">
           <span data-testid="file-name">{document?.fileName ?? 'No workbook open'}</span>
@@ -764,12 +860,29 @@ function formatSelectionAddress(selection: GridSelection, projection: SheetProje
   return `${formatCellRef(startRow, startCol)}:${formatCellRef(endRow, endCol)}`;
 }
 
-function lettersToColumn(letters: string): number {
-  let value = 0;
-  for (const character of letters.toUpperCase()) {
-    value = value * 26 + (character.charCodeAt(0) - 64);
+function formatRangeAddress(
+  range: {
+    readonly startRow: number;
+    readonly startCol: number;
+    readonly endRow: number;
+    readonly endCol: number;
+  },
+  wholeColumn: boolean,
+  wholeRow: boolean,
+): string {
+  if (wholeColumn) {
+    return `${columnToLetters(range.startCol)}:${columnToLetters(range.endCol)}`;
   }
-  return value - 1;
+  if (wholeRow) {
+    return `${range.startRow + 1}:${range.endRow + 1}`;
+  }
+  if (range.startRow === range.endRow && range.startCol === range.endCol) {
+    return formatCellRef(range.startRow, range.startCol);
+  }
+  return `${formatCellRef(range.startRow, range.startCol)}:${formatCellRef(
+    range.endRow,
+    range.endCol,
+  )}`;
 }
 
 function dirtyKeysFromSnapshot(

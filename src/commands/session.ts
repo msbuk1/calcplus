@@ -1,6 +1,12 @@
-import type { Cell, CellAddress, SheetId, Workbook } from '@model/types';
-import { cellStateEquals, cloneCell, getSheetById, setCellSnapshot } from '@model/types';
-import { cellValueEquals, errorValue, type CellValue } from '@model/value';
+import type { Cell, CellAddress, GridRange, SheetId, StyleId, Workbook } from '@model/types';
+import {
+  cellIsEmpty,
+  cellStateEquals,
+  cloneCell,
+  getSheetById,
+  setCellSnapshot,
+} from '@model/types';
+import { BLANK, cellValueEquals, errorValue, type CellValue } from '@model/value';
 import type { CalculationScheduler, CommandChange, CommandContext, CommandResult } from './types';
 import { changeCells, inverseChange } from './types';
 import { createCommandRegistry } from './registry';
@@ -27,6 +33,12 @@ export interface Transaction {
   readonly estimatedBytes: number;
 }
 
+export interface DispatchOptions {
+  readonly activeSheetId?: SheetId | null;
+  readonly selection?: GridRange | null;
+  readonly activeCell?: CellAddress | null;
+}
+
 const MAX_TRANSACTIONS = 200;
 const MAX_HISTORY_BYTES = 64 * 1024 * 1024;
 
@@ -36,6 +48,7 @@ export class DocumentSession {
   private readonly undoStack: Transaction[] = [];
   private readonly redoStack: Transaction[] = [];
   private readonly dirtyCells = new Map<SheetId, Set<string>>();
+  private dirtyWorkbook = false;
   private calculationScheduler: CalculationScheduler | null = null;
   private nextSeq = 1;
   private documentVersion = 1;
@@ -83,6 +96,7 @@ export class DocumentSession {
   }
 
   get hasUnsavedChanges(): boolean {
+    if (this.dirtyWorkbook) return true;
     for (const cells of this.dirtyCells.values()) {
       if (cells.size > 0) return true;
     }
@@ -109,7 +123,7 @@ export class DocumentSession {
     return snapshot;
   }
 
-  dispatch<Args>(commandId: string, args: Args): CommandResult {
+  dispatch<Args>(commandId: string, args: Args, options: DispatchOptions = {}): CommandResult {
     if (commandId === 'edit.undo') {
       this.undo();
       return { changes: [] };
@@ -121,8 +135,9 @@ export class DocumentSession {
     const command = this.registry.require(commandId);
     const context: CommandContext = {
       workbook: this.workbook,
-      selection: null,
-      activeCell: null,
+      activeSheetId: options.activeSheetId ?? this.workbook.sheets[0]?.id ?? null,
+      selection: options.selection ?? null,
+      activeCell: options.activeCell ?? null,
     };
     if (!command.isEnabled(context)) {
       throw new Error(`Command is disabled: ${commandId}`);
@@ -170,6 +185,7 @@ export class DocumentSession {
    * and stays dirty.
    */
   markSaved(saved?: ReadonlyMap<SheetId, ReadonlyMap<string, Cell | null>>): void {
+    this.dirtyWorkbook = false;
     if (saved === undefined) {
       this.dirtyCells.clear();
       this.documentVersion += 1;
@@ -308,19 +324,84 @@ export class DocumentSession {
 
   private applyChanges(changes: readonly CommandChange[], direction: 'before' | 'after'): void {
     for (const change of changes) {
+      if (change.type === 'workbook.dateSystem') {
+        this.workbook.date1904 = direction === 'after' ? change.after : change.before;
+        continue;
+      }
       const sheet = getSheetById(this.workbook, change.sheetId);
-      const snapshots = direction === 'after' ? change.after : change.before;
-      for (let rowOffset = 0; rowOffset < snapshots.length; rowOffset += 1) {
-        const row = snapshots[rowOffset];
-        if (row === undefined) continue;
-        for (let colOffset = 0; colOffset < row.length; colOffset += 1) {
-          const snapshot = row[colOffset] ?? null;
-          setCellSnapshot(
-            sheet,
-            change.range.startRow + rowOffset,
-            change.range.startCol + colOffset,
-            cloneCell(snapshot),
-          );
+      if (change.type === 'cell.set') {
+        this.applyCellSnapshots(
+          sheet,
+          change.range,
+          direction === 'after' ? change.after : change.before,
+        );
+        continue;
+      }
+      this.applyStyleSnapshots(
+        sheet,
+        change.range,
+        direction === 'after' ? change.after : change.before,
+      );
+    }
+  }
+
+  private applyCellSnapshots(
+    sheet: ReturnType<typeof getSheetById>,
+    range: GridRange,
+    snapshots: readonly (readonly (Cell | null)[])[],
+  ): void {
+    for (let rowOffset = 0; rowOffset < snapshots.length; rowOffset += 1) {
+      const row = snapshots[rowOffset];
+      if (row === undefined) continue;
+      for (let colOffset = 0; colOffset < row.length; colOffset += 1) {
+        const snapshot = row[colOffset] ?? null;
+        setCellSnapshot(
+          sheet,
+          range.startRow + rowOffset,
+          range.startCol + colOffset,
+          cloneCell(snapshot),
+        );
+      }
+    }
+  }
+
+  private applyStyleSnapshots(
+    sheet: ReturnType<typeof getSheetById>,
+    range: GridRange,
+    snapshots: readonly (readonly (StyleId | null)[])[],
+  ): void {
+    for (let rowOffset = 0; rowOffset < snapshots.length; rowOffset += 1) {
+      const row = snapshots[rowOffset];
+      if (row === undefined) continue;
+      for (let colOffset = 0; colOffset < row.length; colOffset += 1) {
+        const styleId = row[colOffset] ?? null;
+        const rowIndex = range.startRow + rowOffset;
+        const colIndex = range.startCol + colOffset;
+        if (styleId === null) {
+          setCellSnapshot(sheet, rowIndex, colIndex, null);
+          continue;
+        }
+        const key = `${rowIndex}:${colIndex}`;
+        const existing = sheet.cells.get(key);
+        if (existing === undefined) {
+          if (styleId !== 0) {
+            sheet.cells.set(key, {
+              value: BLANK,
+              formula: null,
+              formulaDerived: false,
+              savedResult: null,
+              styleId,
+              richText: null,
+              stale: false,
+            });
+          }
+          continue;
+        }
+        const next: Cell = { ...existing, styleId };
+        if (styleId === 0 && cellIsEmpty(next)) {
+          sheet.cells.delete(key);
+        } else {
+          sheet.cells.set(key, next);
         }
       }
     }
@@ -328,6 +409,10 @@ export class DocumentSession {
 
   private markDirty(changes: readonly CommandChange[]): void {
     for (const change of changes) {
+      if (change.type === 'workbook.dateSystem') {
+        this.dirtyWorkbook = true;
+        continue;
+      }
       const cells = this.dirtyCells.get(change.sheetId) ?? new Set<string>();
       for (const cell of changeCells(change)) {
         cells.add(`${cell.row}:${cell.col}`);
@@ -351,6 +436,16 @@ function nullableCellValueEquals(left: CellValue | null, right: CellValue | null
 function estimateBytes(changes: readonly CommandChange[]): number {
   let total = 0;
   for (const change of changes) {
+    if (change.type === 'workbook.dateSystem') {
+      total += 8;
+      continue;
+    }
+    if (change.type === 'style.set') {
+      total += 24;
+      total += change.before.reduce((count, row) => count + row.length, 0) * 8;
+      total += change.after.reduce((count, row) => count + row.length, 0) * 8;
+      continue;
+    }
     for (const row of change.before) {
       for (const cell of row) total += estimateCell(cell) + 48;
     }

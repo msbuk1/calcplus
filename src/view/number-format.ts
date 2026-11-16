@@ -1,3 +1,4 @@
+import { serialToDateParts } from '@model/date-system';
 import type { CellValue } from '@model/value';
 
 /**
@@ -282,31 +283,6 @@ function groupThousands(text: string): string {
   return text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-interface DateParts {
-  readonly year: number;
-  readonly month: number;
-  readonly day: number;
-  readonly hours: number;
-  readonly minutes: number;
-  readonly seconds: number;
-}
-
-function serialToDateParts(serial: number, date1904: boolean): DateParts {
-  const days = Math.floor(serial);
-  const fraction = serial - days;
-  const base = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, serial >= 61 ? 30 : 31);
-  const time = base + days * 86_400_000 + Math.round(fraction * 86_400_000);
-  const date = new Date(time);
-  return {
-    year: date.getUTCFullYear(),
-    month: date.getUTCMonth() + 1,
-    day: date.getUTCDate(),
-    hours: date.getUTCHours(),
-    minutes: date.getUTCMinutes(),
-    seconds: date.getUTCSeconds(),
-  };
-}
-
 const MONTH_NAMES = [
   'Jan',
   'Feb',
@@ -324,6 +300,7 @@ const MONTH_NAMES = [
 
 function formatDate(serial: number, code: string, date1904: boolean): string {
   const parts = serialToDateParts(serial, date1904);
+  if (parts === null) return '#VALUE!';
   const hasAmPm = /am\/pm|a\/p/i.test(code.replace(/"[^"]*"/g, ''));
   let output = '';
   let index = 0;

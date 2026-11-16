@@ -113,22 +113,28 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     sheetIdByWorkbookIndex[index] = sheet.id;
   }
 
-  const definedNames: DefinedName[] = workbookInfo.definedNames.map((name) => {
+  const workbookNames: DefinedName[] = [];
+  for (const name of workbookInfo.definedNames) {
     const pending = name.sheetId;
     if (pending !== null && pending.startsWith('pending-sheet-index:')) {
       const index = Number(pending.slice('pending-sheet-index:'.length));
-      return {
-        ...name,
-        sheetId: sheetIdByWorkbookIndex[index] ?? null,
-      };
+      const sheet = sheets[index];
+      if (sheet === undefined) {
+        // A malformed localSheetId keeps a workbook-scoped fallback so the
+        // name text is never lost on save.
+        workbookNames.push({ ...name, sheetId: null });
+      } else {
+        sheet.names.push({ ...name, sheetId: sheet.id });
+      }
+      continue;
     }
-    return name;
-  });
+    workbookNames.push(name);
+  }
 
   const workbook: Workbook = {
     id: createWorkbookId(),
     sheets,
-    names: definedNames,
+    names: workbookNames,
     styles: stylesInfo?.styles ?? [createDefaultStyle(0)],
     theme: { path: themePath, bytes: themeBytes ?? null },
     namedStyles: stylesInfo?.namedStyles ?? [],

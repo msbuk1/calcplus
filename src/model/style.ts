@@ -1,5 +1,7 @@
 import type {
   AlignmentStyle,
+  BorderEdgeStyle,
+  BorderStyle,
   FillStyle,
   FontStyle,
   HorizontalAlignment,
@@ -33,6 +35,18 @@ export const DEFAULT_ALIGNMENT: AlignmentStyle = Object.freeze({
   wrapText: false,
   indent: 0,
   textRotation: 0,
+});
+
+const NO_BORDER_EDGE: BorderEdgeStyle = Object.freeze({ style: 'none', color: null });
+
+export const DEFAULT_BORDER: BorderStyle = Object.freeze({
+  left: NO_BORDER_EDGE,
+  right: NO_BORDER_EDGE,
+  top: NO_BORDER_EDGE,
+  bottom: NO_BORDER_EDGE,
+  diagonal: NO_BORDER_EDGE,
+  diagonalUp: false,
+  diagonalDown: false,
 });
 
 /** The legacy indexed colour palette used by `indexed="n"` colour attributes. */
@@ -257,6 +271,15 @@ export const BUILTIN_NUMBER_FORMATS: Readonly<Record<number, string>> = Object.f
 /** The built-in format code for an id, or `null` when the id is not built in. */
 export function builtinNumberFormat(numFmtId: number): string | null {
   return BUILTIN_NUMBER_FORMATS[numFmtId] ?? null;
+}
+
+/** The built-in id for a format code, or `null` for a custom code. */
+export function builtinNumberFormatId(code: string | null): number | null {
+  if (code === null) return 0;
+  for (const [id, builtin] of Object.entries(BUILTIN_NUMBER_FORMATS)) {
+    if (builtin === code) return Number(id);
+  }
+  return null;
 }
 
 export function normalizeHorizontalAlignment(

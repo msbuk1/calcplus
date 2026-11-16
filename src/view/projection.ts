@@ -69,6 +69,15 @@ export function createSheetProjection(
               color: null,
             },
             fill: { pattern: 'none', color: null },
+            border: {
+              left: { style: 'none', color: null },
+              right: { style: 'none', color: null },
+              top: { style: 'none', color: null },
+              bottom: { style: 'none', color: null },
+              diagonal: { style: 'none', color: null },
+              diagonalUp: false,
+              diagonalDown: false,
+            },
             alignment: {
               horizontal: 'general',
               vertical: 'bottom',
@@ -81,6 +90,7 @@ export function createSheetProjection(
         : {
             font: record.font,
             fill: record.fill,
+            border: record.border,
             alignment: record.alignment,
             numberFormat: record.numFmtCode,
           };

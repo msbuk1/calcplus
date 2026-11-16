@@ -1,5 +1,7 @@
 import type {
   AlignmentStyle,
+  BorderEdgeStyle,
+  BorderStyle,
   FillStyle,
   FontStyle,
   NamedStyleRecord,
@@ -8,6 +10,7 @@ import type {
 import { createDefaultStyle } from '@model/workbook';
 import {
   DEFAULT_ALIGNMENT,
+  DEFAULT_BORDER,
   DEFAULT_FILL,
   DEFAULT_FONT,
   builtinNumberFormat,
@@ -42,10 +45,24 @@ interface FillAccumulator {
   color: ReturnType<typeof resolveColor>;
 }
 
+type BorderEdgeKey = 'left' | 'right' | 'top' | 'bottom' | 'diagonal';
+
+interface BorderAccumulator {
+  left: BorderEdgeStyle;
+  right: BorderEdgeStyle;
+  top: BorderEdgeStyle;
+  bottom: BorderEdgeStyle;
+  diagonal: BorderEdgeStyle;
+  diagonalUp: boolean;
+  diagonalDown: boolean;
+}
+
+const NO_EDGE: BorderEdgeStyle = { style: 'none', color: null };
+
 /**
- * Parse the workbook style sheet. M2 renders the font, fill, alignment and
- * number format of every cell style; borders stay opaque until the formatting
- * milestone.
+ * Parse the workbook style sheet into the shared, append-only style table:
+ * font, fill, border, alignment and the number-format reference (built-in id
+ * plus authored code) for every cell style.
  */
 export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlInfo {
   const xml = decodeXml(bytes);
@@ -53,6 +70,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
   const namedStyles: NamedStyleRecord[] = [];
   const fonts: FontAccumulator[] = [];
   const fills: FillAccumulator[] = [];
+  const borders: BorderAccumulator[] = [];
   const customFormats = new Map<number, string>();
   const stack: OpenElement[] = [];
   let inCellXfs = false;
@@ -61,8 +79,11 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
   let cellStyleXfsDepth = -1;
   let inFonts = false;
   let inFills = false;
+  let inBorders = false;
   let font: FontAccumulator | null = null;
   let fill: FillAccumulator | null = null;
+  let border: BorderAccumulator | null = null;
+  let borderEdge: BorderEdgeKey | null = null;
 
   parseXml(
     xml,
@@ -82,6 +103,8 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
           inFonts = true;
         } else if (tag.local === 'fills') {
           inFills = true;
+        } else if (tag.local === 'borders') {
+          inBorders = true;
         } else if (tag.local === 'numFmt') {
           const id = numberAttribute(tag, 'numFmtId', Number.NaN);
           const code = stringAttribute(tag, 'formatCode');
@@ -102,6 +125,19 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
           fill = { pattern: null, color: null };
         } else if (fill !== null) {
           applyFillChild(tag, fill);
+        } else if (inBorders && tag.local === 'border' && parent === 'borders') {
+          border = {
+            left: NO_EDGE,
+            right: NO_EDGE,
+            top: NO_EDGE,
+            bottom: NO_EDGE,
+            diagonal: NO_EDGE,
+            diagonalUp: isTruthy(stringAttribute(tag, 'diagonalUp')),
+            diagonalDown: isTruthy(stringAttribute(tag, 'diagonalDown')),
+          };
+          borderEdge = null;
+        } else if (border !== null) {
+          borderEdge = applyBorderChild(tag, border, borderEdge);
         } else if (inCellXfs && tag.local === 'xf') {
           styles.push({
             id: styles.length,
@@ -113,6 +149,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
             rawXml: '',
             font: DEFAULT_FONT,
             fill: DEFAULT_FILL,
+            border: DEFAULT_BORDER,
             alignment: DEFAULT_ALIGNMENT,
             numFmtCode: null,
           });
@@ -138,6 +175,20 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
         } else if (fill !== null && tag.local === 'fill') {
           fills.push(fill);
           fill = null;
+        } else if (border !== null && tag.local === 'border') {
+          borders.push(border);
+          border = null;
+          borderEdge = null;
+        }
+        if (
+          borderEdge !== null &&
+          (tag.local === 'left' ||
+            tag.local === 'right' ||
+            tag.local === 'top' ||
+            tag.local === 'bottom' ||
+            tag.local === 'diagonal')
+        ) {
+          borderEdge = null;
         }
         if (inCellXfs && tag.local === 'xf' && open !== undefined) {
           const index = styles.length - 1;
@@ -156,6 +207,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
         }
         if (tag.local === 'fonts') inFonts = false;
         if (tag.local === 'fills') inFills = false;
+        if (tag.local === 'borders') inBorders = false;
       },
     },
     partName,
@@ -168,6 +220,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
       id: index,
       font: resolveFont(fonts[style.fontId]),
       fill: resolveFill(fills[style.fillId]),
+      border: resolveBorder(borders[style.borderId]),
       numFmtCode: resolveNumberFormat(style.numFmtId, customFormats),
     })),
     namedStyles,
@@ -246,6 +299,54 @@ function applyFillChild(
   }
 }
 
+function applyBorderChild(
+  tag: { local: string; attributes: Record<string, { local: string; value: string }> },
+  border: BorderAccumulator,
+  currentEdge: BorderEdgeKey | null,
+): BorderEdgeKey | null {
+  switch (tag.local) {
+    case 'left':
+    case 'right':
+    case 'top':
+    case 'bottom':
+    case 'diagonal': {
+      const edge: BorderEdgeStyle = {
+        style: stringAttribute(tag, 'style') ?? 'none',
+        color: null,
+      };
+      border[tag.local] = edge;
+      return tag.local;
+    }
+    case 'diagonalUp':
+      border.diagonalUp = true;
+      return currentEdge;
+    case 'diagonalDown':
+      border.diagonalDown = true;
+      return currentEdge;
+    case 'color':
+      if (currentEdge !== null) {
+        const edge = border[currentEdge];
+        border[currentEdge] = {
+          ...edge,
+          color: resolveColor({
+            rgb: stringAttribute(tag, 'rgb'),
+            indexed: stringAttribute(tag, 'indexed'),
+            theme: stringAttribute(tag, 'theme'),
+            tint: stringAttribute(tag, 'tint'),
+            auto: stringAttribute(tag, 'auto'),
+          }),
+        };
+      }
+      return currentEdge;
+    default:
+      return currentEdge;
+  }
+}
+
+function resolveBorder(accumulator: BorderAccumulator | undefined): BorderStyle {
+  return accumulator ?? DEFAULT_BORDER;
+}
+
 function resolveFont(accumulator: FontAccumulator | undefined): FontStyle {
   if (accumulator === undefined) return DEFAULT_FONT;
   return {
@@ -312,4 +413,8 @@ function stringAttribute(
     if (attribute.local === local) return attribute.value;
   }
   return null;
+}
+
+function isTruthy(value: string | null): boolean {
+  return value === '1' || value === 'true' || value === 'on';
 }

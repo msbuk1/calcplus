@@ -65,9 +65,18 @@ export interface EngineBatchResult {
   readonly elapsedMs: number;
 }
 
+export interface EngineNamedExpression {
+  readonly name: string;
+  /** Engine form with a leading `=`, already screened and absolutised. */
+  readonly expression: string;
+  /** Sheet index for a sheet-scoped name, or `null` for workbook scope. */
+  readonly sheet: number | null;
+}
+
 export interface EngineWorkbookInput {
   readonly date1904: boolean;
   readonly sheetNames: readonly string[];
+  readonly namedExpressions?: readonly EngineNamedExpression[];
 }
 
 /**

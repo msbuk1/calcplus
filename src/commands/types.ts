@@ -1,7 +1,8 @@
-import type { Cell, CellAddress, GridRange, SheetId, Workbook } from '@model/types';
+import type { Cell, CellAddress, GridRange, SheetId, StyleId, Workbook } from '@model/types';
 
 export interface CommandContext {
   readonly workbook: Workbook;
+  readonly activeSheetId: SheetId | null;
   readonly selection: GridRange | null;
   readonly activeCell: CellAddress | null;
 }
@@ -19,6 +20,7 @@ export interface CommandResult {
   readonly ui?: CommandUiRequest;
 }
 
+/** One range-based cell patch. `null` means the cell did not exist. */
 export interface CellSetChange {
   readonly type: 'cell.set';
   readonly sheetId: SheetId;
@@ -27,7 +29,26 @@ export interface CellSetChange {
   readonly after: readonly (readonly (Cell | null)[])[];
 }
 
-export type CommandChange = CellSetChange;
+/**
+ * One range-based formatting patch. `null` means there was no cell record at
+ * all, so undo of a format on an empty cell removes the record again.
+ */
+export interface StyleSetChange {
+  readonly type: 'style.set';
+  readonly sheetId: SheetId;
+  readonly range: GridRange;
+  readonly before: readonly (readonly (StyleId | null)[])[];
+  readonly after: readonly (readonly (StyleId | null)[])[];
+}
+
+/** The workbook-level date-system flag. Undo restores the flag exactly. */
+export interface WorkbookDateSystemChange {
+  readonly type: 'workbook.dateSystem';
+  readonly before: boolean;
+  readonly after: boolean;
+}
+
+export type CommandChange = CellSetChange | StyleSetChange | WorkbookDateSystemChange;
 
 /**
  * The calculation layer observes committed changes. It never participates in
@@ -41,6 +62,8 @@ export interface CommandDefinition<Args = unknown> {
   readonly id: string;
   readonly label: string;
   readonly category: CommandCategory;
+  readonly icon?: string;
+  readonly description?: string;
   readonly keybindings: readonly string[];
   isEnabled(context: CommandContext): boolean;
   isChecked?(context: CommandContext): boolean;
@@ -48,6 +71,7 @@ export interface CommandDefinition<Args = unknown> {
 }
 
 export function changeCells(change: CommandChange): CellAddress[] {
+  if (change.type === 'workbook.dateSystem') return [];
   const cells: CellAddress[] = [];
   for (let row = change.range.startRow; row <= change.range.endRow; row += 1) {
     for (let col = change.range.startCol; col <= change.range.endCol; col += 1) {
@@ -58,9 +82,12 @@ export function changeCells(change: CommandChange): CellAddress[] {
 }
 
 export function inverseChange(change: CommandChange): CommandChange {
-  return {
-    ...change,
-    before: change.after,
-    after: change.before,
-  };
+  switch (change.type) {
+    case 'cell.set':
+      return { ...change, before: change.after, after: change.before };
+    case 'style.set':
+      return { ...change, before: change.after, after: change.before };
+    case 'workbook.dateSystem':
+      return { ...change, before: change.after, after: change.before };
+  }
 }

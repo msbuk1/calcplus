@@ -45,9 +45,12 @@ export function cellToXml(
   const formulaXml = serializeFormula(cell, options.original, tag);
   // Only a true literal can become text. A formula-backed cell with no authored
   // text (a shared follower) must keep its formula storage and cached result.
+  const follower = cell.formulaSource?.kind === 'shared-follower';
   const literalCell = formula === null && cell.formulaSource === undefined;
   const storedValue = literalCell ? storedLiteral(cell.value) : cell.value;
-  const type = cellType(storedValue, cell.savedResult, formula, options.sharedStrings);
+  const type = follower
+    ? originalCellType(options.original)
+    : cellType(storedValue, cell.savedResult, formula, options.sharedStrings);
   if (type !== null) attributes.push(`t="${type}"`);
 
   const children: string[] = [];
@@ -66,7 +69,7 @@ export function cellToXml(
     );
   } else if (value !== null && value.type !== 'blank') {
     const serialized =
-      formula !== null
+      formula !== null || follower
         ? serializedFormulaValue(value)
         : serializedValue(value, options.sharedStrings);
     if (serialized !== null) {
@@ -193,6 +196,15 @@ function serializeFormula(
   }
 
   return `<${tag('f')}>${escapeXmlText(cell.formula)}</${tag('f')}>`;
+}
+
+function originalCellType(original: CellOriginal | null): string | null {
+  return original?.attributes.find((attribute) => localName(attribute.name) === 't')?.value ?? null;
+}
+
+function localName(name: string): string {
+  const separator = name.lastIndexOf(':');
+  return separator < 0 ? name : name.slice(separator + 1);
 }
 
 function cellType(

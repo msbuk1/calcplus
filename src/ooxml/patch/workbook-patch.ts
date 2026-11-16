@@ -55,6 +55,62 @@ export function setFullCalcOnLoad(bytes: Uint8Array, partName: string): Uint8Arr
   return encodeXml(patched);
 }
 
+/**
+ * Set `workbookPr/@date1904` without rewriting anything else. The value is
+ * one byte pattern; the rest of the workbook part keeps its original bytes.
+ */
+export function setWorkbookDate1904(
+  bytes: Uint8Array,
+  partName: string,
+  date1904: boolean,
+): Uint8Array {
+  const xml = decodeXml(bytes);
+  const value = date1904 ? '1' : '0';
+  const workbookPr = /<((?:[\w.-]+:)?workbookPr)\b([^>]*)>/.exec(xml);
+  let patched: string;
+  if (workbookPr !== null) {
+    const tagName = workbookPr[1] ?? 'workbookPr';
+    const rawAttributes = workbookPr[2] ?? '';
+    const selfClosing = rawAttributes.trimEnd().endsWith('/');
+    const attributes = selfClosing ? rawAttributes.replace(/\/\s*$/, '') : rawAttributes;
+    const dateAttribute = /(\sdate1904\s*=\s*)("[^"]*"|'[^']*')/;
+    const updated = dateAttribute.test(attributes)
+      ? attributes.replace(dateAttribute, `$1"${value}"`)
+      : `${attributes} date1904="${value}"`;
+    const replacement = `<${tagName}${updated}${selfClosing ? '/>' : '>'}`;
+    patched = `${xml.slice(0, workbookPr.index)}${replacement}${xml.slice(
+      workbookPr.index + workbookPr[0].length,
+    )}`;
+  } else {
+    const position = workbookPrInsertionPoint(xml);
+    const prefix = workbookPrefix(xml);
+    patched = `${xml.slice(0, position)}<${prefix}workbookPr date1904="${value}"/>${xml.slice(
+      position,
+    )}`;
+  }
+  if (!isWellFormedXml(patched)) {
+    throw new WorkbookSaveError(
+      'unsafe-part',
+      `The workbook part ${partName} could not store its date system safely. The file was not written.`,
+    );
+  }
+  return encodeXml(patched);
+}
+
+function workbookPrefix(xml: string): string {
+  const match = /<([A-Za-z_][\w.-]*:)?workbook\b/.exec(xml);
+  return match?.[1] ?? '';
+}
+
+function workbookPrInsertionPoint(xml: string): number {
+  const fileVersion = /<(?:[\w.-]+:)?fileVersion\b[^>]*\/>/.exec(xml);
+  if (fileVersion !== null) return fileVersion.index + fileVersion[0].length;
+  const next = /<(?:[\w.-]+:)?(?:bookViews|sheets|definedNames|calcPr|oleSize)\b/.exec(xml);
+  if (next !== null) return next.index;
+  const closing = /<\/(?:[\w.-]+:)?workbook\s*>/.exec(xml);
+  return closing?.index ?? xml.length;
+}
+
 function firstDirectChildAfterCalcPr(xml: string, partName: string): number | null {
   let depth = 0;
   let found: number | null = null;

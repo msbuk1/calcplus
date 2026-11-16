@@ -69,6 +69,21 @@ export class HyperFormulaEngine implements FormulaEngine {
         }
       }
     }
+    // Defined names are read-only in v1, but formulas may use them. The
+    // calculation controller has already screened and absolutised the
+    // authored name formula; registration is best-effort so one malformed
+    // name cannot stop calculation for the workbook.
+    for (const named of workbook.namedExpressions ?? []) {
+      const scope = named.sheet ?? undefined;
+      try {
+        if (engine.isItPossibleToAddNamedExpression(named.name, named.expression, scope)) {
+          engine.addNamedExpression(named.name, named.expression, scope);
+        }
+      } catch {
+        // Preserve the authored name and let formulas that use it evaluate as
+        // #NAME? rather than failing the whole engine build.
+      }
+    }
     // Bare TRUE and FALSE are named expressions, not function calls
     // (technical design §3.5).
     addBooleanName(engine, 'TRUE');

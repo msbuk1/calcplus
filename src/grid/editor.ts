@@ -30,6 +30,12 @@ export interface EditorSession {
    * changed; typing starts a fresh value and always commits.
    */
   readonly commitIfChanged: boolean;
+  /**
+   * True when the text is a formula shown without the leading `=` in the
+   * editor. The authored formula text is kept exactly and the `=` is restored
+   * only when the edit actually commits.
+   */
+  readonly formulaEntry: boolean;
   /** True while an input method is composing. */
   readonly composing: boolean;
   /** The reference the formula is currently pointing at, or `null`. */
@@ -56,6 +62,7 @@ export function startEdit(
   address: GridCellAddress,
   text: string,
   commitIfChanged: boolean,
+  formulaEntry = false,
 ): EditorSession {
   sessionCounter += 1;
   return {
@@ -64,6 +71,7 @@ export function startEdit(
     text,
     initialText: text,
     commitIfChanged,
+    formulaEntry,
     composing: false,
     pointing: null,
   };
@@ -79,7 +87,16 @@ export function editorHasChanges(session: {
 
 /** True while the editor holds a formula that can point at cells. */
 export function isFormulaEntry(session: EditorSession): boolean {
-  return session.text.startsWith('=');
+  return session.formulaEntry || session.text.startsWith('=');
+}
+
+/**
+ * The text a commit hands to the command layer. A formula entry shown without
+ * its leading `=` gets it back here, so the authored formula stays a formula.
+ */
+export function editorCommitText(session: EditorSession): string {
+  if (session.formulaEntry && !session.text.startsWith('=')) return `=${session.text}`;
+  return session.text;
 }
 
 /**

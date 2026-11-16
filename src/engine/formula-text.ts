@@ -205,6 +205,7 @@ function scanFormula(formula: string): FormulaScan {
   const tokens: FormulaToken[] = [];
   const calls: FormulaCall[] = [];
   const issues: string[] = [];
+  if (hasThreeDimensionalRange(formula)) issues.push('unsupported-construct');
   const functionParens = new Set<number>();
   const parenStack: { readonly isFunction: boolean }[] = [];
   let index = 0;
@@ -344,6 +345,8 @@ function scanFormula(formula: string): FormulaScan {
       while (index < formula.length && isIdentifierPart(formula[index] ?? '')) index += 1;
       const name = formula.slice(start, index);
       if (hasUnsupportedPrefix(name)) issues.push('unsupported-construct');
+      // R1C1 notation is v2; never hand it to the engine as a defined name.
+      if (/^R\d+C\d+$/i.test(name)) issues.push('unsupported-construct');
 
       let openParen = index;
       while (openParen < formula.length && isWhitespace(formula[openParen] ?? '')) openParen += 1;
@@ -550,6 +553,12 @@ function skipQuoted(
 function hasUnsupportedPrefix(name: string): boolean {
   const lower = name.toLowerCase();
   return UNSUPPORTED_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/** `Sheet1:Sheet3!A1` and quoted equivalents are 3D ranges, which are v2. */
+function hasThreeDimensionalRange(formula: string): boolean {
+  const stripped = formula.replace(/"(?:[^"]|"")*"/g, '""').replace(/'(?:[^']|'')*'/g, "''");
+  return /(?:''|[A-Za-z_][\w.]*)\s*:\s*(?:''|[A-Za-z_][\w.]*)\s*!/.test(stripped);
 }
 
 function isWhitespace(character: string): boolean {

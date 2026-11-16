@@ -226,6 +226,9 @@ body {
   height: 100%;
   overflow: hidden;
   outline: none;
+  /* The shell is editable so an input method can start a composition on the
+     focused element; the in-cell textarea owns the visible caret. */
+  caret-color: transparent;
   background: #ffffff;
   border: 1px solid #d1d5db;
   border-radius: 4px;

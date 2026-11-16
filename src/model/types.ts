@@ -176,6 +176,23 @@ export interface AlignmentStyle {
   readonly textRotation: number;
 }
 
+/** One border edge. `style` is the OOXML border style such as `thin` or `none`. */
+export interface BorderEdgeStyle {
+  readonly style: string;
+  readonly color: string | null;
+}
+
+/** A cell border, resolved for display. */
+export interface BorderStyle {
+  readonly left: BorderEdgeStyle;
+  readonly right: BorderEdgeStyle;
+  readonly top: BorderEdgeStyle;
+  readonly bottom: BorderEdgeStyle;
+  readonly diagonal: BorderEdgeStyle;
+  readonly diagonalUp: boolean;
+  readonly diagonalDown: boolean;
+}
+
 export interface StyleRecord {
   readonly id: StyleId;
   readonly numFmtId: number;
@@ -185,9 +202,10 @@ export interface StyleRecord {
   readonly xfId: number;
   /** Original `<xf>` XML. The append-only table never renumbers existing ids. */
   readonly rawXml: string;
-  /** The font, fill and alignment this style points at, resolved for display. */
+  /** The font, fill, border and alignment this style points at, resolved for display. */
   readonly font: FontStyle;
   readonly fill: FillStyle;
+  readonly border: BorderStyle;
   readonly alignment: AlignmentStyle;
   /** The authored number-format code, or `null` when the style uses the general format. */
   readonly numFmtCode: string | null;

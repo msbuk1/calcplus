@@ -17,6 +17,7 @@ function sessionWithCell(initial = true): DocumentSession {
       savedResult: numberValue(10),
       styleId: 1,
       richText: null,
+      stale: false,
     });
   }
   return new DocumentSession(workbook);

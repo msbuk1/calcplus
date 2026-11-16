@@ -1,5 +1,7 @@
 import type { CommandDefinition } from './types';
 import { cellSetCommand } from './cell-set';
+import { formatCommands } from './format';
+import { workbookDateSystemCommand } from './workbook';
 
 export class CommandRegistry {
   private readonly commands = new Map<string, CommandDefinition<never>>();
@@ -31,8 +33,8 @@ const undoCommand: CommandDefinition<void> = {
   label: 'Undo',
   category: 'edit',
   keybindings: ['Ctrl+Z'],
-  isEnabled() {
-    return true;
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
   },
   run() {
     return { changes: [] };
@@ -44,8 +46,8 @@ const redoCommand: CommandDefinition<void> = {
   label: 'Redo',
   category: 'edit',
   keybindings: ['Ctrl+Y', 'Ctrl+Shift+Z'],
-  isEnabled() {
-    return true;
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
   },
   run() {
     return { changes: [] };
@@ -55,6 +57,8 @@ const redoCommand: CommandDefinition<void> = {
 export function createCommandRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
   registry.register(cellSetCommand);
+  registry.register(workbookDateSystemCommand);
+  for (const command of formatCommands()) registry.register(command);
   registry.register(undoCommand);
   registry.register(redoCommand);
   return registry;
