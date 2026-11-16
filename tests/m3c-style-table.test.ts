@@ -76,7 +76,7 @@ describe('M3C style table', () => {
     expect(style.font.bold).toBe(true);
     expect(style.font.size).toBe(12);
     expect(style.font.color).toBe('#C00000');
-    expect(style.fill).toEqual({ pattern: 'solid', color: '#FFF2CC' });
+    expect(style.fill).toEqual({ pattern: 'solid', color: '#FFF2CC', backgroundColor: null });
     expect(style.border.left.style).toBe('thin');
     expect(style.border.left.color).toBe('#0000FF');
     expect(style.border.diagonalUp).toBe(true);

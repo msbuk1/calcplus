@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import appIcon from '../../assets/icons/icon-64.png';
+import appIcon from '../../assets/calcplus.svg';
 import { DocumentSession } from '@commands/session';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
@@ -22,7 +22,7 @@ import { confirmReplaceDocument } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
 import type { SheetProjection } from '@view/types';
 import { CanvasGrid } from '@grid/CanvasGrid';
-import { GRID_METRICS } from '@grid/frame';
+import type { AutofitResult } from '@grid/autofit';
 import type { GridCellAddress, GridSelection } from '@grid/frame';
 import { gridDebugState } from '@grid/debug';
 import { cellRect } from '@grid/panes';
@@ -93,11 +93,9 @@ export function App(): JSX.Element {
 
   const projection = useMemo(() => {
     if (document === null) return null;
-    return createSheetProjection(document.session.workbook, document.sheetId, {
-      version,
-      defaultRowHeight: GRID_METRICS.rowHeight,
-      defaultColumnWidth: GRID_METRICS.columnWidth,
-    });
+    // Let the projection use the imported sheetFormatPr defaults, with its
+    // grid metrics as the fallback for a file that declares none.
+    return createSheetProjection(document.session.workbook, document.sheetId, { version });
   }, [document, document?.sheetId, version]);
 
   const nameBoxValue = projection === null ? '' : formatSelectionAddress(selection, projection);
@@ -198,11 +196,13 @@ export function App(): JSX.Element {
     // Snapshot the dirty state before the write await. Edits made while the
     // browser is writing are not in the saved bytes and must stay dirty.
     const savedDirty = document.session.dirtyCellSnapshot();
+    const savedDimensions = document.session.dirtyDimensionSnapshot();
     try {
       const result = saveWorkbook({
         workbook: document.session.workbook,
         package: document.pkg,
         dirtyCells: dirtyKeysFromSnapshot(savedDirty),
+        dirtyDimensions: savedDimensions,
       });
       const outcome = await saveWorkbookFile(result.bytes, document.fileName, document.handle, {
         forceFallback: FORCE_FALLBACK,
@@ -213,7 +213,7 @@ export function App(): JSX.Element {
         return;
       }
       adoptSavedPackage(document.session.workbook, result.package);
-      document.session.markSaved(savedDirty);
+      document.session.markSaved(savedDirty, savedDimensions);
       setDocument({
         ...document,
         pkg: result.package,
@@ -420,17 +420,36 @@ export function App(): JSX.Element {
           bold: index === 1,
           italic: false,
           underline: false,
+          underlineStyle: 'none',
           strike: false,
           color: index === 4 ? '#b00020' : null,
         },
         fill:
-          index === 5 ? { pattern: 'solid', color: '#fff2cc' } : { pattern: 'none', color: null },
+          index === 5
+            ? { pattern: 'solid', color: '#fff2cc', backgroundColor: null }
+            : { pattern: 'none', color: null, backgroundColor: null },
         border: {
-          left: { style: index === 5 ? 'thin' : 'none', color: null },
-          right: { style: index === 5 ? 'thin' : 'none', color: null },
-          top: { style: index === 5 ? 'thin' : 'none', color: null },
-          bottom: { style: index === 5 ? 'thin' : 'none', color: null },
-          diagonal: { style: 'none', color: null },
+          left: {
+            style: index === 5 ? 'thin' : 'none',
+            color: null,
+            weight: index === 5 ? 'thin' : null,
+          },
+          right: {
+            style: index === 5 ? 'thin' : 'none',
+            color: null,
+            weight: index === 5 ? 'thin' : null,
+          },
+          top: {
+            style: index === 5 ? 'thin' : 'none',
+            color: null,
+            weight: index === 5 ? 'thin' : null,
+          },
+          bottom: {
+            style: index === 5 ? 'thin' : 'none',
+            color: null,
+            weight: index === 5 ? 'thin' : null,
+          },
+          diagonal: { style: 'none', color: null, weight: null },
           diagonalUp: false,
           diagonalDown: false,
         },
@@ -440,8 +459,10 @@ export function App(): JSX.Element {
           wrapText: false,
           indent: 0,
           textRotation: 0,
+          shrinkToFit: false,
         },
         numFmtCode: index === 3 ? '#,##0.00' : null,
+        numFmtKind: index === 3 ? 'builtin' : 'general',
       });
     }
     let count = 0;
@@ -580,6 +601,7 @@ export function App(): JSX.Element {
           border: cell.style.border,
           alignment: cell.style.alignment,
           numberFormat: cell.style.numberFormat,
+          numberFormatColor: cell.style.numberFormatColor,
           displayText: cell.displayText,
           merge: cell.merge,
         };
@@ -675,6 +697,36 @@ export function App(): JSX.Element {
       setSelection(collapseSelection(target));
     }
     setFocusZone('grid');
+  };
+
+  /**
+   * Header double-click autofit. The grid measured the content; storing the
+   * result as a dimension keeps the imported dimension's other flags intact
+   * and records the `customHeight`/`customWidth` and `bestFit` state.
+   */
+  const autofitDimension = (axis: 'row' | 'column', index: number, result: AutofitResult): void => {
+    if (document === null) return;
+    const stored =
+      axis === 'row'
+        ? (projection?.rowDimension(index) ?? null)
+        : (projection?.columnDimension(index) ?? null);
+    const outcome = document.session.dispatch('dimension.set', {
+      sheetId: document.sheetId,
+      axis,
+      index,
+      size: result.modelValue,
+      custom: true,
+      bestFit: axis === 'column' ? true : undefined,
+      hidden: stored?.hidden,
+    });
+    setVersion((current) => current + 1);
+    setStatus(
+      outcome.changes.length === 0
+        ? `No ${axis === 'row' ? 'row height' : 'column width'} change was needed.`
+        : `Autofitted ${axis === 'row' ? 'row' : 'column'} ${
+            axis === 'row' ? index + 1 : columnToLetters(index)
+          }.`,
+    );
   };
 
   return (
@@ -799,6 +851,7 @@ export function App(): JSX.Element {
             onClear={(address) => runCellSet(address, '')}
             onEditorChange={setLiveEditText}
             formulaBarPointing={barFormulaActive ? { onPoint: pointFormulaBarSelection } : null}
+            onAutofit={autofitDimension}
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />

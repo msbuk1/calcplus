@@ -1,49 +1,135 @@
-import { serialToDateParts } from '@model/date-system';
+import {
+  TOKEN_DURATION,
+  format as numfmtFormat,
+  formatColor as numfmtFormatColor,
+  getFormatInfo,
+  isValidFormat,
+  tokenize,
+} from 'numfmt';
 import type { CellValue } from '@model/value';
+import { INDEXED_PALETTE } from '@model/style';
 
 /**
  * The number-format seam (technical-design §3.6).
  *
- * M2 renders the basic formats: the built-in `numFmtId` table and the simple
- * custom codes made of digit placeholders, separators, percentages, literals
- * and date tokens. The full Excel grammar — conditions, sections, colours,
- * padding, elapsed time, locale — arrives with the number-format milestone,
- * which replaces this module behind the same interface.
+ * `numfmt` owns the Excel grammar. This module owns the Excel seams that
+ * `numfmt` does not: the checked-in built-in id table is resolved by the
+ * style importer, and here we add the 1904 date adapter, code normalisation,
+ * width layout, legacy indexed colours, Indian grouping and the invalid-code
+ * fallback to `General`.
  */
 export interface NumberFormatter {
   format(value: CellValue, code: string | null, date1904: boolean): string;
 }
 
-const COLOUR_TOKENS = new Set([
-  'Black',
-  'Blue',
-  'Cyan',
-  'Green',
-  'Magenta',
-  'Red',
-  'White',
-  'Yellow',
+/** A formatted value plus the layout/colour data a cell painter needs. */
+export interface FormattedNumber {
+  readonly text: string;
+  readonly color: string | null;
+  readonly overflow: boolean;
+}
+
+export interface LayoutContext {
+  /** The cell's content-box width in CSS pixels. */
+  readonly widthPx: number;
+  /** Measures text in the cell's font. */
+  readonly measure: (text: string) => number;
+  readonly date1904: boolean;
+  readonly indexedPalette?: readonly string[] | null;
+  /** Wrapped and shrink-to-fit cells never paint the `#` overflow marker. */
+  readonly wrapText?: boolean;
+  readonly shrinkToFit?: boolean;
+}
+
+const NAMED_COLOURS: Readonly<Record<string, string>> = Object.freeze({
+  black: '#000000',
+  blue: '#0000FF',
+  cyan: '#00FFFF',
+  green: '#00FF00',
+  magenta: '#FF00FF',
+  red: '#FF0000',
+  white: '#FFFFFF',
+  yellow: '#FFFF00',
+});
+
+/** Locales whose convention is Indian 3/2 digit grouping. */
+const INDIAN_GROUPING_LOCALES: ReadonlySet<number> = new Set([
+  0x4009, // en-IN
+  0x439, // hi-IN
+  0x445, // bn-IN
+  0x446, // pa-IN
+  0x447, // gu-IN
+  0x448, // or-IN
+  0x449, // ta-IN
+  0x44a, // te-IN
+  0x44b, // kn-IN
+  0x44c, // ml-IN
+  0x44e, // mr-IN
+  0x45a, // as-IN
 ]);
 
-const COLOUR_VALUES: Readonly<Record<string, string>> = Object.freeze({
-  Black: '#000000',
-  Blue: '#0000ff',
-  Cyan: '#00ffff',
-  Green: '#00ff00',
-  Magenta: '#ff00ff',
-  Red: '#ff0000',
-  White: '#ffffff',
-  Yellow: '#ffff00',
+const BASE_OPTIONS = Object.freeze({
+  dateSpanLarge: false,
+  dateErrorNumber: false,
+  dateErrorThrows: false,
+  throws: false,
+  leap1900: true,
+  nbsp: false,
+  grouping: [3, 3] as [number, number],
 });
 
 /** The colour a format code applies to the cell text, or `null`. */
-export function numberFormatColor(code: string | null): string | null {
-  if (code === null) return null;
-  const match = /^\s*\[([A-Za-z]+)\]/.exec(code);
-  if (match === null) return null;
-  const name = match[1] ?? '';
-  if (!COLOUR_TOKENS.has(name)) return null;
-  return COLOUR_VALUES[name] ?? null;
+export function numberFormatColor(
+  code: string | null,
+  indexedPalette: readonly string[] | null = null,
+): string | null {
+  return (
+    numberFormatColorForValue(code, 1, indexedPalette) ??
+    numberFormatColorForText(code, indexedPalette)
+  );
+}
+
+/** The colour the selected numeric section applies to one value, or `null`. */
+export function numberFormatColorForValue(
+  code: string | null,
+  value: number,
+  indexedPalette: readonly string[] | null = null,
+): string | null {
+  return resolveFormatColor(code, value, indexedPalette);
+}
+
+/** The colour the text section applies, or `null` when it declares none. */
+export function numberFormatColorForText(
+  code: string | null,
+  indexedPalette: readonly string[] | null = null,
+): string | null {
+  return resolveFormatColor(code, 'text', indexedPalette);
+}
+
+function resolveFormatColor(
+  code: string | null,
+  value: number | string,
+  indexedPalette: readonly string[] | null,
+): string | null {
+  if (code === null || code.trim() === '') return null;
+  const normalized = normalizeFormatCode(code);
+  try {
+    const color = numfmtFormatColor(normalized, value, {
+      throws: false,
+      indexColors: false,
+    });
+    if (typeof color === 'number') {
+      const palette = indexedPalette ?? INDEXED_PALETTE;
+      return palette[color] === undefined ? null : `#${palette[color]!.toUpperCase()}`;
+    }
+    if (typeof color === 'string') {
+      if (color.startsWith('#')) return color.toUpperCase();
+      return NAMED_COLOURS[color.toLowerCase()] ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function createNumberFormatter(): NumberFormatter {
@@ -51,37 +137,302 @@ export function createNumberFormatter(): NumberFormatter {
 }
 
 export function formatValue(value: CellValue, code: string | null, date1904 = false): string {
-  if (value.type !== 'number') return '';
-  if (code === null || code.trim() === '' || code.trim() === 'General') {
-    return formatGeneral(value.value);
+  switch (value.type) {
+    case 'number':
+      return formatNumberValue(value.value, code, date1904);
+    case 'text':
+      return formatTextValue(value.value, code);
+    case 'boolean':
+      return value.value ? 'TRUE' : 'FALSE';
+    case 'error':
+      return value.value;
+    case 'blank':
+      return '';
   }
-  const sections = splitSections(code);
-  const selected = selectSection(sections, value.value);
-  if (selected === null) return formatGeneral(value.value);
-  const cleaned = stripBrackets(selected.code);
-  if (cleaned.trim() === '') return formatGeneral(value.value);
-  if (isDateFormat(cleaned)) return formatDate(value.value, cleaned, date1904);
-  // A negative section carries its own sign or parentheses, so the value is
-  // formatted as an absolute number.
-  return formatNumber(value.value, cleaned, selected.negative);
 }
 
-/** Excel's general format: the number as written, exponential when very large. */
+/** Excel's general format, through the same engine used for cells. */
 export function formatGeneral(value: number): string {
-  if (!Number.isFinite(value)) return String(value);
-  if (value === 0) return '0';
-  const magnitude = Math.abs(value);
-  if (magnitude >= 1e11 || magnitude < 1e-10) {
-    return value
-      .toExponential(5)
-      .replace(/e([+-])/, 'E$1')
-      .replace(/(\.\d*?)0+E/, '$1E')
-      .replace(/\.E/, 'E');
+  try {
+    return numfmtFormat('General', value, { ...BASE_OPTIONS, locale: 'en-US' });
+  } catch {
+    return String(value);
   }
-  return String(value);
 }
 
-/** Split a format code into its `;` sections, ignoring separators in literals. */
+/**
+ * Format a numeric cell for layout. This is the width-layout seam: `*x` fills
+ * the remaining width, `_x` advances by the width of `x`, and a value wider
+ * than the content box becomes Excel's `#` overflow fill.
+ */
+export function formatForLayout(
+  value: CellValue,
+  code: string | null,
+  context: LayoutContext,
+): FormattedNumber {
+  if (value.type !== 'number') {
+    return {
+      text: formatValue(value, code, context.date1904),
+      color:
+        value.type === 'text'
+          ? numberFormatColorForText(code, context.indexedPalette ?? null)
+          : numberFormatColor(code, context.indexedPalette ?? null),
+      overflow: false,
+    };
+  }
+  const normalized = effectiveCode(code);
+  const adjusted = adjustSerial(value.value, normalized, context.date1904);
+  const grouping = groupingForCode(normalized);
+  const raw = formatValidated(normalized, adjusted, {
+    fillChar: '\uE000',
+    skipChar: '\uE001',
+    grouping,
+    locale: localeForCode(normalized),
+  });
+  const expanded = expandPadding(raw, context.widthPx, context.measure);
+  const fits =
+    context.wrapText === true ||
+    context.shrinkToFit === true ||
+    context.measure(expanded) <= context.widthPx;
+  return {
+    text: fits ? expanded : hashFill(context.widthPx, context.measure),
+    color: numberFormatColorForValue(code, value.value, context.indexedPalette ?? null),
+    overflow: !fits,
+  };
+}
+
+function formatNumberValue(value: number, code: string | null, date1904: boolean): string {
+  const normalized = effectiveCode(code);
+  const adjusted = adjustSerial(value, normalized, date1904);
+  return formatValidated(normalized, adjusted, {
+    grouping: groupingForCode(normalized),
+    locale: localeForCode(normalized),
+  });
+}
+
+function formatTextValue(text: string, code: string | null): string {
+  if (code === null || code.trim() === '' || code.trim() === 'General') return text;
+  const normalized = englishLocaleCode(normalizeFormatCode(code));
+  if (normalized.trim() === '' || !isValidFormat(normalized)) return text;
+  try {
+    return numfmtFormat(normalized, text, {
+      ...BASE_OPTIONS,
+      locale: localeForCode(normalized),
+      grouping: groupingForCode(normalized),
+    });
+  } catch {
+    return text;
+  }
+}
+
+function effectiveCode(code: string | null): string {
+  if (code === null || code.trim() === '' || code.trim() === 'General') return 'General';
+  const normalized = normalizeFormatCode(code);
+  if (normalized.trim() === '' || !isValidFormat(normalized)) return 'General';
+  return englishLocaleCode(normalized);
+}
+
+function formatValidated(
+  code: string,
+  value: number,
+  options: {
+    readonly grouping: [number, number] | [number];
+    readonly locale: string | number;
+    readonly fillChar?: string;
+    readonly skipChar?: string;
+  },
+): string {
+  try {
+    return numfmtFormat(code, value, {
+      ...BASE_OPTIONS,
+      locale: options.locale,
+      grouping: options.grouping,
+      ...(options.fillChar === undefined ? {} : { fillChar: options.fillChar }),
+      ...(options.skipChar === undefined ? {} : { skipChar: options.skipChar }),
+    });
+  } catch {
+    return formatGeneral(value);
+  }
+}
+
+/** Add 1462 days for calendar formats only; elapsed formats keep their value. */
+function adjustSerial(value: number, code: string, date1904: boolean): number {
+  if (!date1904) return value;
+  if (code === 'General') return value;
+  try {
+    const info = getFormatInfo(code);
+    const calendar = info.type === 'date' || info.type === 'datetime' || info.type === 'time';
+    if (!calendar) return value;
+    const elapsed = tokenize(code).some((token) => token.type === TOKEN_DURATION);
+    return elapsed ? value : value + 1462;
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Normalise only outside quoted strings and escapes. `numfmt` currently
+ * rejects lowercase `e+` and treats lowercase `a/p` as literal text; CJK
+ * numeral modifiers are stripped to their ASCII fallback (a pinned v1 limit).
+ */
+export function normalizeFormatCode(code: string): string {
+  let output = '';
+  let inQuotes = false;
+  for (let index = 0; index < code.length; index += 1) {
+    const character = code[index] ?? '';
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      output += character;
+      continue;
+    }
+    if (inQuotes) {
+      output += character;
+      continue;
+    }
+    if (character === '\\') {
+      output += character;
+      const escaped = code[index + 1];
+      if (escaped !== undefined) {
+        output += escaped;
+        index += 1;
+      }
+      continue;
+    }
+    if (character === '[') {
+      const close = code.indexOf(']', index);
+      if (close < 0) {
+        output += code.slice(index);
+        break;
+      }
+      const token = code.slice(index, close + 1);
+      const body = token.slice(1, -1);
+      if (/^(NatNum|DBNum)/i.test(body)) {
+        index = close;
+        continue;
+      }
+      output += token;
+      index = close;
+      continue;
+    }
+    if (character === 'e' || character === 'E') {
+      const next = code[index + 1];
+      if (next === '+' || next === '-') {
+        output += 'E';
+        continue;
+      }
+    }
+    if (
+      (character === 'a' || character === 'A') &&
+      code.slice(index, index + 3).toLowerCase() === 'a/p'
+    ) {
+      output += 'A/P';
+      index += 2;
+      continue;
+    }
+    output += character;
+  }
+  return output;
+}
+
+/**
+ * v1 renders with English locale semantics (number-formats §8). An authored
+ * `[$symbol-LCID]` keeps its symbol but is rendered with the en-US LCID, so a
+ * German or Japanese code still displays English separators and month names.
+ * Indian locales keep their id because the contract owns 3/2 grouping.
+ */
+function englishLocaleCode(code: string): string {
+  return code.replace(
+    /\[\$([^\]]*)-([0-9A-Fa-f]{1,4})\]/g,
+    (match, prefix: string, idText: string) => {
+      const id = Number.parseInt(idText, 16);
+      if (INDIAN_GROUPING_LOCALES.has(id) || id === 0xf800 || id === 0xf400) return match;
+      return `[$${prefix}-409]`;
+    },
+  );
+}
+
+function localeForCode(code: string): string | number {
+  const lcid = localeIdInFormat(code);
+  return lcid ?? 'en-US';
+}
+
+function groupingForCode(code: string): [number, number] | [number] {
+  const lcid = localeIdInFormat(code);
+  if (lcid !== null && INDIAN_GROUPING_LOCALES.has(lcid)) return [3, 2];
+  return [3, 3];
+}
+
+/** The LCID from an OOXML `[$-xxxx]` locale modifier, when present. */
+function localeIdInFormat(code: string): number | null {
+  const match = /\[\$[^\]]*-([0-9A-Fa-f]{1,8})\]/.exec(code);
+  if (match === null) return null;
+  const value = Number.parseInt(match[1]!, 16);
+  if (!Number.isFinite(value) || value === 0xf800 || value === 0xf400) return null;
+  return value;
+}
+
+function expandPadding(raw: string, widthPx: number, measure: (text: string) => number): string {
+  if (!raw.includes('\uE000') && !raw.includes('\uE001')) return raw;
+  let text = '';
+  const fillPositions: number[] = [];
+  const fillCharacters: string[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index] ?? '';
+    if (character === '\uE001') {
+      const skipped = raw[index + 1] ?? ' ';
+      text += ' '.repeat(spacesFor(skipped, measure));
+      index += 1;
+      continue;
+    }
+    if (character === '\uE000') {
+      const fill = raw[index + 1] ?? ' ';
+      fillPositions.push(text.length);
+      fillCharacters.push(fill);
+      index += 1;
+      continue;
+    }
+    text += character;
+  }
+  if (fillPositions.length === 0) return text;
+  const plainWidth = measure(text);
+  const remaining = Math.max(0, widthPx - plainWidth);
+  const perFill = fillPositions.length === 0 ? 0 : remaining / fillPositions.length;
+  let output = text;
+  for (let index = fillPositions.length - 1; index >= 0; index -= 1) {
+    const character = fillCharacters[index] ?? ' ';
+    const count = repeatCountFor(character, perFill, measure);
+    output =
+      output.slice(0, fillPositions[index]!) +
+      character.repeat(count) +
+      output.slice(fillPositions[index]!);
+  }
+  return output;
+}
+
+function spacesFor(character: string, measure: (text: string) => number): number {
+  const target = measure(character);
+  const one = measure(' ');
+  if (one <= 0) return 1;
+  return Math.max(1, Math.round(target / one));
+}
+
+function repeatCountFor(
+  character: string,
+  width: number,
+  measure: (text: string) => number,
+): number {
+  if (width <= 0) return 0;
+  const one = measure(character);
+  if (one <= 0) return 0;
+  return Math.floor(width / one);
+}
+
+function hashFill(widthPx: number, measure: (text: string) => number): string {
+  const hashWidth = Math.max(1, measure('#'));
+  return '#'.repeat(Math.max(1, Math.floor(widthPx / hashWidth)));
+}
+
+/** Split a format code into sections, ignoring separators in literals/brackets. */
 export function splitSections(code: string): string[] {
   const sections: string[] = [];
   let current = '';
@@ -104,310 +455,4 @@ export function splitSections(code: string): string[] {
   }
   sections.push(current);
   return sections;
-}
-
-interface SelectedSection {
-  /** The section code that applies to the value. */
-  readonly code: string;
-  /** True when the section is the negative section, which supplies the sign. */
-  readonly negative: boolean;
-}
-
-function selectSection(sections: readonly string[], value: number): SelectedSection | null {
-  if (sections.length === 1) {
-    const only = sections[0];
-    return only === undefined ? null : { code: only, negative: false };
-  }
-  if (value < 0 && sections.length >= 2) {
-    const negative = sections[1];
-    return negative === undefined ? null : { code: negative, negative: true };
-  }
-  if (value === 0 && sections.length >= 3) {
-    const zero = sections[2];
-    return zero === undefined ? null : { code: zero, negative: false };
-  }
-  const positive = sections[0];
-  return positive === undefined ? null : { code: positive, negative: false };
-}
-
-function stripBrackets(code: string): string {
-  return code.replace(/\[[^\]]*\]/g, '');
-}
-
-function isDateFormat(code: string): boolean {
-  const withoutLiterals = code.replace(/"[^"]*"/g, '');
-  return /[ydhs]/i.test(withoutLiterals) || /am\/pm/i.test(withoutLiterals);
-}
-
-interface NumberSection {
-  /** Forced integer digits: the count of `0` and `?` placeholders. */
-  readonly integerDigits: number;
-  /** Decimal places: the count of every placeholder after the point. */
-  readonly decimalDigits: number;
-  /** Forced decimal places: the count of `0` and `?` placeholders. */
-  readonly decimalRequired: number;
-  readonly grouped: boolean;
-  readonly percent: boolean;
-  readonly scale: number;
-  readonly prefix: string;
-  readonly suffix: string;
-  readonly textPlaceholder: boolean;
-}
-
-function parseNumberSection(code: string): NumberSection {
-  let integerDigits = 0;
-  let decimalDigits = 0;
-  let decimalRequired = 0;
-  let grouped = false;
-  let percent = false;
-  let scale = 1;
-  let prefix = '';
-  let suffix = '';
-  let textPlaceholder = false;
-  let seenDigit = false;
-  let seenDecimal = false;
-  let inQuotes = false;
-  const characters = [...code];
-  for (let index = 0; index < characters.length; index += 1) {
-    const character = characters[index] ?? '';
-    if (character === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (inQuotes) {
-      if (seenDigit) suffix += character;
-      else prefix += character;
-      continue;
-    }
-    if (character === '\\') {
-      const escaped = characters[index + 1];
-      index += 1;
-      if (escaped === undefined) continue;
-      if (seenDigit) suffix += escaped;
-      else prefix += escaped;
-      continue;
-    }
-    if (character === '%') {
-      percent = true;
-      if (seenDigit) suffix += '%';
-      else prefix += '%';
-      continue;
-    }
-    if (character === '0' || character === '?') {
-      seenDigit = true;
-      if (seenDecimal) {
-        decimalDigits += 1;
-        decimalRequired += 1;
-      } else {
-        integerDigits += 1;
-      }
-      continue;
-    }
-    if (character === '#') {
-      seenDigit = true;
-      if (seenDecimal) decimalDigits += 1;
-      continue;
-    }
-    if (character === '.') {
-      seenDecimal = true;
-      seenDigit = true;
-      continue;
-    }
-    if (character === ',') {
-      const next = characters[index + 1];
-      if (seenDigit && (next === '0' || next === '#' || next === '?')) {
-        grouped = true;
-        continue;
-      }
-      if (seenDigit && !seenDecimal) {
-        scale *= 1000;
-        continue;
-      }
-      continue;
-    }
-    if (character === '@') {
-      textPlaceholder = true;
-      continue;
-    }
-    if (character === '*' || character === '_') {
-      index += 1;
-      continue;
-    }
-    if (character === '[') {
-      while (index < characters.length && characters[index] !== ']') index += 1;
-      continue;
-    }
-    if (seenDigit) suffix += character;
-    else prefix += character;
-  }
-  return {
-    integerDigits,
-    decimalDigits,
-    decimalRequired,
-    grouped,
-    percent,
-    scale,
-    prefix,
-    suffix,
-    textPlaceholder,
-  };
-}
-
-function formatNumber(value: number, code: string, negativeSection = false): string {
-  const section = parseNumberSection(code);
-  if (section.textPlaceholder) return section.prefix + String(value) + section.suffix;
-  let numeric = value;
-  if (section.percent) numeric *= 100;
-  numeric /= section.scale;
-  const negative = numeric < 0;
-  const absolute = Math.abs(numeric);
-  const fixed = absolute.toFixed(section.decimalDigits);
-  const [integerPart = '0', fractionPart = ''] = fixed.split('.');
-  let integerText = integerPart;
-  if (section.grouped) integerText = groupThousands(integerText);
-  if (integerText.length < section.integerDigits) {
-    integerText = integerText.padStart(section.integerDigits, '0');
-  }
-  let fraction = fractionPart === '' ? '' : `.${fractionPart}`;
-  if (fraction !== '' && section.decimalRequired < section.decimalDigits) {
-    // `#` placeholders drop trailing zeros; `0` placeholders keep them.
-    let trimmed = fraction.slice(1).replace(/0+$/, '');
-    while (trimmed.length < section.decimalRequired) trimmed += '0';
-    fraction = trimmed === '' ? '' : `.${trimmed}`;
-  }
-  const sign = negative && !negativeSection ? '-' : '';
-  return `${sign}${section.prefix}${integerText}${fraction}${section.suffix}`;
-}
-
-function groupThousands(text: string): string {
-  return text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-const MONTH_NAMES = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-function formatDate(serial: number, code: string, date1904: boolean): string {
-  const parts = serialToDateParts(serial, date1904);
-  if (parts === null) return '#VALUE!';
-  const hasAmPm = /am\/pm|a\/p/i.test(code.replace(/"[^"]*"/g, ''));
-  let output = '';
-  let index = 0;
-  const characters = [...code];
-  const minutePending = (): boolean => {
-    for (let back = index - 1; back >= 0; back -= 1) {
-      const previous = characters[back];
-      if (previous === undefined) break;
-      if (previous === 'h' || previous === 'H') return true;
-      if (previous === '"') break;
-    }
-    return false;
-  };
-  while (index < characters.length) {
-    const character = characters[index] ?? '';
-    if (character === '"') {
-      index += 1;
-      while (index < characters.length && characters[index] !== '"') {
-        output += characters[index];
-        index += 1;
-      }
-      index += 1;
-      continue;
-    }
-    if (character === '\\') {
-      index += 1;
-      output += characters[index] ?? '';
-      index += 1;
-      continue;
-    }
-    if (character === '[') {
-      while (index < characters.length && characters[index] !== ']') index += 1;
-      index += 1;
-      continue;
-    }
-    const lower = character.toLowerCase();
-    if (lower === 'y') {
-      const run = countRun(characters, index, 'y');
-      output += run <= 2 ? String(parts.year % 100).padStart(2, '0') : String(parts.year);
-      index += run;
-      continue;
-    }
-    if (lower === 'd') {
-      const run = countRun(characters, index, 'd');
-      output += run === 1 ? String(parts.day) : String(parts.day).padStart(2, '0');
-      index += run;
-      continue;
-    }
-    if (lower === 'h') {
-      const run = countRun(characters, index, 'h');
-      let hours = parts.hours;
-      if (hasAmPm) {
-        hours = hours % 12;
-        if (hours === 0) hours = 12;
-      }
-      output += run === 1 ? String(hours) : String(hours).padStart(2, '0');
-      index += run;
-      continue;
-    }
-    if (lower === 's') {
-      const run = countRun(characters, index, 's');
-      output += run === 1 ? String(parts.seconds) : String(parts.seconds).padStart(2, '0');
-      index += run;
-      continue;
-    }
-    if (lower === 'm') {
-      const run = countRun(characters, index, 'm');
-      const isMinute = minutePending() || looksLikeMinute(characters, index, run);
-      if (isMinute) {
-        output += run === 1 ? String(parts.minutes) : String(parts.minutes).padStart(2, '0');
-      } else if (run === 1) {
-        output += String(parts.month);
-      } else if (run === 2) {
-        output += String(parts.month).padStart(2, '0');
-      } else if (run === 3) {
-        output += MONTH_NAMES[parts.month - 1] ?? '';
-      } else {
-        output += MONTH_NAMES[parts.month - 1] ?? '';
-      }
-      index += run;
-      continue;
-    }
-    if (/am\/pm/i.test(characters.slice(index).join('').slice(0, 5))) {
-      output += parts.hours < 12 ? 'AM' : 'PM';
-      index += 5;
-      continue;
-    }
-    output += character;
-    index += 1;
-  }
-  return output;
-}
-
-function countRun(characters: readonly string[], start: number, letter: string): number {
-  let run = 0;
-  while (characters[start + run]?.toLowerCase() === letter) run += 1;
-  return run;
-}
-
-/** `m` after an `h` or before an `s` is a minute, not a month. */
-function looksLikeMinute(characters: readonly string[], start: number, run: number): boolean {
-  for (let ahead = start + run; ahead < characters.length; ahead += 1) {
-    const character = characters[ahead];
-    if (character === undefined) break;
-    if (character.toLowerCase() === 's') return true;
-    if (character === '"') break;
-    if (!/[a-z0-9:.]/i.test(character)) break;
-  }
-  return false;
 }

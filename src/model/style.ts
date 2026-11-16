@@ -2,9 +2,11 @@ import type {
   AlignmentStyle,
   BorderEdgeStyle,
   BorderStyle,
+  BorderWeight,
   FillStyle,
   FontStyle,
   HorizontalAlignment,
+  UnderlineStyle,
   VerticalAlignment,
 } from './types';
 
@@ -20,6 +22,7 @@ export const DEFAULT_FONT: FontStyle = Object.freeze({
   bold: false,
   italic: false,
   underline: false,
+  underlineStyle: 'none',
   strike: false,
   color: null,
 });
@@ -27,6 +30,7 @@ export const DEFAULT_FONT: FontStyle = Object.freeze({
 export const DEFAULT_FILL: FillStyle = Object.freeze({
   pattern: 'none',
   color: null,
+  backgroundColor: null,
 });
 
 export const DEFAULT_ALIGNMENT: AlignmentStyle = Object.freeze({
@@ -35,9 +39,14 @@ export const DEFAULT_ALIGNMENT: AlignmentStyle = Object.freeze({
   wrapText: false,
   indent: 0,
   textRotation: 0,
+  shrinkToFit: false,
 });
 
-const NO_BORDER_EDGE: BorderEdgeStyle = Object.freeze({ style: 'none', color: null });
+const NO_BORDER_EDGE: BorderEdgeStyle = Object.freeze({
+  style: 'none',
+  color: null,
+  weight: null,
+});
 
 export const DEFAULT_BORDER: BorderStyle = Object.freeze({
   left: NO_BORDER_EDGE,
@@ -119,8 +128,8 @@ export const INDEXED_PALETTE: readonly string[] = Object.freeze([
 /**
  * The default Office theme palette, in the order OOXML theme indices use:
  * background 1, text 1, background 2, text 2, accents 1-6, hyperlink,
- * followed hyperlink. Workbook-specific themes are resolved with the theme
- * milestone; M2 falls back to this palette.
+ * followed hyperlink. A workbook-specific theme is not resolved here yet; its
+ * references are preserved on save.
  */
 export const THEME_PALETTE: readonly string[] = Object.freeze([
   'FFFFFF',
@@ -145,16 +154,24 @@ export interface ColorAttributes {
   readonly auto?: string | null | undefined;
 }
 
-/** Resolve an OOXML colour attribute set to a CSS colour, or `null`. */
-export function resolveColor(attributes: ColorAttributes): string | null {
+/**
+ * Resolve an OOXML colour attribute set to a CSS colour, or `null`.
+ * `indexedPalette` overrides the legacy built-in palette when the workbook
+ * declares `<colors><indexedColors>`.
+ */
+export function resolveColor(
+  attributes: ColorAttributes,
+  indexedPalette: readonly string[] | null = null,
+): string | null {
   const { rgb, indexed, theme, tint, auto } = attributes;
   let hex: string | null = null;
   if (rgb !== undefined && rgb !== null && rgb !== '') {
     hex = normalizeHex(rgb);
   } else if (indexed !== undefined && indexed !== null && indexed !== '') {
     const index = Number(indexed);
-    if (Number.isInteger(index) && index >= 0 && index < INDEXED_PALETTE.length) {
-      hex = INDEXED_PALETTE[index] ?? null;
+    const palette = indexedPalette ?? INDEXED_PALETTE;
+    if (Number.isInteger(index) && index >= 0 && index < palette.length) {
+      hex = palette[index] ?? null;
     }
   } else if (theme !== undefined && theme !== null && theme !== '') {
     const index = Number(theme);
@@ -228,7 +245,14 @@ function hslToRgb(hue: number, saturation: number, lightness: number): [number, 
   return [channel(hue + 1 / 3), channel(hue), channel(hue - 1 / 3)];
 }
 
-/** The built-in number-format codes, by `numFmtId`. */
+/**
+ * The built-in number-format codes, by `numFmtId` (number-formats §2).
+ *
+ * ECMA-376 table ids 0-22 and 37-49 are the all-language entries. The
+ * locale-specific ids 27-36, 50-58, 59-62 and 67-81 are resolved to their
+ * Gregorian en-US equivalent, which is the v1 pinned policy: the id is
+ * preserved on save and Thai/Buddhist-era behaviour is not reproduced.
+ */
 export const BUILTIN_NUMBER_FORMATS: Readonly<Record<number, string>> = Object.freeze({
   0: 'General',
   1: '0',
@@ -253,8 +277,19 @@ export const BUILTIN_NUMBER_FORMATS: Readonly<Record<number, string>> = Object.f
   20: 'h:mm',
   21: 'h:mm:ss',
   22: 'm/d/yy h:mm',
-  37: '#,##0_);(#,##0)',
-  38: '#,##0_);[Red](#,##0)',
+  // 27-36: East Asian date/time ids, rendered as Gregorian en-US equivalents.
+  27: 'm/d/yy',
+  28: 'm/d/yy',
+  29: 'm/d/yy',
+  30: 'm/d/yy',
+  31: 'yyyy-mm-dd',
+  32: 'h:mm',
+  33: 'h:mm:ss',
+  34: 'h:mm AM/PM',
+  35: 'h:mm:ss AM/PM',
+  36: 'm/d/yy',
+  37: '#,##0 ;(#,##0)',
+  38: '#,##0 ;[Red](#,##0)',
   39: '#,##0.00_);(#,##0.00)',
   40: '#,##0.00_);[Red](#,##0.00)',
   41: '_(* #,##0_);_(* (#,##0);_(* "-"_);_(@_)',
@@ -266,20 +301,122 @@ export const BUILTIN_NUMBER_FORMATS: Readonly<Record<number, string>> = Object.f
   47: 'mmss.0',
   48: '##0.0E+0',
   49: '@',
+  // 50-58: East Asian locale ids, rendered as Gregorian en-US equivalents.
+  50: 'm/d/yy',
+  51: 'm/d/yy',
+  52: 'h:mm',
+  53: 'h:mm:ss',
+  54: 'm/d/yy',
+  55: 'h:mm',
+  56: 'h:mm:ss',
+  57: 'm/d/yy',
+  58: 'm/d/yy',
+  // 59-62, 67-81: Thai ids, rendered as Gregorian en-US equivalents.
+  59: '0',
+  60: '0.00',
+  61: '#,##0',
+  62: '#,##0.00',
+  67: '0%',
+  68: '0.00%',
+  69: '# ?/?',
+  70: '# ??/??',
+  71: 'd/m/yyyy',
+  72: 'd-mmm-yy',
+  73: 'd-mmm',
+  74: 'mmm-yy',
+  75: 'h:mm',
+  76: 'h:mm:ss',
+  77: 'd/m/yyyy h:mm',
+  78: 'mm:ss',
+  79: '[h]:mm:ss',
+  80: 'mmss.0',
+  81: 'd/m/yyyy',
 });
+
+/** The locale-specific built-in ids whose rendering is a pinned v1 deviation. */
+export const LOCALE_BUILTIN_NUMBER_FORMAT_IDS: ReadonlySet<number> = new Set([
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 67,
+  68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+]);
+
+const CANONICAL_NUMBER_FORMAT_IDS: ReadonlyMap<string, number> = (() => {
+  const map = new Map<string, number>();
+  for (const id of Object.keys(BUILTIN_NUMBER_FORMATS).map(Number)) {
+    if (LOCALE_BUILTIN_NUMBER_FORMAT_IDS.has(id)) continue;
+    const code = BUILTIN_NUMBER_FORMATS[id];
+    if (code !== undefined && !map.has(code)) map.set(code, id);
+  }
+  return map;
+})();
 
 /** The built-in format code for an id, or `null` when the id is not built in. */
 export function builtinNumberFormat(numFmtId: number): string | null {
   return BUILTIN_NUMBER_FORMATS[numFmtId] ?? null;
 }
 
-/** The built-in id for a format code, or `null` for a custom code. */
+/** True when the id is one of the locale-specific built-ins with a pinned en-US fallback. */
+export function isLocaleBuiltinNumberFormat(numFmtId: number): boolean {
+  return LOCALE_BUILTIN_NUMBER_FORMAT_IDS.has(numFmtId);
+}
+
+/** The canonical built-in id for a format code, or `null` for a custom code. */
 export function builtinNumberFormatId(code: string | null): number | null {
-  if (code === null) return 0;
-  for (const [id, builtin] of Object.entries(BUILTIN_NUMBER_FORMATS)) {
-    if (builtin === code) return Number(id);
+  if (code === null || code.trim() === '' || code.trim() === 'General') return 0;
+  return CANONICAL_NUMBER_FORMAT_IDS.get(code) ?? null;
+}
+
+/** The visual weight implied by an OOXML border style. */
+export function borderWeight(style: string): BorderWeight | null {
+  switch (style) {
+    case 'hair':
+      return 'hair';
+    case 'thin':
+    case 'dashed':
+    case 'dotted':
+    case 'dashDot':
+    case 'dashDotDot':
+      return 'thin';
+    case 'medium':
+    case 'mediumDashed':
+    case 'mediumDashDot':
+    case 'mediumDashDotDot':
+    case 'slantDashDot':
+      return 'medium';
+    case 'thick':
+    case 'double':
+      return 'thick';
+    default:
+      return null;
   }
-  return null;
+}
+
+/** Build a border edge with its derived weight. */
+export function borderEdge(style: string, color: string | null): BorderEdgeStyle {
+  return { style, color, weight: borderWeight(style) };
+}
+
+/** Parse an OOXML `<u val="...">` value into the display underline flags. */
+export function underlineFromValue(value: string | null | undefined): {
+  underline: boolean;
+  underlineStyle: UnderlineStyle;
+} {
+  switch (value) {
+    case null:
+    case undefined:
+    case '':
+    case 'single':
+      return { underline: true, underlineStyle: 'single' };
+    case 'none':
+      return { underline: false, underlineStyle: 'none' };
+    case 'double':
+      return { underline: true, underlineStyle: 'double' };
+    case 'singleAccounting':
+      return { underline: true, underlineStyle: 'singleAccounting' };
+    case 'doubleAccounting':
+      return { underline: true, underlineStyle: 'doubleAccounting' };
+    default:
+      return { underline: true, underlineStyle: 'single' };
+  }
 }
 
 export function normalizeHorizontalAlignment(

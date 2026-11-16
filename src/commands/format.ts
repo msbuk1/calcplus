@@ -7,10 +7,11 @@ import type {
   SheetId,
   StyleId,
   StyleRecord,
+  UnderlineStyle,
   Workbook,
 } from '@model/types';
 import { cellIsEmpty, getCell } from '@model/types';
-import { builtinNumberFormatId } from '@model/style';
+import { borderEdge } from '@model/style';
 import { findOrAppendStyle, patchedStyleInput, type StylePatch } from '@model/style-table';
 import type { StyleSetChange } from './types';
 import type { CommandContext, CommandDefinition, CommandResult } from './types';
@@ -26,6 +27,8 @@ import type { CommandContext, CommandDefinition, CommandResult } from './types';
  * user sees.
  */
 
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
 export interface FormatTargetArgs {
   readonly sheetId?: SheetId;
   readonly range?: GridRange;
@@ -37,6 +40,7 @@ export interface FontFormatArgs extends FormatTargetArgs {
   readonly bold?: boolean;
   readonly italic?: boolean;
   readonly underline?: boolean;
+  readonly underlineStyle?: UnderlineStyle;
   readonly strike?: boolean;
   readonly color?: string | null;
 }
@@ -44,12 +48,13 @@ export interface FontFormatArgs extends FormatTargetArgs {
 export interface FillFormatArgs extends FormatTargetArgs {
   readonly pattern?: string;
   readonly color?: string | null;
+  readonly backgroundColor?: string | null;
 }
 
 export type BorderEdgeName = 'left' | 'right' | 'top' | 'bottom' | 'diagonal';
 
 export interface BorderFormatArgs extends FormatTargetArgs {
-  readonly preset?: 'all' | 'outline' | 'none';
+  readonly preset?: 'all' | 'outline' | 'inside' | 'none';
   readonly style?: string;
   readonly color?: string | null;
   readonly edges?: Partial<Record<BorderEdgeName, BorderEdgeStyle>>;
@@ -63,6 +68,7 @@ export interface AlignmentFormatArgs extends FormatTargetArgs {
   readonly wrapText?: boolean;
   readonly indent?: number;
   readonly textRotation?: number;
+  readonly shrinkToFit?: boolean;
 }
 
 export interface NumberFormatArgs extends FormatTargetArgs {
@@ -117,12 +123,17 @@ export const formatFontCommand: CommandDefinition<FontFormatArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
+    const underlineStyle =
+      args.underlineStyle ??
+      (args.underline === undefined ? undefined : args.underline ? 'single' : 'none');
     const font: NonNullable<StylePatch['font']> = {
       ...(args.name === undefined ? {} : { name: args.name }),
       ...(args.size === undefined ? {} : { size: args.size }),
       ...(args.bold === undefined ? {} : { bold: args.bold }),
       ...(args.italic === undefined ? {} : { italic: args.italic }),
-      ...(args.underline === undefined ? {} : { underline: args.underline }),
+      ...(underlineStyle === undefined
+        ? {}
+        : { underline: underlineStyle !== 'none', underlineStyle }),
       ...(args.strike === undefined ? {} : { strike: args.strike }),
       ...(args.color === undefined ? {} : { color: args.color }),
     };
@@ -138,12 +149,17 @@ export const formatFillCommand: CommandDefinition<FillFormatArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
-    if (args.pattern === undefined && args.color === undefined) {
+    if (
+      args.pattern === undefined &&
+      args.color === undefined &&
+      args.backgroundColor === undefined
+    ) {
       return { changes: [] };
     }
     const fill: NonNullable<StylePatch['fill']> = {
       ...(args.pattern === undefined ? {} : { pattern: args.pattern }),
       ...(args.color === undefined ? {} : { color: args.color }),
+      ...(args.backgroundColor === undefined ? {} : { backgroundColor: args.backgroundColor }),
     };
     return applyPatch(context, args, { fill });
   },
@@ -158,42 +174,65 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
   run(context, args = {}) {
     const target = resolveTarget(context, args);
     if (target === null) return noTarget();
-    const edge = (): BorderEdgeStyle => ({
-      style: args.style ?? 'thin',
-      color: args.color ?? null,
-    });
-    const preset = args.preset;
-    const border: Partial<BorderStyle> = {};
-    if (preset === 'none') {
+    if (args.preset === 'none') {
       return applyPatch(context, args, {
         border: {
-          left: { style: 'none', color: null },
-          right: { style: 'none', color: null },
-          top: { style: 'none', color: null },
-          bottom: { style: 'none', color: null },
-          diagonal: { style: 'none', color: null },
+          left: borderEdge('none', null),
+          right: borderEdge('none', null),
+          top: borderEdge('none', null),
+          bottom: borderEdge('none', null),
+          diagonal: borderEdge('none', null),
           diagonalUp: false,
           diagonalDown: false,
         },
       });
     }
-    if (preset === 'all' || preset === 'outline') {
-      Object.assign(border, {
-        left: edge(),
-        right: edge(),
-        top: edge(),
-        bottom: edge(),
+    if (
+      args.preset === 'outline' ||
+      args.preset === 'inside' ||
+      args.preset === 'all' ||
+      args.edges !== undefined ||
+      args.style !== undefined
+    ) {
+      const edge = (): BorderEdgeStyle => borderEdge(args.style ?? 'thin', args.color ?? null);
+      return applyPerCellPatch(context, args, (row, col) => {
+        const border: Mutable<Partial<BorderStyle>> = {};
+        const preset = args.preset;
+        if (preset === 'outline' || preset === 'all') {
+          if (row === target.range.startRow) border.top = edge();
+          if (row === target.range.endRow) border.bottom = edge();
+          if (col === target.range.startCol) border.left = edge();
+          if (col === target.range.endCol) border.right = edge();
+        }
+        if (preset === 'inside' || preset === 'all') {
+          if (row > target.range.startRow) border.top = edge();
+          if (row < target.range.endRow) border.bottom = edge();
+          if (col > target.range.startCol) border.left = edge();
+          if (col < target.range.endCol) border.right = edge();
+        }
+        if (preset === undefined) {
+          Object.assign(border, {
+            left: edge(),
+            right: edge(),
+            top: edge(),
+            bottom: edge(),
+          });
+        }
+        if (args.edges !== undefined) Object.assign(border, args.edges);
+        if (args.diagonalUp !== undefined) border.diagonalUp = args.diagonalUp;
+        if (args.diagonalDown !== undefined) border.diagonalDown = args.diagonalDown;
+        return Object.keys(border).length === 0 ? null : { border };
       });
     }
-    if (args.edges !== undefined) Object.assign(border, args.edges);
-    if (args.diagonalUp !== undefined) {
-      Object.assign(border, { diagonalUp: args.diagonalUp });
+    if (args.diagonalUp !== undefined || args.diagonalDown !== undefined) {
+      return applyPatch(context, args, {
+        border: {
+          ...(args.diagonalUp === undefined ? {} : { diagonalUp: args.diagonalUp }),
+          ...(args.diagonalDown === undefined ? {} : { diagonalDown: args.diagonalDown }),
+        },
+      });
     }
-    if (args.diagonalDown !== undefined) {
-      Object.assign(border, { diagonalDown: args.diagonalDown });
-    }
-    if (Object.keys(border).length === 0) return { changes: [] };
-    return applyPatch(context, args, { border });
+    return { changes: [] };
   },
 };
 
@@ -211,6 +250,7 @@ export const formatAlignmentCommand: CommandDefinition<AlignmentFormatArgs> = {
         ...(args.wrapText === undefined ? {} : { wrapText: args.wrapText }),
         ...(args.indent === undefined ? {} : { indent: args.indent }),
         ...(args.textRotation === undefined ? {} : { textRotation: args.textRotation }),
+        ...(args.shrinkToFit === undefined ? {} : { shrinkToFit: args.shrinkToFit }),
       },
     });
   },
@@ -225,7 +265,6 @@ export const formatNumberFormatCommand: CommandDefinition<NumberFormatArgs> = {
   run(context, args = { code: null }) {
     return applyPatch(context, args, {
       numFmtCode: args.code,
-      numFmtId: builtinNumberFormatId(args.code) ?? 0,
     });
   },
 };
@@ -239,7 +278,7 @@ export const formatClearCommand: CommandDefinition<FormatTargetArgs> = {
   run(context, args = {}) {
     const target = resolveTarget(context, args);
     if (target === null) return noTarget();
-    const change = buildChange(target, 0);
+    const change = buildChange(target, () => 0);
     return change === null ? { changes: [] } : { changes: [change] };
   },
 };
@@ -263,11 +302,9 @@ function toggleCommand(
       return checked(baseStyle(target, context.activeCell));
     },
     run(context, args = {}) {
-      const target = resolveTarget(context, args);
-      if (target === null) return noTarget();
-      const base = baseStyle(target, context.activeCell);
-      const change = buildChange(target, patchFor(base), context.activeCell);
-      return change === null ? { changes: [] } : { changes: [change] };
+      return applyPatchForCell(context, args, (cell) =>
+        patchFor(styleRecord(context.workbook, cell?.styleId ?? 0)),
+      );
     },
   };
 }
@@ -277,22 +314,39 @@ function applyPatch(
   args: FormatTargetArgs,
   patch: StylePatch,
 ): CommandResult {
+  return applyPatchForCell(context, args, () => patch);
+}
+
+function applyPerCellPatch(
+  context: CommandContext,
+  args: FormatTargetArgs,
+  patchFor: (row: number, col: number) => StylePatch | null,
+): CommandResult {
+  return applyPatchForCell(context, args, (_cell, row, col) => patchFor(row, col));
+}
+
+function applyPatchForCell(
+  context: CommandContext,
+  args: FormatTargetArgs,
+  patchFor: (cell: Cell | null, row: number, col: number) => StylePatch | null,
+): CommandResult {
   const target = resolveTarget(context, args);
   if (target === null) return noTarget();
-  if (Object.keys(patch).length === 0) return { changes: [] };
-  const change = buildChange(target, patch, context.activeCell);
+  const change = buildChange(target, (cell, row, col) => {
+    const patch = patchFor(cell, row, col);
+    if (patch === null || Object.keys(patch).length === 0) return null;
+    return findOrAppendStyle(
+      target.workbook,
+      patchedStyleInput(styleRecordForCell(target, cell), patch),
+    );
+  });
   return change === null ? { changes: [] } : { changes: [change] };
 }
 
 function buildChange(
   target: ResolvedTarget,
-  style: StyleRecord | StylePatch | number,
-  activeCell: CommandContext['activeCell'] = null,
+  styleFor: (cell: Cell | null, row: number, col: number) => StyleId | null,
 ): StyleSetChange | null {
-  const targetId =
-    typeof style === 'number'
-      ? style
-      : findOrAppendStyle(target.workbook, patchedStyleInput(baseStyle(target, activeCell), style));
   const before: (StyleId | null)[][] = [];
   const after: (StyleId | null)[][] = [];
   let changed = false;
@@ -303,6 +357,7 @@ function buildChange(
       const cell = getCell(target.sheet, row, col);
       const beforeId =
         cell === null || (cell.styleId === 0 && cellIsEmpty(cell)) ? null : cell.styleId;
+      const targetId = styleFor(cell, row, col) ?? 0;
       const afterId = styleForCellAfter(cell, targetId);
       beforeRow.push(beforeId);
       afterRow.push(afterId);
@@ -325,6 +380,10 @@ function styleForCellAfter(cell: Cell | null, targetId: StyleId): StyleId | null
   if (cell === null) return targetId === 0 ? null : targetId;
   if (targetId === 0 && cellIsEmpty(cell)) return null;
   return targetId;
+}
+
+function styleRecordForCell(target: ResolvedTarget, cell: Cell | null): StyleRecord {
+  return styleRecord(target.workbook, cell?.styleId ?? 0);
 }
 
 function resolveTarget(context: CommandContext, args: FormatTargetArgs): ResolvedTarget | null {

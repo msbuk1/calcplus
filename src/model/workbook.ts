@@ -10,12 +10,19 @@ import type {
   Workbook,
   WorkbookId,
 } from './types';
-import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from './style';
+import {
+  DEFAULT_ALIGNMENT,
+  DEFAULT_BORDER,
+  DEFAULT_FILL,
+  DEFAULT_FONT,
+  builtinNumberFormat,
+  builtinNumberFormatId,
+} from './style';
 
 /** A style record as it is appended; the visual parts default to the base style. */
 export type StyleRecordInput = Omit<
   StyleRecord,
-  'id' | 'font' | 'fill' | 'border' | 'alignment' | 'numFmtCode'
+  'id' | 'font' | 'fill' | 'border' | 'alignment' | 'numFmtCode' | 'numFmtKind'
 > & {
   readonly id?: number;
   readonly font?: FontStyle;
@@ -23,6 +30,7 @@ export type StyleRecordInput = Omit<
   readonly border?: BorderStyle;
   readonly alignment?: AlignmentStyle;
   readonly numFmtCode?: string | null;
+  readonly numFmtKind?: StyleRecord['numFmtKind'];
 };
 
 export const DEFAULT_ROW_HEIGHT_POINTS = 15;
@@ -73,6 +81,8 @@ export function createSheet(name: string, partPath: string, id = createSheetId(p
     conditionalFormats: [],
     protection: null,
     view: createDefaultView(),
+    defaultRowHeight: null,
+    defaultColumnWidth: null,
     opaqueParts: new Map(),
   };
 }
@@ -91,6 +101,7 @@ export function createDefaultStyle(id = 0): StyleRecord {
     border: DEFAULT_BORDER,
     alignment: DEFAULT_ALIGNMENT,
     numFmtCode: null,
+    numFmtKind: 'general',
   };
 }
 
@@ -105,6 +116,7 @@ export function createEmptyWorkbook(): Workbook {
     protection: null,
     opaqueParts: new Map(),
     sourceParts: new Map(),
+    indexedPalette: null,
     date1904: false,
   };
 }
@@ -129,8 +141,18 @@ export function appendStyle(workbook: Workbook, style: StyleRecordInput): number
     border: style.border ?? DEFAULT_BORDER,
     alignment: style.alignment ?? DEFAULT_ALIGNMENT,
     numFmtCode: style.numFmtCode ?? null,
+    numFmtKind: style.numFmtKind ?? inferNumberFormatKind(style),
   });
   return id;
+}
+
+function inferNumberFormatKind(style: StyleRecordInput): StyleRecord['numFmtKind'] {
+  if (style.numFmtCode === null || style.numFmtCode === undefined) {
+    if (style.numFmtId === 0) return 'general';
+    const builtin = builtinNumberFormat(style.numFmtId);
+    return builtin === null ? 'unknown' : 'builtin';
+  }
+  return builtinNumberFormatId(style.numFmtCode) !== null ? 'builtin' : 'custom';
 }
 
 export function getStyle(workbook: Workbook, styleId: number): StyleRecord {

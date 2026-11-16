@@ -17,6 +17,16 @@ export function columnWidthCharsToPixels(chars: number): number {
   return Math.round(chars * 7 + 5);
 }
 
+/** The inverse of `columnWidthCharsToPixels`, for autofit and resize. */
+export function columnWidthPixelsToChars(pixels: number): number {
+  return Math.max(0, (pixels - 5) / 7);
+}
+
+/** The inverse of `pointsToPixels`, for row autofit and resize. */
+export function pixelsToPoints(pixels: number): number {
+  return (pixels * 72) / 96;
+}
+
 export class SparseAxisGeometry {
   readonly count: number;
   readonly defaultSize: number;
@@ -28,8 +38,10 @@ export class SparseAxisGeometry {
   constructor(count: number, defaultSize: number, overrides: ReadonlyMap<number, number>) {
     this.count = count;
     this.defaultSize = defaultSize;
+    // A zero-size override is a hidden row or column: its offset collapses to
+    // the next visible index without allocating anything.
     const entries = [...overrides.entries()]
-      .filter(([index, size]) => index >= 0 && index < count && size > 0)
+      .filter(([index, size]) => index >= 0 && index < count && size >= 0)
       .sort((left, right) => left[0] - right[0]);
     let delta = 0;
     for (const [index, size] of entries) {
@@ -62,9 +74,13 @@ export class SparseAxisGeometry {
 
   /** The row or column that contains an offset. */
   indexAt(offset: number): number {
-    if (offset <= 0) return 0;
+    if (this.count <= 0) return 0;
+    // A hidden row or column has zero size, so the offset at its start belongs
+    // to the next visible index. Never hand a click or an arrow key a hidden
+    // boundary index.
+    if (offset <= 0) return this.firstVisibleIndex();
     const total = this.totalSize();
-    if (offset >= total) return this.count - 1;
+    if (offset >= total) return this.lastVisibleIndex();
     // Binary search for the last override that starts at or before the offset.
     let low = 0;
     let high = this.indices.length - 1;
@@ -78,14 +94,35 @@ export class SparseAxisGeometry {
         high = middle - 1;
       }
     }
-    if (found < 0) return Math.min(this.count - 1, Math.floor(offset / this.defaultSize));
-    const start = this.startOffsetOfOverride(found);
-    const size = this.sizes[found] ?? this.defaultSize;
-    const relative = offset - start;
-    if (relative < size) return this.indices[found] ?? 0;
-    const rest = relative - size;
-    const index = (this.indices[found] ?? 0) + 1 + Math.floor(rest / this.defaultSize);
-    return Math.min(this.count - 1, Math.max(0, index));
+    const candidate = (() => {
+      if (found < 0) return Math.min(this.count - 1, Math.floor(offset / this.defaultSize));
+      const start = this.startOffsetOfOverride(found);
+      const size = this.sizes[found] ?? this.defaultSize;
+      const relative = offset - start;
+      if (relative < size) return this.indices[found] ?? 0;
+      const rest = relative - size;
+      const index = (this.indices[found] ?? 0) + 1 + Math.floor(rest / this.defaultSize);
+      return Math.min(this.count - 1, Math.max(0, index));
+    })();
+    return this.visibleAtOrAfter(candidate);
+  }
+
+  private visibleAtOrAfter(index: number): number {
+    let target = index;
+    while (target < this.count && this.sizeAt(target) <= 0) target += 1;
+    return target < this.count ? target : this.lastVisibleIndex();
+  }
+
+  private firstVisibleIndex(): number {
+    let index = 0;
+    while (index < this.count && this.sizeAt(index) <= 0) index += 1;
+    return index < this.count ? index : Math.max(0, this.count - 1);
+  }
+
+  private lastVisibleIndex(): number {
+    let index = this.count - 1;
+    while (index >= 0 && this.sizeAt(index) <= 0) index -= 1;
+    return index >= 0 ? index : 0;
   }
 
   private deltaBefore(index: number): number {

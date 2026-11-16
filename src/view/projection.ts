@@ -1,13 +1,21 @@
 import type { Cell, Workbook } from '@model/types';
 import { cellKey, columnToLetters } from '@model/types';
 import { formatCellValue } from '@model/value';
+import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
 import { SparseAxisGeometry, columnWidthCharsToPixels, pointsToPixels } from './geometry';
-import { createNumberFormatter } from './number-format';
+import {
+  createNumberFormatter,
+  formatForLayout,
+  numberFormatColor,
+  numberFormatColorForText,
+  numberFormatColorForValue,
+} from './number-format';
 import { buildSheetIndex, type SheetIndex } from './sheet-index';
 import type {
   MergeSpan,
   ProjectedCell,
   ProjectedStyle,
+  ProjectedTextLayout,
   ProjectionOptions,
   SheetProjection,
 } from './types';
@@ -31,8 +39,14 @@ export function createSheetProjection(
 ): SheetProjection {
   const sheet = workbook.sheets.find((candidate) => candidate.id === sheetId);
   if (sheet === undefined) throw new Error(`Unknown sheet: ${sheetId}`);
-  const defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
-  const defaultColumnWidth = options.defaultColumnWidth ?? DEFAULT_COLUMN_WIDTH;
+  const defaultRowHeight =
+    options.defaultRowHeight ??
+    (sheet.defaultRowHeight === null ? DEFAULT_ROW_HEIGHT : pointsToPixels(sheet.defaultRowHeight));
+  const defaultColumnWidth =
+    options.defaultColumnWidth ??
+    (sheet.defaultColumnWidth === null
+      ? DEFAULT_COLUMN_WIDTH
+      : columnWidthCharsToPixels(sheet.defaultColumnWidth));
   const rowCount = options.rowCount ?? MAX_ROWS;
   const columnCount = options.columnCount ?? MAX_COLUMNS;
 
@@ -46,11 +60,23 @@ export function createSheetProjection(
     defaultColumnWidth,
     columnWidthOverrides(sheet.columnDimensions, defaultColumnWidth),
   );
+  const hiddenRows = new Set(
+    [...sheet.rowDimensions.entries()]
+      .filter(([row, dimension]) => row >= 0 && row < rowCount && dimension.hidden === true)
+      .map(([row]) => row),
+  );
+  const hiddenColumns = new Set(
+    [...sheet.columnDimensions.entries()]
+      .filter(([col, dimension]) => col >= 0 && col < columnCount && dimension.hidden === true)
+      .map(([col]) => col),
+  );
 
   const merges = buildMergeIndex(sheet.merges);
   const formatter = createNumberFormatter();
   const styleCache = new Map<number, ProjectedStyle>();
+  const valueStyleCache = new Map<string, ProjectedStyle>();
   const formatCache = new Map<string, string>();
+  const colorCache = new Map<string, string | null>();
 
   const styleFor = (styleId: number): ProjectedStyle => {
     const cached = styleCache.get(styleId);
@@ -59,33 +85,12 @@ export function createSheetProjection(
     const style: ProjectedStyle =
       record === undefined
         ? {
-            font: {
-              name: 'Calibri',
-              size: 11,
-              bold: false,
-              italic: false,
-              underline: false,
-              strike: false,
-              color: null,
-            },
-            fill: { pattern: 'none', color: null },
-            border: {
-              left: { style: 'none', color: null },
-              right: { style: 'none', color: null },
-              top: { style: 'none', color: null },
-              bottom: { style: 'none', color: null },
-              diagonal: { style: 'none', color: null },
-              diagonalUp: false,
-              diagonalDown: false,
-            },
-            alignment: {
-              horizontal: 'general',
-              vertical: 'bottom',
-              wrapText: false,
-              indent: 0,
-              textRotation: 0,
-            },
+            font: DEFAULT_FONT,
+            fill: DEFAULT_FILL,
+            border: DEFAULT_BORDER,
+            alignment: DEFAULT_ALIGNMENT,
             numberFormat: null,
+            numberFormatColor: null,
           }
         : {
             font: record.font,
@@ -93,14 +98,60 @@ export function createSheetProjection(
             border: record.border,
             alignment: record.alignment,
             numberFormat: record.numFmtCode,
+            numberFormatColor: numberFormatColor(record.numFmtCode, workbook.indexedPalette),
           };
     styleCache.set(styleId, style);
     return style;
   };
 
+  /**
+   * A number format may colour its sections differently (`[Red]0` negative,
+   * `[Blue]0` positive, `[Red]@` text). Resolve the colour for this value's
+   * section and reuse the immutable style object when it matches the
+   * style-level colour.
+   */
+  const styleForValue = (cell: Cell, style: ProjectedStyle): ProjectedStyle => {
+    if (style.numberFormat === null) return style;
+    let colorKey: string;
+    let color: string | null;
+    if (cell.value.type === 'number') {
+      colorKey = `n\u0000${style.numberFormat}\u0000${cell.value.value}`;
+      const cached = colorCache.get(colorKey);
+      if (cached !== undefined) color = cached;
+      else {
+        color = numberFormatColorForValue(
+          style.numberFormat,
+          cell.value.value,
+          workbook.indexedPalette,
+        );
+        if (colorCache.size >= FORMAT_CACHE_LIMIT) colorCache.clear();
+        colorCache.set(colorKey, color);
+      }
+    } else if (cell.value.type === 'text') {
+      colorKey = `t\u0000${style.numberFormat}`;
+      const cached = colorCache.get(colorKey);
+      if (cached !== undefined) color = cached;
+      else {
+        color = numberFormatColorForText(style.numberFormat, workbook.indexedPalette);
+        if (colorCache.size >= FORMAT_CACHE_LIMIT) colorCache.clear();
+        colorCache.set(colorKey, color);
+      }
+    } else {
+      return style;
+    }
+    if (color === style.numberFormatColor) return style;
+    const key = `${cell.styleId}\u0000${color ?? ''}`;
+    const cached = valueStyleCache.get(key);
+    if (cached !== undefined) return cached;
+    const resolved: ProjectedStyle = { ...style, numberFormatColor: color };
+    if (valueStyleCache.size >= FORMAT_CACHE_LIMIT) valueStyleCache.clear();
+    valueStyleCache.set(key, resolved);
+    return resolved;
+  };
+
+  /** Width-agnostic display text; the paint width seam is `layoutTextFor`. */
   const displayTextFor = (cell: Cell, style: ProjectedStyle): string => {
-    if (cell.value.type !== 'number') return formatCellValue(cell.value);
-    const key = `${style.numberFormat ?? ''}\u0000${cell.value.value}`;
+    const key = `${style.numberFormat ?? ''}\u0000${valueKey(cell)}`;
     const cached = formatCache.get(key);
     if (cached !== undefined) return cached;
     const text = formatter.format(cell.value, style.numberFormat, workbook.date1904);
@@ -116,6 +167,26 @@ export function createSheetProjection(
     return formatCellValue(cell.value);
   };
 
+  const layoutTextFor = (
+    cell: Cell,
+    style: ProjectedStyle,
+    widthPx: number,
+    measure: (text: string) => number,
+  ): ProjectedTextLayout => {
+    if (cell.value.type !== 'number') {
+      return { text: displayTextFor(cell, style), overflow: false };
+    }
+    const laidOut = formatForLayout(cell.value, style.numberFormat, {
+      widthPx,
+      measure,
+      date1904: workbook.date1904,
+      indexedPalette: workbook.indexedPalette,
+      wrapText: style.alignment.wrapText,
+      shrinkToFit: style.alignment.shrinkToFit,
+    });
+    return { text: laidOut.text, overflow: laidOut.overflow };
+  };
+
   const indexFor = (): SheetIndex => {
     const cached = indexCache.get(sheet.cells);
     if (cached !== undefined && cached.version === options.version) return cached.index;
@@ -125,7 +196,7 @@ export function createSheetProjection(
   };
 
   const project = (row: number, col: number, cell: Cell): ProjectedCell => {
-    const style = styleFor(cell.styleId);
+    const style = styleForValue(cell, styleFor(cell.styleId));
     return {
       row,
       col,
@@ -137,6 +208,7 @@ export function createSheetProjection(
       stale: cell.stale === true || (cell.formula !== null && cell.savedResult === null),
       style,
       merge: merges.get(cellKey(row, col)) ?? null,
+      layoutText: (widthPx, measure) => layoutTextFor(cell, style, widthPx, measure),
     };
   };
 
@@ -151,6 +223,8 @@ export function createSheetProjection(
     showGridLines: sheet.view.showGridLines,
     showHeadings: sheet.view.showHeadings,
     date1904: workbook.date1904,
+    defaultRowHeightPoints: sheet.defaultRowHeight,
+    defaultColumnWidthChars: sheet.defaultColumnWidth,
     cellAt(row, col) {
       if (row < 0 || col < 0 || row >= rowCount || col >= columnCount) return null;
       const cell = sheet.cells.get(cellKey(row, col));
@@ -174,6 +248,16 @@ export function createSheetProjection(
     },
     rowHeight: (row) => rowGeometry.sizeAt(row),
     columnWidth: (col) => columnGeometry.sizeAt(col),
+    isRowHidden: (row) => hiddenRows.has(row),
+    isColumnHidden: (col) => hiddenColumns.has(col),
+    rowDimension(row) {
+      const dimension = sheet.rowDimensions.get(row);
+      return dimension === undefined ? null : { ...dimension };
+    },
+    columnDimension(col) {
+      const dimension = sheet.columnDimensions.get(col);
+      return dimension === undefined ? null : { ...dimension };
+    },
     columnLabel: columnToLetters,
     rowLabel: (row) => String(row + 1),
     rowY: (row) => rowGeometry.offsetOf(row),
@@ -207,15 +291,27 @@ export function createSheetProjection(
       if (cell === undefined) return '';
       return rawTextFor(cell);
     },
+    layoutTextAt(row, col, widthPx, measure) {
+      if (row < 0 || col < 0 || row >= rowCount || col >= columnCount) return null;
+      const cell = sheet.cells.get(cellKey(row, col));
+      if (cell === undefined) return null;
+      const style = styleForValue(cell, styleFor(cell.styleId));
+      return layoutTextFor(cell, style, widthPx, measure);
+    },
   };
 }
 
 function rowHeightOverrides(
-  dimensions: ReadonlyMap<number, { height?: number }>,
+  dimensions: ReadonlyMap<number, { height?: number; hidden?: boolean }>,
   defaultHeight: number,
 ): Map<number, number> {
   const overrides = new Map<number, number>();
   for (const [row, dimension] of dimensions) {
+    // A hidden row collapses to zero height, whatever height it records.
+    if (dimension.hidden === true) {
+      overrides.set(row, 0);
+      continue;
+    }
     if (dimension.height === undefined) continue;
     const pixels = pointsToPixels(dimension.height);
     if (pixels > 0 && pixels !== defaultHeight) overrides.set(row, pixels);
@@ -224,16 +320,37 @@ function rowHeightOverrides(
 }
 
 function columnWidthOverrides(
-  dimensions: ReadonlyMap<number, { width?: number }>,
+  dimensions: ReadonlyMap<number, { width?: number; hidden?: boolean }>,
   defaultWidth: number,
 ): Map<number, number> {
   const overrides = new Map<number, number>();
   for (const [column, dimension] of dimensions) {
+    // A hidden column collapses to zero width, whatever width it records.
+    if (dimension.hidden === true) {
+      overrides.set(column, 0);
+      continue;
+    }
     if (dimension.width === undefined) continue;
     const pixels = columnWidthCharsToPixels(dimension.width);
     if (pixels > 0 && pixels !== defaultWidth) overrides.set(column, pixels);
   }
   return overrides;
+}
+
+function valueKey(cell: Cell): string {
+  const value = cell.value;
+  switch (value.type) {
+    case 'number':
+      return `n${value.value}`;
+    case 'text':
+      return `t${value.value}`;
+    case 'boolean':
+      return `b${value.value ? 1 : 0}`;
+    case 'error':
+      return `e${value.value}`;
+    case 'blank':
+      return 'z';
+  }
 }
 
 function buildMergeIndex(

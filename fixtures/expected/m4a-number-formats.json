@@ -1,0 +1,533 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "hand-authored",
+    "engine": "numfmt 4.1.3",
+    "oracle": null,
+    "manifest": "fixtures/oracle-manifest.json",
+    "scope": "ECMA-376 built-in ids 0-22, 27-36, 37-49, 50-62 and 67-81",
+    "gate": "npm test -- tests/m4a-number-formats.test.ts",
+    "differentialOracle": "ssf is a differential oracle only. It is not a dependency and this corpus never reaches the network. See fixtures/README.md.",
+    "note": "Built-in number-format display corpus. Expected strings are exact display text; leading, trailing and repeated spaces are significant. These are not Excel 365 oracle goldens."
+  },
+  "cases": [
+    {
+      "numFmtId": 0,
+      "code": "General",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1234.56"
+    },
+    {
+      "numFmtId": 1,
+      "code": "0",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1235"
+    },
+    {
+      "numFmtId": 2,
+      "code": "0.00",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1234.56"
+    },
+    {
+      "numFmtId": 3,
+      "code": "#,##0",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1,235"
+    },
+    {
+      "numFmtId": 4,
+      "code": "#,##0.00",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1,234.56"
+    },
+    {
+      "numFmtId": 5,
+      "code": "$#,##0_);($#,##0)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "($1,235)"
+    },
+    {
+      "numFmtId": 6,
+      "code": "$#,##0_);[Red]($#,##0)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "($1,235)"
+    },
+    {
+      "numFmtId": 7,
+      "code": "$#,##0.00_);($#,##0.00)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "($1,234.56)"
+    },
+    {
+      "numFmtId": 8,
+      "code": "$#,##0.00_);[Red]($#,##0.00)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "($1,234.56)"
+    },
+    {
+      "numFmtId": 9,
+      "code": "0%",
+      "valueType": "number",
+      "value": 0.256,
+      "expected": "26%"
+    },
+    {
+      "numFmtId": 10,
+      "code": "0.00%",
+      "valueType": "number",
+      "value": 0.256,
+      "expected": "25.60%"
+    },
+    {
+      "numFmtId": 11,
+      "code": "0.00E+00",
+      "valueType": "number",
+      "value": 12200000,
+      "expected": "1.22E+07"
+    },
+    {
+      "numFmtId": 12,
+      "code": "# ?/?",
+      "valueType": "number",
+      "value": 1.25,
+      "expected": "1 1/4"
+    },
+    {
+      "numFmtId": 13,
+      "code": "# ??/??",
+      "valueType": "number",
+      "value": 1.25,
+      "expected": "1  1/4 "
+    },
+    {
+      "numFmtId": 14,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 15,
+      "code": "d-mmm-yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15-Mar-23"
+    },
+    {
+      "numFmtId": 16,
+      "code": "d-mmm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15-Mar"
+    },
+    {
+      "numFmtId": 17,
+      "code": "mmm-yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "Mar-23"
+    },
+    {
+      "numFmtId": 18,
+      "code": "h:mm AM/PM",
+      "valueType": "number",
+      "value": 0.5222625,
+      "expected": "12:32 PM"
+    },
+    {
+      "numFmtId": 19,
+      "code": "h:mm:ss AM/PM",
+      "valueType": "number",
+      "value": 0.5222625,
+      "expected": "12:32:03 PM"
+    },
+    {
+      "numFmtId": 20,
+      "code": "h:mm",
+      "valueType": "number",
+      "value": 0.5222625,
+      "expected": "12:32"
+    },
+    {
+      "numFmtId": 21,
+      "code": "h:mm:ss",
+      "valueType": "number",
+      "value": 0.5222625,
+      "expected": "12:32:03"
+    },
+    {
+      "numFmtId": 22,
+      "code": "m/d/yy h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23 12:00"
+    },
+    {
+      "numFmtId": 27,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 28,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 29,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 30,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 31,
+      "code": "yyyy-mm-dd",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "2023-03-15"
+    },
+    {
+      "numFmtId": 32,
+      "code": "h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00"
+    },
+    {
+      "numFmtId": 33,
+      "code": "h:mm:ss",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00:00"
+    },
+    {
+      "numFmtId": 34,
+      "code": "h:mm AM/PM",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00 PM"
+    },
+    {
+      "numFmtId": 35,
+      "code": "h:mm:ss AM/PM",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00:00 PM"
+    },
+    {
+      "numFmtId": 36,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 37,
+      "code": "#,##0 ;(#,##0)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "(1,235)"
+    },
+    {
+      "numFmtId": 38,
+      "code": "#,##0 ;[Red](#,##0)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "(1,235)"
+    },
+    {
+      "numFmtId": 39,
+      "code": "#,##0.00_);(#,##0.00)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "(1,234.56)"
+    },
+    {
+      "numFmtId": 40,
+      "code": "#,##0.00_);[Red](#,##0.00)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": "(1,234.56)"
+    },
+    {
+      "numFmtId": 41,
+      "code": "_(* #,##0_);_(* (#,##0);_(* \"-\"_);_(@_)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": " (1,235)"
+    },
+    {
+      "numFmtId": 42,
+      "code": "_(\"$\"* #,##0_);_(\"$\"* (#,##0);_(\"$\"* \"-\"_);_(@_)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": " $(1,235)"
+    },
+    {
+      "numFmtId": 43,
+      "code": "_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": " (1,234.56)"
+    },
+    {
+      "numFmtId": 44,
+      "code": "_(\"$\"* #,##0.00_);_(\"$\"* (#,##0.00);_(\"$\"* \"-\"??_);_(@_)",
+      "valueType": "number",
+      "value": -1234.56,
+      "expected": " $(1,234.56)"
+    },
+    {
+      "numFmtId": 45,
+      "code": "mm:ss",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "00:00"
+    },
+    {
+      "numFmtId": 46,
+      "code": "[h]:mm:ss",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "36:00:00"
+    },
+    {
+      "numFmtId": 47,
+      "code": "mmss.0",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "0000.0"
+    },
+    {
+      "numFmtId": 48,
+      "code": "##0.0E+0",
+      "valueType": "number",
+      "value": 12200000,
+      "expected": "12.2E+6"
+    },
+    {
+      "numFmtId": 49,
+      "code": "@",
+      "valueType": "text",
+      "value": "abc",
+      "expected": "abc"
+    },
+    {
+      "numFmtId": 50,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 51,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 52,
+      "code": "h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00"
+    },
+    {
+      "numFmtId": 53,
+      "code": "h:mm:ss",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00:00"
+    },
+    {
+      "numFmtId": 54,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 55,
+      "code": "h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00"
+    },
+    {
+      "numFmtId": 56,
+      "code": "h:mm:ss",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00:00"
+    },
+    {
+      "numFmtId": 57,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 58,
+      "code": "m/d/yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "3/15/23"
+    },
+    {
+      "numFmtId": 59,
+      "code": "0",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1235"
+    },
+    {
+      "numFmtId": 60,
+      "code": "0.00",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1234.56"
+    },
+    {
+      "numFmtId": 61,
+      "code": "#,##0",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1,235"
+    },
+    {
+      "numFmtId": 62,
+      "code": "#,##0.00",
+      "valueType": "number",
+      "value": 1234.56,
+      "expected": "1,234.56"
+    },
+    {
+      "numFmtId": 67,
+      "code": "0%",
+      "valueType": "number",
+      "value": 0.256,
+      "expected": "26%"
+    },
+    {
+      "numFmtId": 68,
+      "code": "0.00%",
+      "valueType": "number",
+      "value": 0.256,
+      "expected": "25.60%"
+    },
+    {
+      "numFmtId": 69,
+      "code": "# ?/?",
+      "valueType": "number",
+      "value": 1.25,
+      "expected": "1 1/4"
+    },
+    {
+      "numFmtId": 70,
+      "code": "# ??/??",
+      "valueType": "number",
+      "value": 1.25,
+      "expected": "1  1/4 "
+    },
+    {
+      "numFmtId": 71,
+      "code": "d/m/yyyy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15/3/2023"
+    },
+    {
+      "numFmtId": 72,
+      "code": "d-mmm-yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15-Mar-23"
+    },
+    {
+      "numFmtId": 73,
+      "code": "d-mmm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15-Mar"
+    },
+    {
+      "numFmtId": 74,
+      "code": "mmm-yy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "Mar-23"
+    },
+    {
+      "numFmtId": 75,
+      "code": "h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00"
+    },
+    {
+      "numFmtId": 76,
+      "code": "h:mm:ss",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "12:00:00"
+    },
+    {
+      "numFmtId": 77,
+      "code": "d/m/yyyy h:mm",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15/3/2023 12:00"
+    },
+    {
+      "numFmtId": 78,
+      "code": "mm:ss",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "00:00"
+    },
+    {
+      "numFmtId": 79,
+      "code": "[h]:mm:ss",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "36:00:00"
+    },
+    {
+      "numFmtId": 80,
+      "code": "mmss.0",
+      "valueType": "number",
+      "value": 1.5,
+      "expected": "0000.0"
+    },
+    {
+      "numFmtId": 81,
+      "code": "d/m/yyyy",
+      "valueType": "number",
+      "value": 45000.5,
+      "expected": "15/3/2023"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="slide-bg" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+    <linearGradient id="slide-shine" x1="64" y1="8" x2="64" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base Squircle -->
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#slide-bg)"/>
+  <rect x="9" y="9" width="110" height="110" rx="25" fill="none" stroke="url(#slide-shine)" stroke-width="2"/>
+
+  <!-- Widescreen Slide Canvas -->
+  <rect x="24" y="30" width="80" height="52" rx="8" fill="#FFFFFF" fill-opacity="0.22"/>
+  
+  <!-- Slide Content: Chart Circle + Text Bars -->
+  <circle cx="44" cy="56" r="11" fill="#FFFFFF" fill-opacity="0.95"/>
+  <path d="M44 45 A11 11 0 0 1 55 56 L44 56 Z" fill="#FDBA74"/>
+  <rect x="63" y="47" width="31" height="7" rx="3.5" fill="#FFFFFF" fill-opacity="0.95"/>
+  <rect x="63" y="59" width="22" height="7" rx="3.5" fill="#FFFFFF" fill-opacity="0.65"/>
+
+  <!-- Suite Plus Badge -->
+  <rect x="64" y="64" width="38" height="38" rx="11" fill="#FFFFFF"/>
+  <path d="M83 74v18M74 83h18" stroke="#C2410C" stroke-width="5.5" stroke-linecap="round"/>
+</svg>

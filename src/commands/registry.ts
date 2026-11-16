@@ -1,5 +1,6 @@
 import type { CommandDefinition } from './types';
 import { cellSetCommand } from './cell-set';
+import { dimensionSetCommand } from './dimension';
 import { formatCommands } from './format';
 import { workbookDateSystemCommand } from './workbook';
 
@@ -58,6 +59,7 @@ export function createCommandRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
   registry.register(cellSetCommand);
   registry.register(workbookDateSystemCommand);
+  registry.register(dimensionSetCommand);
   for (const command of formatCommands()) registry.register(command);
   registry.register(undoCommand);
   registry.register(redoCommand);

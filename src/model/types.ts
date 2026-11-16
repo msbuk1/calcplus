@@ -68,15 +68,27 @@ export interface DefinedName {
 }
 
 export interface RowDimension {
+  /** Imported row height in points. */
   height?: number;
   hidden?: boolean;
   styleId?: StyleId;
+  /** `customHeight` from the source row; autofit may replace a non-custom height. */
+  customHeight?: boolean;
+  /** Imported outline level, preserved for the row. */
+  outlineLevel?: number;
 }
 
 export interface ColumnDimension {
+  /** Imported width in Excel character units. */
   width?: number;
   hidden?: boolean;
   styleId?: StyleId;
+  /** `customWidth` from the source column; autofit may replace a non-custom width. */
+  customWidth?: boolean;
+  /** Excel's `bestFit` flag, an input to autofit. */
+  bestFit?: boolean;
+  /** Imported outline level, preserved for the column. */
+  outlineLevel?: number;
 }
 
 export interface MergedRange {
@@ -137,28 +149,41 @@ export interface Sheet {
   readonly conditionalFormats: ConditionalFormatRecord[];
   protection: { readonly rawXml: string } | null;
   readonly view: SheetView;
+  /**
+   * Imported sheet-format defaults in points and character units. `null` means
+   * the file did not declare one and Excel's defaults apply.
+   */
+  defaultRowHeight: number | null;
+  defaultColumnWidth: number | null;
   readonly opaqueParts: Map<string, OpaquePart>;
 }
 
 /** A font, resolved for display. Workbook-model §2: the style table holds the font. */
+export type UnderlineStyle = 'none' | 'single' | 'double' | 'singleAccounting' | 'doubleAccounting';
+
 export interface FontStyle {
   readonly name: string;
   /** Size in points. */
   readonly size: number;
   readonly bold: boolean;
   readonly italic: boolean;
+  /** `true` for any underline variant, as the boolean display flag. */
   readonly underline: boolean;
+  /** The authored underline variant; `none` when the font is not underlined. */
+  readonly underlineStyle: UnderlineStyle;
   readonly strike: boolean;
   /** CSS colour, or `null` for the automatic colour. */
   readonly color: string | null;
 }
 
-/** A fill, resolved for display. Only solid fills are painted in M2. */
+/** A fill, resolved for display. */
 export interface FillStyle {
   /** The OOXML pattern type, for example `none`, `gray125` or `solid`. */
   readonly pattern: string;
   /** CSS colour of the foreground, or `null` when the fill paints nothing. */
   readonly color: string | null;
+  /** CSS colour of the pattern background, when the source declares one. */
+  readonly backgroundColor?: string | null;
 }
 
 export type HorizontalAlignment =
@@ -174,12 +199,19 @@ export interface AlignmentStyle {
   readonly indent: number;
   /** Degrees, clockwise, 0-180. */
   readonly textRotation: number;
+  /** Imported shrink-to-fit flag; authoring is v2. */
+  readonly shrinkToFit: boolean;
 }
+
+/** The visual weight implied by an OOXML border style. */
+export type BorderWeight = 'hair' | 'thin' | 'medium' | 'thick';
 
 /** One border edge. `style` is the OOXML border style such as `thin` or `none`. */
 export interface BorderEdgeStyle {
   readonly style: string;
   readonly color: string | null;
+  /** The weight implied by `style`, or `null` for a `none` edge. */
+  readonly weight: BorderWeight | null;
 }
 
 /** A cell border, resolved for display. */
@@ -192,6 +224,15 @@ export interface BorderStyle {
   readonly diagonalUp: boolean;
   readonly diagonalDown: boolean;
 }
+
+/**
+ * How a style's number format is stored in `.xlsx`.
+ * - `general`: `numFmtId=0`, no code.
+ * - `builtin`: a built-in id; the code is a resolved display fallback and is never materialised.
+ * - `custom`: a `<numFmt>` entry with the authored code.
+ * - `unknown`: an id that is neither built in nor declared; render General and preserve the id.
+ */
+export type NumberFormatKind = 'general' | 'builtin' | 'custom' | 'unknown';
 
 export interface StyleRecord {
   readonly id: StyleId;
@@ -209,6 +250,8 @@ export interface StyleRecord {
   readonly alignment: AlignmentStyle;
   /** The authored number-format code, or `null` when the style uses the general format. */
   readonly numFmtCode: string | null;
+  /** The storage form of `numFmtId`; see `NumberFormatKind`. */
+  readonly numFmtKind: NumberFormatKind;
 }
 
 export interface NamedStyleRecord {
@@ -240,6 +283,12 @@ export interface Workbook {
   readonly opaqueParts: Map<string, OpaquePart>;
   /** Original bytes of every part the model reads (workbook, styles, shared strings, worksheets). */
   readonly sourceParts: Map<string, Uint8Array>;
+  /**
+   * The workbook's `<colors><indexedColors>` palette, or `null` for the
+   * default legacy palette. Used by `indexed="n"` style colours and by
+   * `[Color n]` number-format modifiers.
+   */
+  readonly indexedPalette: readonly string[] | null;
   date1904: boolean;
 }
 

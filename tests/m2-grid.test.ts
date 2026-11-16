@@ -90,7 +90,7 @@ describe('number formats', () => {
   });
 
   it('reads the colour of a format code', () => {
-    expect(numberFormatColor('[Red]0.00')).toBe('#ff0000');
+    expect(numberFormatColor('[Red]0.00')).toBe('#FF0000');
     expect(numberFormatColor('0.00')).toBeNull();
   });
 

@@ -10,12 +10,17 @@ import {
   parseCellKey,
 } from '@model/types';
 import type { PatchMode, PackagePatchReport, WorkbookPackage } from './types';
-import type { DirtyCellInput, WorksheetSaveOptions } from './patch/worksheet-patch';
+import type {
+  DirtyCellInput,
+  DirtyDimensions,
+  WorksheetSaveOptions,
+} from './patch/worksheet-patch';
 import { patchWorksheetXml } from './patch/worksheet-patch';
 import {
   createSharedStringsAppender,
   type SharedStringsAppender,
 } from './patch/shared-strings-patch';
+import { adoptAppendedStyleIds, appendStylesXml } from './patch/styles-patch';
 import { parseSharedStringsXml } from './shared-strings';
 import { parseWorksheetXml } from './worksheet-xml';
 import { parseStylesXml } from './styles-xml';
@@ -30,6 +35,8 @@ export interface SaveWorkbookInput {
   readonly package: WorkbookPackage;
   /** Sheet id -> set of `row:col` keys changed since the last save. */
   readonly dirtyCells: ReadonlyMap<SheetId, ReadonlySet<string>>;
+  /** Sheet id -> row and column records changed since the last save. */
+  readonly dirtyDimensions?: ReadonlyMap<SheetId, DirtyDimensions>;
   readonly options?: {
     readonly worksheet?: WorksheetSaveOptions;
   };
@@ -44,18 +51,31 @@ export interface SaveWorkbookResult {
 }
 
 export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
-  const dirtySheetIds = [...input.dirtyCells.entries()]
+  const dirtyCellSheetIds = [...input.dirtyCells.entries()]
     .filter(([, cells]) => cells.size > 0)
     .map(([sheetId]) => sheetId);
+  const dirtyDimensionSheetIds = [...(input.dirtyDimensions?.entries() ?? [])]
+    .filter(([, dimensions]) => dimensions.rows.size > 0 || dimensions.columns.size > 0)
+    .map(([sheetId]) => sheetId);
+  const dirtySheetIds = [...new Set([...dirtyCellSheetIds, ...dirtyDimensionSheetIds])];
 
   let entries = new Map(input.package.entries);
   const workbookPath = input.package.workbookPartPath;
+  const stylesPath = input.package.stylesPath;
+  const sourceStylesBytes = stylesPath === null ? undefined : entries.get(stylesPath);
+  const sourceStyles =
+    stylesPath === null || sourceStylesBytes === undefined
+      ? null
+      : parseStylesXml(sourceStylesBytes, stylesPath);
+  const stylesNeedAppend =
+    sourceStyles !== null &&
+    input.workbook.styles.some((style) => style.id >= sourceStyles.sourceStyleCount);
   const sourceWorkbookBytes = entries.get(workbookPath);
   const dateSystemChanged =
     sourceWorkbookBytes !== undefined &&
     parseWorkbookXml(sourceWorkbookBytes, workbookPath).date1904 !== input.workbook.date1904;
 
-  if (dirtySheetIds.length === 0 && !dateSystemChanged) {
+  if (dirtySheetIds.length === 0 && !dateSystemChanged && !stylesNeedAppend) {
     const bytes = input.package.originalBytes ?? writePackage(input.package.entries);
     return {
       ok: true,
@@ -71,7 +91,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     };
   }
 
-  assertStylesAreWritable(input, entries);
+  assertStylesAreWritable(input, sourceStyles);
   let relationships = new Map(input.package.relationships);
   const sharedStringsPath = input.package.sharedStringsPath;
   const sharedStringsBytes =
@@ -87,6 +107,24 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   const removedParts: string[] = [];
   let formulaChanged = false;
 
+  if (stylesNeedAppend) {
+    if (stylesPath === null || sourceStylesBytes === undefined) {
+      throw new WorkbookSaveError(
+        'unsupported-edit',
+        'The workbook has no styles part to receive the new formatting. The file was not written.',
+      );
+    }
+    const appended = appendStylesXml({
+      partName: stylesPath,
+      sourceBytes: sourceStylesBytes,
+      workbook: input.workbook,
+    });
+    entries.set(stylesPath, appended.bytes);
+    adoptAppendedStyleIds(input.workbook, appended.appendedStyles);
+    patchedParts.push(stylesPath);
+    modeByPart.set(stylesPath, 'position');
+  }
+
   for (const sheetId of dirtySheetIds) {
     const sheet = getSheetById(input.workbook, sheetId);
     const dirtyKeys = input.dirtyCells.get(sheetId) ?? new Set<string>();
@@ -97,6 +135,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
         return { row: address.row, col: address.col, cell };
       })
       .sort((a, b) => a.row - b.row || a.col - b.col);
+    const dirtyDimensions = input.dirtyDimensions?.get(sheetId);
 
     const sourceBytes = input.workbook.sourceParts.get(sheet.partPath);
     if (sourceBytes === undefined) {
@@ -116,14 +155,17 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       }
     }
 
-    formulaChanged =
-      dirtyCellsChangeFormula(sourceBytes, sheet, dirtyCells, input) || formulaChanged;
+    if (dirtyCells.length > 0) {
+      formulaChanged =
+        dirtyCellsChangeFormula(sourceBytes, sheet, dirtyCells, input) || formulaChanged;
+    }
 
     const result = patchWorksheetXml({
       partName: sheet.partPath,
       sourceBytes,
       sheet,
       dirtyCells,
+      dirtyDimensions,
       sharedStringsTable: input.package.sharedStrings,
       sharedStrings: appender,
       options: input.options?.worksheet,
@@ -223,21 +265,15 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
 }
 
 /**
- * M3C keeps the style table append-only in the model but does not yet append
- * font/fill/border/cellXfs records to styles.xml (that is the formatting
- * milestone). A cell that references a newly appended style would point at a
- * non-existent index, so the save is refused rather than written corrupt.
+ * A dirty cell may only reference a style record the model actually holds.
+ * The styles writer appends every record above the source `cellXfs` count, so
+ * a missing id would be written as a dangling reference and must be refused.
  */
 function assertStylesAreWritable(
   input: SaveWorkbookInput,
-  entries: ReadonlyMap<string, Uint8Array>,
+  sourceStyles: ReturnType<typeof parseStylesXml> | null,
 ): void {
-  const stylesPath = input.package.stylesPath;
-  const stylesBytes = stylesPath === null ? undefined : entries.get(stylesPath);
-  const sourceStyleCount =
-    stylesPath === null || stylesBytes === undefined
-      ? 0
-      : parseStylesXml(stylesBytes, stylesPath).styles.length;
+  const styleCount = input.workbook.styles.length;
   for (const [sheetId, keys] of input.dirtyCells) {
     if (keys.size === 0) continue;
     const sheet = getSheetById(input.workbook, sheetId);
@@ -245,13 +281,23 @@ function assertStylesAreWritable(
       const address = parseCellKey(key);
       const cell = getCell(sheet, address.row, address.col);
       if (cell === null || cell.styleId === 0) continue;
-      if (cell.styleId >= sourceStyleCount) {
+      if (cell.styleId >= styleCount) {
         throw new WorkbookSaveError(
           'unsupported-edit',
-          `The formatting at ${formatCellRef(address.row, address.col)} uses a style that this milestone can keep in memory but cannot append to the file yet. The file was not written.`,
+          `The formatting at ${formatCellRef(address.row, address.col)} references a style that this workbook does not hold. The file was not written.`,
         );
       }
     }
+  }
+  if (
+    sourceStyles === null &&
+    input.workbook.styles.some((style) => style.id > 0) &&
+    input.workbook.styles.length > 1
+  ) {
+    throw new WorkbookSaveError(
+      'unsupported-edit',
+      'The workbook has no readable style table to receive the new formatting. The file was not written.',
+    );
   }
 }
 

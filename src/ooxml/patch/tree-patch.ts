@@ -1,4 +1,4 @@
-import type { FormulaStorageKind, Sheet } from '@model/types';
+import type { ColumnDimension, FormulaStorageKind, RowDimension, Sheet } from '@model/types';
 import { formatCellRef } from '@model/types';
 import type { SharedStringsTable } from '../types';
 import type { SharedStringsAppender } from './shared-strings-patch';
@@ -11,19 +11,22 @@ import {
   makeElement,
   parseXmlTree,
   qualifiedName,
+  removeAttribute,
   serializeNode,
   serializeXmlDocument,
+  setAttribute,
   elementPrefix,
   textContent,
   type XmlElement,
 } from './xml-tree';
-import type { DirtyCellInput } from './worksheet-patch';
+import type { DirtyCellInput, DirtyDimensions } from './worksheet-patch';
 
 export interface TreePatchInput {
   readonly partName: string;
   readonly sourceBytes: Uint8Array;
   readonly sheet: Sheet;
   readonly dirtyCells: readonly DirtyCellInput[];
+  readonly dirtyDimensions?: DirtyDimensions;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
 }
@@ -92,7 +95,165 @@ export function patchWorksheetAsTree(input: TreePatchInput): Uint8Array {
     }
   }
 
+  applyDimensions(document.root, sheetData, input.dirtyDimensions);
+
   return new TextEncoder().encode(serializeXmlDocument(document));
+}
+
+function applyDimensions(
+  root: XmlElement,
+  sheetData: XmlElement,
+  dimensions: DirtyDimensions | undefined,
+): void {
+  if (dimensions === undefined) return;
+  const rootPrefix = elementPrefix(root);
+  const rowPrefix = elementPrefix(sheetData) || rootPrefix;
+  for (const [rowNumber, dimension] of dimensions.rows) {
+    if (!Number.isInteger(rowNumber) || rowNumber < 0 || rowNumber >= 1_048_576) continue;
+    const row = findRow(sheetData, rowNumber);
+    if (row !== undefined) {
+      applyRowDimension(row, dimension);
+      continue;
+    }
+    if (dimension === null) continue;
+    const newRow = makeElement(qualifiedName(rowPrefix, 'row'), [
+      { name: 'r', value: String(rowNumber + 1) },
+    ]);
+    applyRowDimension(newRow, dimension);
+    insertRow(sheetData, newRow, rowNumber);
+  }
+
+  if (dimensions.columns.size === 0) return;
+  const dirtyColumns = [...dimensions.columns.entries()]
+    .filter(([index]) => Number.isInteger(index) && index >= 0 && index < 16_384)
+    .sort((a, b) => a[0] - b[0]);
+  if (dirtyColumns.length === 0) return;
+
+  let cols = findElement(root, 'cols');
+  if (cols === undefined) {
+    if (dirtyColumns.every(([, dimension]) => dimension === null)) return;
+    cols = makeElement(qualifiedName(rootPrefix, 'cols'));
+    const sheetDataIndex = root.children.indexOf(sheetData);
+    if (sheetDataIndex < 0) root.children.push(cols);
+    else root.children.splice(sheetDataIndex, 0, cols);
+  }
+  const colsPrefix = elementPrefix(cols) || rootPrefix;
+  const covered = new Set<number>();
+
+  for (const column of [...findElements(cols, 'col')]) {
+    const min = readColumnIndex(column, 'min');
+    const max = readColumnIndex(column, 'max');
+    if (min === null || max === null || max < min) continue;
+    const dirtyIndices = dirtyColumns.filter(([index]) => index >= min && index <= max);
+    if (dirtyIndices.length === 0) continue;
+    const replacements: XmlElement[] = [];
+    let cursor = min;
+    for (const [index, dimension] of dirtyIndices) {
+      if (index > cursor)
+        replacements.push(cloneColumn(column, colsPrefix, cursor, index - 1, undefined));
+      replacements.push(cloneColumn(column, colsPrefix, index, index, dimension));
+      covered.add(index);
+      cursor = index + 1;
+    }
+    if (cursor <= max) replacements.push(cloneColumn(column, colsPrefix, cursor, max, undefined));
+    const childIndex = cols.children.indexOf(column);
+    cols.children.splice(childIndex, 1, ...replacements);
+  }
+
+  const uncovered = dirtyColumns.filter(
+    ([index, dimension]) => dimension !== null && !covered.has(index),
+  );
+  for (const [index, dimension] of uncovered) {
+    const element = cloneColumn(undefined, colsPrefix, index, index, dimension);
+    const existing = findElements(cols, 'col');
+    const next = existing.find((candidate) => {
+      const candidateMin = readColumnIndex(candidate, 'min');
+      return candidateMin !== null && candidateMin > index;
+    });
+    if (next !== undefined) {
+      cols.children.splice(cols.children.indexOf(next), 0, element);
+    } else {
+      cols.children.push(element);
+    }
+  }
+}
+
+function applyRowDimension(element: XmlElement, dimension: RowDimension | null): void {
+  setOrRemoveAttribute(
+    element,
+    'ht',
+    dimension?.height === undefined ? null : dimensionNumber(dimension.height),
+  );
+  setOrRemoveAttribute(element, 'customHeight', dimension?.customHeight === true ? '1' : null);
+  setOrRemoveAttribute(element, 'hidden', dimension?.hidden === true ? '1' : null);
+  setOrRemoveAttribute(
+    element,
+    's',
+    dimension?.styleId === undefined || dimension.styleId === 0 ? null : String(dimension.styleId),
+  );
+  setOrRemoveAttribute(
+    element,
+    'outlineLevel',
+    dimension?.outlineLevel === undefined || dimension.outlineLevel <= 0
+      ? null
+      : String(dimension.outlineLevel),
+  );
+}
+
+function applyColumnDimension(element: XmlElement, dimension: ColumnDimension | null): void {
+  setOrRemoveAttribute(
+    element,
+    'width',
+    dimension?.width === undefined ? null : dimensionNumber(dimension.width),
+  );
+  setOrRemoveAttribute(element, 'hidden', dimension?.hidden === true ? '1' : null);
+  setOrRemoveAttribute(
+    element,
+    's',
+    dimension?.styleId === undefined || dimension.styleId === 0 ? null : String(dimension.styleId),
+  );
+  setOrRemoveAttribute(element, 'customWidth', dimension?.customWidth === true ? '1' : null);
+  setOrRemoveAttribute(element, 'bestFit', dimension?.bestFit === true ? '1' : null);
+  setOrRemoveAttribute(
+    element,
+    'outlineLevel',
+    dimension?.outlineLevel === undefined || dimension.outlineLevel <= 0
+      ? null
+      : String(dimension.outlineLevel),
+  );
+}
+
+function cloneColumn(
+  source: XmlElement | undefined,
+  prefix: string,
+  min: number,
+  max: number,
+  dimension: ColumnDimension | null | undefined,
+): XmlElement {
+  const element = makeElement(
+    qualifiedName(source === undefined ? prefix : elementPrefix(source) || prefix, 'col'),
+    source === undefined ? [] : source.attributes.map((attribute) => ({ ...attribute })),
+  );
+  setAttribute(element, 'min', String(min + 1));
+  setAttribute(element, 'max', String(max + 1));
+  if (dimension !== undefined) applyColumnDimension(element, dimension);
+  return element;
+}
+
+function readColumnIndex(element: XmlElement, name: string): number | null {
+  const raw = getAttribute(element, name);
+  if (raw === undefined) return null;
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 1 ? value - 1 : null;
+}
+
+function setOrRemoveAttribute(element: XmlElement, name: string, value: string | null): void {
+  if (value === null) removeAttribute(element, name);
+  else setAttribute(element, name, value);
+}
+
+function dimensionNumber(value: number): string {
+  return Number.isFinite(value) ? String(value) : '0';
 }
 
 function findRow(sheetData: XmlElement, row: number): XmlElement | undefined {

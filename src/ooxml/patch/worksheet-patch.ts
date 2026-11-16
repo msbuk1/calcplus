@@ -1,4 +1,4 @@
-import type { Cell, Sheet } from '@model/types';
+import type { Cell, ColumnDimension, RowDimension, Sheet } from '@model/types';
 import { formatCellRef } from '@model/types';
 import type { SharedStringsTable } from '../types';
 import type { SharedStringsAppender } from './shared-strings-patch';
@@ -6,7 +6,7 @@ import { cellToXml } from './cell-xml';
 import type { ParsedWorksheet, WorksheetRowPosition } from '../worksheet-xml';
 import { parseWorksheetXml } from '../worksheet-xml';
 import { WorkbookSaveError } from '../errors';
-import { isWellFormedXml } from '../xml';
+import { escapeXmlAttribute, isWellFormedXml } from '../xml';
 import { patchWorksheetAsTree } from './tree-patch';
 import { MAX_TREE_PATCH_BYTES } from '../xml';
 
@@ -16,11 +16,18 @@ export interface DirtyCellInput {
   readonly cell: Cell | null;
 }
 
+/** Dimensions changed since the last save, with the exact record to write. */
+export interface DirtyDimensions {
+  readonly rows: ReadonlyMap<number, RowDimension | null>;
+  readonly columns: ReadonlyMap<number, ColumnDimension | null>;
+}
+
 export interface WorksheetSaveInput {
   readonly partName: string;
   readonly sourceBytes: Uint8Array;
   readonly sheet: Sheet;
   readonly dirtyCells: readonly DirtyCellInput[];
+  readonly dirtyDimensions?: DirtyDimensions;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
   readonly options?: WorksheetSaveOptions;
@@ -47,7 +54,7 @@ interface Edit {
 class PositionPatchUnsafe extends Error {}
 
 export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResult {
-  if (input.dirtyCells.length === 0) {
+  if (input.dirtyCells.length === 0 && !hasDirtyDimensions(input.dirtyDimensions)) {
     return { bytes: input.sourceBytes, mode: 'none' };
   }
   const maxFallback = input.options?.maxTreeFallbackBytes ?? MAX_TREE_PATCH_BYTES;
@@ -83,6 +90,7 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     sourceBytes: input.sourceBytes,
     sheet: input.sheet,
     dirtyCells: input.dirtyCells,
+    dirtyDimensions: input.dirtyDimensions,
     sharedStringsTable: input.sharedStringsTable,
     sharedStrings: input.sharedStrings,
   });
@@ -96,6 +104,8 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
   const newRows = new Map<number, DirtyCellInput[]>();
   const insertedCells = new Map<number, DirtyCellInput[]>();
   const selfClosingRows = new Map<number, { row: WorksheetRowPosition; cells: DirtyCellInput[] }>();
+  const dirtyRows = input.dirtyDimensions?.rows ?? new Map<number, RowDimension | null>();
+  const dirtyColumns = input.dirtyDimensions?.columns ?? new Map<number, ColumnDimension | null>();
 
   for (const dirty of input.dirtyCells) {
     if (dirty.row < 0 || dirty.col < 0) throw new PositionPatchUnsafe('negative cell address');
@@ -136,6 +146,24 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
     insertedCells.set(dirty.row, list);
   }
 
+  for (const [rowNumber, dimension] of dirtyRows) {
+    if (!Number.isInteger(rowNumber) || rowNumber < 0) {
+      throw new PositionPatchUnsafe('invalid dirty row index');
+    }
+    const rowRecord = parsed.rows.get(rowNumber);
+    if (rowRecord === undefined) continue;
+    if (rowRecord.selfClosing && selfClosingRows.has(rowNumber)) continue;
+    const openTag = xml.slice(rowRecord.start, rowRecord.openEnd);
+    const updated = applyRowDimensionToOpenTag(openTag, dimension);
+    if (updated === openTag) continue;
+    edits.push({
+      start: rowRecord.start,
+      end: rowRecord.openEnd,
+      text: updated,
+      kind: 'replace',
+    });
+  }
+
   for (const [rowNumber, cells] of insertedCells) {
     const rowRecord = parsed.rows.get(rowNumber)!;
     const groups = new Map<number, string[]>();
@@ -155,7 +183,7 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
     }
   }
 
-  for (const { row, cells } of selfClosingRows.values()) {
+  for (const [rowNumber, { row, cells }] of selfClosingRows) {
     const cellXml = cells
       .sort((a, b) => a.col - b.col)
       .map((item) =>
@@ -166,8 +194,16 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
       )
       .filter((value): value is string => value !== null)
       .join('');
-    if (cellXml === '' && cells.every((cell) => cell.cell === null)) continue;
-    const open = xml.slice(row.start, row.openEnd).replace(/\/>$/, '>');
+    const openTag = applyRowDimensionToOpenTag(
+      xml.slice(row.start, row.openEnd),
+      dirtyRows.get(rowNumber),
+    );
+    if (cellXml === '' && cells.every((cell) => cell.cell === null)) {
+      if (openTag === xml.slice(row.start, row.openEnd)) continue;
+      edits.push({ start: row.start, end: row.openEnd, text: openTag, kind: 'replace' });
+      continue;
+    }
+    const open = openTag.replace(/\/\s*>$/, '>');
     const closing = row.prefix === '' ? '</row>' : `</${row.prefix}:row>`;
     edits.push({
       start: row.start,
@@ -177,10 +213,19 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
     });
   }
 
-  if (newRows.size > 0) {
-    const rowParts = [...newRows.entries()]
-      .map(([rowNumber, cells]) => {
-        const rowPrefix = sheetData.prefix || parsed.rootPrefix;
+  const newRowNumbers = new Set<number>([
+    ...newRows.keys(),
+    ...[...dirtyRows.entries()]
+      .filter(([rowNumber, dimension]) => dimension !== null && !parsed.rows.has(rowNumber))
+      .map(([rowNumber]) => rowNumber),
+  ]);
+
+  if (newRowNumbers.size > 0) {
+    const rowPrefix = sheetData.prefix || parsed.rootPrefix;
+    const rowParts = [...newRowNumbers]
+      .sort((a, b) => a - b)
+      .map((rowNumber) => {
+        const cells = newRows.get(rowNumber) ?? [];
         const cellXml = [...cells]
           .sort((a, b) => a.col - b.col)
           .map((dirty) =>
@@ -191,17 +236,22 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
           )
           .filter((value): value is string => value !== null)
           .join('');
-        if (cellXml === '') return null;
+        const openTag = applyRowDimensionToOpenTag(
+          `<${qualified(rowPrefix, 'row')} r="${rowNumber + 1}"/>`,
+          dirtyRows.get(rowNumber),
+        );
+        if (cellXml === '') {
+          return openTag === `<${qualified(rowPrefix, 'row')} r="${rowNumber + 1}"/>`
+            ? null
+            : { rowNumber, text: openTag };
+        }
+        const open = openTag.replace(/\/\s*>$/, '>');
         return {
           rowNumber,
-          text: `<${qualified(rowPrefix, 'row')} r="${rowNumber + 1}">${cellXml}</${qualified(
-            rowPrefix,
-            'row',
-          )}>`,
+          text: `${open}${cellXml}</${qualified(rowPrefix, 'row')}>`,
         };
       })
-      .filter((value): value is { rowNumber: number; text: string } => value !== null)
-      .sort((a, b) => a.rowNumber - b.rowNumber);
+      .filter((value): value is { rowNumber: number; text: string } => value !== null);
 
     if (sheetData.selfClosing) {
       const open = xml.slice(sheetData.start, sheetData.openEnd).replace(/\/>$/, '>');
@@ -223,7 +273,229 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
     }
   }
 
+  edits.push(...columnDimensionEdits(parsed, dirtyColumns));
+
   return applyEdits(xml, groupInsertions(edits));
+}
+
+function columnDimensionEdits(
+  parsed: ParsedWorksheet,
+  dirtyColumns: ReadonlyMap<number, ColumnDimension | null>,
+): Edit[] {
+  if (dirtyColumns.size === 0) return [];
+  const indices = [...dirtyColumns.keys()]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < 16_384)
+    .sort((a, b) => a - b);
+  if (indices.length === 0) return [];
+  const { xml, columns } = parsed;
+  const edits: Edit[] = [];
+  const covered = new Set<number>();
+
+  for (const column of columns) {
+    const dirtyIndices = indices.filter((index) => index >= column.min && index <= column.max);
+    if (dirtyIndices.length === 0) continue;
+    if (!column.selfClosing) throw new PositionPatchUnsafe('non-self-closing col element');
+    const openTag = xml.slice(column.start, column.openEnd);
+    const parts: string[] = [];
+    let cursor = column.min;
+    for (const index of dirtyIndices) {
+      if (index > cursor) parts.push(columnRangeTag(openTag, cursor, index - 1));
+      parts.push(columnDimensionTag(openTag, index, index, dirtyColumns.get(index) ?? null));
+      covered.add(index);
+      cursor = index + 1;
+    }
+    if (cursor <= column.max) parts.push(columnRangeTag(openTag, cursor, column.max));
+    edits.push({
+      start: column.start,
+      end: column.end,
+      text: parts.join(''),
+      kind: 'replace',
+    });
+  }
+
+  const uncovered = indices.filter(
+    (index) => !covered.has(index) && dirtyColumns.get(index) !== null,
+  );
+  if (uncovered.length === 0) return edits;
+
+  const cols = parsed.cols;
+  if (cols === null) {
+    if (parsed.sheetData === null) throw new PositionPatchUnsafe('missing sheetData');
+    const prefix = parsed.rootPrefix;
+    const colXml = uncovered
+      .map((index) => newColumnTag(prefix, index, dirtyColumns.get(index) ?? null))
+      .join('');
+    const colsName = qualified(prefix, 'cols');
+    edits.push({
+      start: parsed.sheetData.start,
+      end: parsed.sheetData.start,
+      text: `<${colsName}>${colXml}</${colsName}>`,
+      kind: 'insert',
+    });
+    return edits;
+  }
+
+  const colPrefix = columns[0]?.prefix ?? cols.prefix ?? parsed.rootPrefix;
+  if (cols.selfClosing) {
+    const colXml = uncovered
+      .map((index) => newColumnTag(colPrefix, index, dirtyColumns.get(index) ?? null))
+      .join('');
+    const open = xml.slice(cols.start, cols.openEnd).replace(/\/\s*>$/, '>');
+    const colsName = qualified(cols.prefix || parsed.rootPrefix, 'cols');
+    edits.push({
+      start: cols.start,
+      end: cols.end,
+      text: `${open}${colXml}</${colsName}>`,
+      kind: 'replace',
+    });
+    return edits;
+  }
+
+  for (const index of uncovered) {
+    const next = columns.find((column) => column.min > index);
+    const position = next?.start ?? columns.at(-1)?.end ?? cols.contentEnd;
+    edits.push({
+      start: position,
+      end: position,
+      text: newColumnTag(colPrefix, index, dirtyColumns.get(index) ?? null),
+      kind: 'insert',
+    });
+  }
+  return edits;
+}
+
+function columnRangeTag(openTag: string, min: number, max: number): string {
+  return updateOpenTagAttributes(
+    openTag,
+    new Map([
+      ['min', String(min + 1)],
+      ['max', String(max + 1)],
+    ]),
+  );
+}
+
+function columnDimensionTag(
+  openTag: string,
+  min: number,
+  max: number,
+  dimension: ColumnDimension | null,
+): string {
+  const updates = columnDimensionAttributes(dimension);
+  updates.set('min', String(min + 1));
+  updates.set('max', String(max + 1));
+  return updateOpenTagAttributes(openTag, updates);
+}
+
+function newColumnTag(prefix: string, index: number, dimension: ColumnDimension | null): string {
+  const attributes = new Map<string, string>([
+    ['min', String(index + 1)],
+    ['max', String(index + 1)],
+  ]);
+  for (const [name, value] of columnDimensionAttributes(dimension)) {
+    if (value !== null) attributes.set(name, value);
+  }
+  return `<${qualified(prefix, 'col')}${[...attributes]
+    .map(([name, value]) => ` ${name}="${escapeXmlAttribute(value)}"`)
+    .join('')}/>`;
+}
+
+function applyRowDimensionToOpenTag(
+  openTag: string,
+  dimension: RowDimension | null | undefined,
+): string {
+  if (dimension === undefined) return openTag;
+  return updateOpenTagAttributes(openTag, rowDimensionAttributes(dimension));
+}
+
+function rowDimensionAttributes(dimension: RowDimension | null): Map<string, string | null> {
+  return new Map([
+    ['ht', dimension?.height === undefined ? null : dimensionNumber(dimension.height)],
+    ['customHeight', dimension?.customHeight === true ? '1' : null],
+    ['hidden', dimension?.hidden === true ? '1' : null],
+    [
+      's',
+      dimension?.styleId === undefined || dimension.styleId === 0
+        ? null
+        : String(dimension.styleId),
+    ],
+    [
+      'outlineLevel',
+      dimension?.outlineLevel === undefined || dimension.outlineLevel <= 0
+        ? null
+        : String(dimension.outlineLevel),
+    ],
+  ]);
+}
+
+function columnDimensionAttributes(dimension: ColumnDimension | null): Map<string, string | null> {
+  return new Map([
+    ['width', dimension?.width === undefined ? null : dimensionNumber(dimension.width)],
+    ['hidden', dimension?.hidden === true ? '1' : null],
+    [
+      's',
+      dimension?.styleId === undefined || dimension.styleId === 0
+        ? null
+        : String(dimension.styleId),
+    ],
+    ['customWidth', dimension?.customWidth === true ? '1' : null],
+    ['bestFit', dimension?.bestFit === true ? '1' : null],
+    [
+      'outlineLevel',
+      dimension?.outlineLevel === undefined || dimension.outlineLevel <= 0
+        ? null
+        : String(dimension.outlineLevel),
+    ],
+  ]);
+}
+
+function dimensionNumber(value: number): string {
+  return Number.isFinite(value) ? String(value) : '0';
+}
+
+/**
+ * Rewrite modelled attributes inside an open tag without touching any
+ * unmodelled attribute, its order, the element prefix or the trailing slash.
+ */
+function updateOpenTagAttributes(
+  openTag: string,
+  updates: ReadonlyMap<string, string | null>,
+): string {
+  const pattern = /\s+([^\s=/>]+)\s*=\s*("([^"]*)"|'([^']*)')/g;
+  const applied = new Set<string>();
+  let output = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(openTag)) !== null) {
+    const name = match[1]!;
+    const local = tagLocalName(name);
+    if (!updates.has(local)) continue;
+    output += openTag.slice(lastIndex, match.index);
+    const value = updates.get(local);
+    if (value !== null && value !== undefined) {
+      output += ` ${name}="${escapeXmlAttribute(value)}"`;
+    }
+    lastIndex = pattern.lastIndex;
+    applied.add(local);
+  }
+  output += openTag.slice(lastIndex);
+  const missing = [...updates.entries()].filter(
+    ([name, value]) => value !== null && !applied.has(name),
+  );
+  if (missing.length === 0) return output;
+  const close = output.lastIndexOf('>');
+  if (close < 0) return output;
+  const insertAt = output[close - 1] === '/' ? close - 1 : close;
+  const added = missing.map(([name, value]) => ` ${name}="${escapeXmlAttribute(value!)}"`).join('');
+  return output.slice(0, insertAt) + added + output.slice(insertAt);
+}
+
+function tagLocalName(name: string): string {
+  const separator = name.lastIndexOf(':');
+  return separator < 0 ? name : name.slice(separator + 1);
+}
+
+function hasDirtyDimensions(dimensions: DirtyDimensions | undefined): boolean {
+  return dimensions !== undefined && (dimensions.rows.size > 0 || dimensions.columns.size > 0);
 }
 
 function preservesCellOrder(xml: string, input: WorksheetSaveInput): boolean {

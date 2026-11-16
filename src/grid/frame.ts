@@ -60,4 +60,9 @@ export interface RenderFrame {
   resize(width: number, height: number, dpr: number): void;
   render(state: GridRenderState): void;
   destroy(): void;
+  /**
+   * The renderer owns font metrics, so autofit asks it to measure text when
+   * the interaction layer requests a fitted row or column.
+   */
+  measureText?(text: string, font: string): number;
 }

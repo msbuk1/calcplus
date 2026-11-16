@@ -48,6 +48,18 @@ export interface WorksheetRowPosition {
   readonly cells: Map<number, WorksheetCellPosition>;
 }
 
+/** The source position of one `<col>` element, for a dimension patch. */
+export interface WorksheetColumnPosition {
+  readonly start: number;
+  readonly end: number;
+  readonly openEnd: number;
+  readonly selfClosing: boolean;
+  readonly prefix: string;
+  /** Zero-based inclusive column range. */
+  readonly min: number;
+  readonly max: number;
+}
+
 export interface SheetDataPosition {
   readonly start: number;
   readonly openEnd: number;
@@ -61,7 +73,9 @@ export interface ParsedWorksheet {
   readonly sheet: Sheet;
   readonly xml: string;
   readonly sheetData: SheetDataPosition | null;
+  readonly cols: SheetDataPosition | null;
   readonly rows: Map<number, WorksheetRowPosition>;
+  readonly columns: readonly WorksheetColumnPosition[];
   readonly unsafeReasons: readonly string[];
   readonly rootPrefix: string;
 }
@@ -114,10 +128,21 @@ export function parseWorksheetXml(
   const sheet = createSheet(options.name, options.partPath, createSheetId(options.partPath));
   const unsafeReasons: string[] = [];
   const rows = new Map<number, WorksheetRowPosition>();
+  const columns: {
+    start: number;
+    end: number;
+    openEnd: number;
+    selfClosing: boolean;
+    prefix: string;
+    min: number;
+    max: number;
+  }[] = [];
   const stack: OpenElement[] = [];
   const rootHolder: { root: OpenElement | null } = { root: null };
   const sheetDataHolder: { value: SheetDataPosition | null } = { value: null };
+  let colsHolder: SheetDataPosition | null = null;
   let sheetDataCount = 0;
+  let colsCount = 0;
   let row: WorksheetRowPosition | null = null;
   let rowAccumulator: {
     number: number;
@@ -162,6 +187,20 @@ export function parseWorksheetXml(
           sheetDataCount += 1;
           if (sheetDataCount > 1) unsafeReasons.push('multiple sheetData elements');
           sheetDataHolder.value = {
+            start,
+            openEnd: position,
+            end: position,
+            contentEnd: position,
+            selfClosing: false,
+            prefix: tag.prefix,
+          };
+          return;
+        }
+
+        if (tag.local === 'cols') {
+          colsCount += 1;
+          if (colsCount > 1) unsafeReasons.push('multiple cols elements');
+          colsHolder = {
             start,
             openEnd: position,
             end: position,
@@ -305,6 +344,25 @@ export function parseWorksheetXml(
         switch (tag.local) {
           case 'col': {
             applyColumnAttributes(sheet, tag);
+            const rawMin = Number(attributeValue(tag, 'min') ?? '0');
+            const rawMax = Number(attributeValue(tag, 'max') ?? '0');
+            if (
+              Number.isInteger(rawMin) &&
+              Number.isInteger(rawMax) &&
+              rawMin >= 1 &&
+              rawMin <= 16_384 &&
+              rawMax >= rawMin
+            ) {
+              columns.push({
+                start,
+                end: position,
+                openEnd: position,
+                selfClosing: true,
+                prefix: tag.prefix,
+                min: rawMin - 1,
+                max: Math.min(rawMax, 16_384) - 1,
+              });
+            }
             break;
           }
           case 'mergeCell': {
@@ -327,6 +385,15 @@ export function parseWorksheetXml(
             if (zoom !== undefined) {
               const value = Number(zoom);
               if (Number.isFinite(value) && value > 0) sheet.view.zoom = value;
+            }
+            break;
+          }
+          case 'sheetFormatPr': {
+            const rowHeight = Number(attributeValue(tag, 'defaultRowHeight') ?? '');
+            const columnWidth = Number(attributeValue(tag, 'defaultColWidth') ?? '');
+            if (Number.isFinite(rowHeight) && rowHeight > 0) sheet.defaultRowHeight = rowHeight;
+            if (Number.isFinite(columnWidth) && columnWidth > 0) {
+              sheet.defaultColumnWidth = columnWidth;
             }
             break;
           }
@@ -441,9 +508,26 @@ export function parseWorksheetXml(
           lastCellColumn = -1;
         }
 
+        if (tag.local === 'col' && open !== undefined) {
+          const column = columns.at(-1);
+          if (column !== undefined && column.start === open.start) {
+            column.end = end;
+            column.selfClosing = open.openEnd === end;
+          }
+        }
+
         if (tag.local === 'sheetData' && sheetDataHolder.value !== null && open !== undefined) {
           sheetDataHolder.value = {
             ...sheetDataHolder.value,
+            end,
+            contentEnd: start,
+            selfClosing: open.openEnd === end,
+          };
+        }
+
+        if (tag.local === 'cols' && colsHolder !== null && open !== undefined) {
+          colsHolder = {
+            ...colsHolder,
             end,
             contentEnd: start,
             selfClosing: open.openEnd === end,
@@ -472,7 +556,9 @@ export function parseWorksheetXml(
     sheet,
     xml,
     sheetData,
+    cols: colsHolder,
     rows,
+    columns,
     unsafeReasons,
     rootPrefix: root.prefix,
   };
@@ -597,13 +683,22 @@ function applyRowAttributes(sheet: Sheet, tag: SaxesTagNS, row: number): void {
   const heightText = attributeValue(tag, 'ht');
   const customHeight = attributeValue(tag, 'customHeight');
   const styleText = attributeValue(tag, 's');
+  const outlineText = attributeValue(tag, 'outlineLevel');
   const dimension = sheet.rowDimensions.get(row) ?? {};
+  const hasCustomHeight = customHeight !== undefined && customHeight !== '0';
   if (heightText !== undefined) {
     const height = Number(heightText);
     if (Number.isFinite(height) && height >= 0) dimension.height = height;
   }
-  if (customHeight !== undefined && customHeight !== '0') dimension.height = dimension.height ?? 15;
+  if (hasCustomHeight) {
+    dimension.height = dimension.height ?? 15;
+    dimension.customHeight = true;
+  }
   if (styleText !== undefined) dimension.styleId = Number(styleText) || 0;
+  if (outlineText !== undefined) {
+    const level = Number(outlineText);
+    if (Number.isFinite(level) && level > 0) dimension.outlineLevel = level;
+  }
   if (Object.keys(dimension).length > 0) sheet.rowDimensions.set(row, dimension);
 }
 
@@ -613,6 +708,9 @@ function applyColumnAttributes(sheet: Sheet, tag: SaxesTagNS): void {
   const widthText = attributeValue(tag, 'width');
   const hidden = attributeValue(tag, 'hidden');
   const styleText = attributeValue(tag, 's');
+  const customWidth = attributeValue(tag, 'customWidth');
+  const bestFit = attributeValue(tag, 'bestFit');
+  const outlineText = attributeValue(tag, 'outlineLevel');
   if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min) return;
   const width = widthText === undefined ? undefined : Number(widthText);
   for (let column = min; column <= Math.min(max, 16_384); column += 1) {
@@ -621,6 +719,12 @@ function applyColumnAttributes(sheet: Sheet, tag: SaxesTagNS): void {
     if (width !== undefined && Number.isFinite(width) && width >= 0) dimension.width = width;
     if (hidden !== undefined && hidden !== '0') dimension.hidden = true;
     if (styleText !== undefined) dimension.styleId = Number(styleText) || 0;
+    if (customWidth !== undefined && customWidth !== '0') dimension.customWidth = true;
+    if (bestFit !== undefined && bestFit !== '0') dimension.bestFit = true;
+    if (outlineText !== undefined) {
+      const level = Number(outlineText);
+      if (Number.isFinite(level) && level > 0) dimension.outlineLevel = level;
+    }
     if (Object.keys(dimension).length > 0) sheet.columnDimensions.set(index, dimension);
   }
 }

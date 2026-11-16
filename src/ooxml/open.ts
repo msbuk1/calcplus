@@ -1,5 +1,6 @@
 import type { DefinedName, Sheet, Workbook } from '@model/types';
 import { createDefaultStyle, createWorkbookId } from '@model/workbook';
+import { isLocaleBuiltinNumberFormat } from '@model/style';
 import { WorkbookOpenError } from './errors';
 import { parseStylesXml } from './styles-xml';
 import { parseSharedStringsXml } from './shared-strings';
@@ -141,6 +142,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     protection: null,
     opaqueParts: new Map(),
     sourceParts: new Map(),
+    indexedPalette: stylesInfo?.indexedPalette ?? null,
     date1904: workbookInfo.date1904,
   };
 
@@ -231,6 +233,11 @@ function buildCompatibilityNotes(
   }
   if (hasDigitalSignatures) {
     notes.push('Digital signatures are preserved, but saving invalidates them.');
+  }
+  if (workbook.styles.some((style) => isLocaleBuiltinNumberFormat(style.numFmtId))) {
+    notes.push(
+      'Locale-specific built-in number formats are shown in their Gregorian en-US form; the original numFmtId is preserved.',
+    );
   }
   return notes;
 }

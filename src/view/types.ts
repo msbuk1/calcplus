@@ -1,5 +1,12 @@
 import type { CellValue } from '@model/value';
-import type { AlignmentStyle, BorderStyle, FillStyle, FontStyle } from '@model/types';
+import type {
+  AlignmentStyle,
+  BorderStyle,
+  ColumnDimension,
+  FillStyle,
+  FontStyle,
+  RowDimension,
+} from '@model/types';
 
 export interface ProjectedStyle {
   readonly font: FontStyle;
@@ -8,6 +15,17 @@ export interface ProjectedStyle {
   readonly alignment: AlignmentStyle;
   /** The authored number-format code, or `null` for the general format. */
   readonly numberFormat: string | null;
+  /** A text colour carried by the number-format code, or `null`. */
+  readonly numberFormatColor: string | null;
+}
+
+/**
+ * A width-aware display string. The grid paints `text`; when `overflow` is
+ * `true` it is Excel's `#` overflow marker, not the formatted value.
+ */
+export interface ProjectedTextLayout {
+  readonly text: string;
+  readonly overflow: boolean;
 }
 
 /** The span of a merged range, anchored at its top-left cell. */
@@ -31,6 +49,12 @@ export interface ProjectedCell {
   readonly style: ProjectedStyle;
   /** The merged range this cell belongs to, or `null`. */
   readonly merge: MergeSpan | null;
+  /**
+   * Number-format display for a content-box width. `displayText` is
+   * width-agnostic; the grid uses this when it knows the paint width so `*`
+   * fill, `_` skip and Excel's `#` overflow marker behave correctly.
+   */
+  layoutText(widthPx: number, measure: (text: string) => number): ProjectedTextLayout;
 }
 
 export interface SheetProjection {
@@ -48,6 +72,17 @@ export interface SheetProjection {
   window(startRow: number, endRow: number, startCol: number, endCol: number): ProjectedCell[];
   rowHeight(row: number): number;
   columnWidth(col: number): number;
+  /** `true` when the imported row is hidden; a hidden row has zero height. */
+  isRowHidden(row: number): boolean;
+  /** `true` when the imported column is hidden; a hidden column has zero width. */
+  isColumnHidden(col: number): boolean;
+  /** Imported sheet defaults; `null` when the file declared none. */
+  readonly defaultRowHeightPoints: number | null;
+  readonly defaultColumnWidthChars: number | null;
+  /** The imported dimension record for a row, or `null`. */
+  rowDimension(row: number): Readonly<RowDimension> | null;
+  /** The imported dimension record for a column, or `null`. */
+  columnDimension(col: number): Readonly<ColumnDimension> | null;
   columnLabel(col: number): string;
   rowLabel(row: number): string;
   rowY(row: number): number;
@@ -66,6 +101,16 @@ export interface SheetProjection {
   columnDataRows(col: number): readonly number[];
   /** The raw content of a cell, as the formula bar shows it. */
   rawTextAt(row: number, col: number): string;
+  /**
+   * Width-aware number-format display for a cell, or `null` when it is empty.
+   * Pass the content-box width and the painter's text measure function.
+   */
+  layoutTextAt(
+    row: number,
+    col: number,
+    widthPx: number,
+    measure: (text: string) => number,
+  ): ProjectedTextLayout | null;
 }
 
 export interface ProjectionOptions {

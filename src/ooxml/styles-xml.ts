@@ -6,6 +6,7 @@ import type {
   FontStyle,
   NamedStyleRecord,
   StyleRecord,
+  UnderlineStyle,
 } from '@model/types';
 import { createDefaultStyle } from '@model/workbook';
 import {
@@ -13,16 +14,31 @@ import {
   DEFAULT_BORDER,
   DEFAULT_FILL,
   DEFAULT_FONT,
+  borderWeight,
   builtinNumberFormat,
   normalizeHorizontalAlignment,
   normalizeVerticalAlignment,
   resolveColor,
+  underlineFromValue,
+  type ColorAttributes,
 } from '@model/style';
 import { decodeXml, parseXml, openTagStart } from './xml';
 
 export interface StylesXmlInfo {
   readonly styles: StyleRecord[];
   readonly namedStyles: NamedStyleRecord[];
+  /** The number of `<xf>` entries actually present in `<cellXfs>`. */
+  readonly sourceStyleCount: number;
+  /** The source font table, by `fontId`. */
+  readonly fonts: readonly FontStyle[];
+  /** The source fill table, by `fillId`. */
+  readonly fills: readonly FillStyle[];
+  /** The source border table, by `borderId`. */
+  readonly borders: readonly BorderStyle[];
+  /** Authored `<numFmt>` entries, by id. */
+  readonly customFormats: ReadonlyMap<number, string>;
+  /** The workbook's `<colors><indexedColors>` palette, when declared. */
+  readonly indexedPalette: readonly string[] | null;
 }
 
 interface OpenElement {
@@ -30,34 +46,41 @@ interface OpenElement {
   readonly start: number;
 }
 
-interface FontAccumulator {
+interface RawFont {
   name: string | null;
   size: number | null;
   bold: boolean;
   italic: boolean;
   underline: boolean;
+  underlineStyle: UnderlineStyle;
   strike: boolean;
-  color: ReturnType<typeof resolveColor>;
+  color: ColorAttributes | null;
 }
 
-interface FillAccumulator {
+interface RawFill {
   pattern: string | null;
-  color: ReturnType<typeof resolveColor>;
+  foreground: ColorAttributes | null;
+  background: ColorAttributes | null;
 }
 
 type BorderEdgeKey = 'left' | 'right' | 'top' | 'bottom' | 'diagonal';
 
-interface BorderAccumulator {
-  left: BorderEdgeStyle;
-  right: BorderEdgeStyle;
-  top: BorderEdgeStyle;
-  bottom: BorderEdgeStyle;
-  diagonal: BorderEdgeStyle;
+interface RawBorderEdge {
+  style: string;
+  color: ColorAttributes | null;
+}
+
+interface RawBorder {
+  left: RawBorderEdge;
+  right: RawBorderEdge;
+  top: RawBorderEdge;
+  bottom: RawBorderEdge;
+  diagonal: RawBorderEdge;
   diagonalUp: boolean;
   diagonalDown: boolean;
 }
 
-const NO_EDGE: BorderEdgeStyle = { style: 'none', color: null };
+const NO_RAW_EDGE: () => RawBorderEdge = () => ({ style: 'none', color: null });
 
 /**
  * Parse the workbook style sheet into the shared, append-only style table:
@@ -66,11 +89,12 @@ const NO_EDGE: BorderEdgeStyle = { style: 'none', color: null };
  */
 export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlInfo {
   const xml = decodeXml(bytes);
+  const indexedPalette = parseIndexedPalette(xml, partName);
   const styles: StyleRecord[] = [];
   const namedStyles: NamedStyleRecord[] = [];
-  const fonts: FontAccumulator[] = [];
-  const fills: FillAccumulator[] = [];
-  const borders: BorderAccumulator[] = [];
+  const fonts: RawFont[] = [];
+  const fills: RawFill[] = [];
+  const borders: RawBorder[] = [];
   const customFormats = new Map<number, string>();
   const stack: OpenElement[] = [];
   let inCellXfs = false;
@@ -80,9 +104,9 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
   let inFonts = false;
   let inFills = false;
   let inBorders = false;
-  let font: FontAccumulator | null = null;
-  let fill: FillAccumulator | null = null;
-  let border: BorderAccumulator | null = null;
+  let font: RawFont | null = null;
+  let fill: RawFill | null = null;
+  let border: RawBorder | null = null;
   let borderEdge: BorderEdgeKey | null = null;
 
   parseXml(
@@ -105,7 +129,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
           inFills = true;
         } else if (tag.local === 'borders') {
           inBorders = true;
-        } else if (tag.local === 'numFmt') {
+        } else if (tag.local === 'numFmt' && parent === 'numFmts') {
           const id = numberAttribute(tag, 'numFmtId', Number.NaN);
           const code = stringAttribute(tag, 'formatCode');
           if (Number.isInteger(id) && code !== null) customFormats.set(id, code);
@@ -116,22 +140,23 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
             bold: false,
             italic: false,
             underline: false,
+            underlineStyle: 'none',
             strike: false,
             color: null,
           };
         } else if (font !== null) {
           applyFontChild(tag, font);
         } else if (inFills && tag.local === 'fill' && parent === 'fills') {
-          fill = { pattern: null, color: null };
+          fill = { pattern: null, foreground: null, background: null };
         } else if (fill !== null) {
           applyFillChild(tag, fill);
         } else if (inBorders && tag.local === 'border' && parent === 'borders') {
           border = {
-            left: NO_EDGE,
-            right: NO_EDGE,
-            top: NO_EDGE,
-            bottom: NO_EDGE,
-            diagonal: NO_EDGE,
+            left: NO_RAW_EDGE(),
+            right: NO_RAW_EDGE(),
+            top: NO_RAW_EDGE(),
+            bottom: NO_RAW_EDGE(),
+            diagonal: NO_RAW_EDGE(),
             diagonalUp: isTruthy(stringAttribute(tag, 'diagonalUp')),
             diagonalDown: isTruthy(stringAttribute(tag, 'diagonalDown')),
           };
@@ -152,6 +177,7 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
             border: DEFAULT_BORDER,
             alignment: DEFAULT_ALIGNMENT,
             numFmtCode: null,
+            numFmtKind: 'general',
           });
         } else if (inCellXfs && tag.local === 'alignment') {
           const last = styles[styles.length - 1];
@@ -213,23 +239,89 @@ export function parseStylesXml(bytes: Uint8Array, partName: string): StylesXmlIn
     partName,
   );
 
-  if (styles.length === 0) styles.push(createDefaultStyle(0));
+  if (styles.length === 0) {
+    const palette = indexedPalette;
+    return {
+      styles: [createDefaultStyle(0)],
+      namedStyles,
+      sourceStyleCount: 0,
+      fonts:
+        fonts.length === 0
+          ? [resolveFont(undefined, palette)]
+          : fonts.map((value) => resolveFont(value, palette)),
+      fills:
+        fills.length === 0
+          ? [resolveFill(undefined, palette)]
+          : fills.map((value) => resolveFill(value, palette)),
+      borders:
+        borders.length === 0
+          ? [resolveBorder(undefined, palette)]
+          : borders.map((value) => resolveBorder(value, palette)),
+      customFormats,
+      indexedPalette,
+    };
+  }
   return {
-    styles: styles.map((style, index) => ({
-      ...style,
-      id: index,
-      font: resolveFont(fonts[style.fontId]),
-      fill: resolveFill(fills[style.fillId]),
-      border: resolveBorder(borders[style.borderId]),
-      numFmtCode: resolveNumberFormat(style.numFmtId, customFormats),
-    })),
+    styles: styles.map((style, index) => {
+      const numberFormat = resolveNumberFormat(style.numFmtId, customFormats);
+      return {
+        ...style,
+        id: index,
+        font: resolveFont(fonts[style.fontId], indexedPalette),
+        fill: resolveFill(fills[style.fillId], indexedPalette),
+        border: resolveBorder(borders[style.borderId], indexedPalette),
+        numFmtCode: numberFormat.numFmtCode,
+        numFmtKind: numberFormat.numFmtKind,
+      };
+    }),
     namedStyles,
+    sourceStyleCount: styles.length,
+    fonts: fonts.map((value) => resolveFont(value, indexedPalette)),
+    fills: fills.map((value) => resolveFill(value, indexedPalette)),
+    borders: borders.map((value) => resolveBorder(value, indexedPalette)),
+    customFormats,
+    indexedPalette,
   };
+}
+
+/** Parse the effective legacy indexed palette from `<colors><indexedColors>`. */
+function parseIndexedPalette(xml: string, partName: string): readonly string[] | null {
+  const palette: string[] = [];
+  let inIndexedColors = false;
+  parseXml(
+    xml,
+    {
+      onOpenTag(tag) {
+        if (tag.local === 'indexedColors') {
+          inIndexedColors = true;
+          return;
+        }
+        if (!inIndexedColors) return;
+        if (tag.local === 'rgbColor') {
+          const rgb = stringAttribute(tag, 'rgb');
+          const hex = rgb === null ? null : normalizeRgb(rgb);
+          if (hex !== null) palette.push(hex);
+        }
+      },
+      onCloseTag(tag) {
+        if (tag.local === 'indexedColors') inIndexedColors = false;
+      },
+    },
+    partName,
+  );
+  return palette.length === 0 ? null : palette;
+}
+
+function normalizeRgb(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{8}$/i.test(trimmed)) return trimmed.slice(2).toUpperCase();
+  if (/^[0-9a-f]{6}$/i.test(trimmed)) return trimmed.toUpperCase();
+  return null;
 }
 
 function applyFontChild(
   tag: { local: string; attributes: Record<string, { local: string; value: string }> },
-  font: FontAccumulator,
+  font: RawFont,
 ): void {
   switch (tag.local) {
     case 'b':
@@ -240,9 +332,12 @@ function applyFontChild(
     case 'iCs':
       font.italic = true;
       break;
-    case 'u':
-      font.underline = stringAttribute(tag, 'val') !== 'none';
+    case 'u': {
+      const underline = underlineFromValue(stringAttribute(tag, 'val'));
+      font.underline = underline.underline;
+      font.underlineStyle = underline.underlineStyle;
       break;
+    }
     case 'strike':
     case 'strikeCs':
       font.strike = true;
@@ -257,17 +352,9 @@ function applyFontChild(
       if (name !== null && name !== '') font.name = name;
       break;
     }
-    case 'color': {
-      const color = resolveColor({
-        rgb: stringAttribute(tag, 'rgb'),
-        indexed: stringAttribute(tag, 'indexed'),
-        theme: stringAttribute(tag, 'theme'),
-        tint: stringAttribute(tag, 'tint'),
-        auto: stringAttribute(tag, 'auto'),
-      });
-      if (color !== null) font.color = color;
+    case 'color':
+      font.color = readColorAttributes(tag);
       break;
-    }
     default:
       break;
   }
@@ -275,7 +362,7 @@ function applyFontChild(
 
 function applyFillChild(
   tag: { local: string; attributes: Record<string, { local: string; value: string }> },
-  fill: FillAccumulator,
+  fill: RawFill,
 ): void {
   switch (tag.local) {
     case 'patternFill': {
@@ -283,17 +370,12 @@ function applyFillChild(
       if (pattern !== null) fill.pattern = pattern;
       break;
     }
-    case 'fgColor': {
-      const color = resolveColor({
-        rgb: stringAttribute(tag, 'rgb'),
-        indexed: stringAttribute(tag, 'indexed'),
-        theme: stringAttribute(tag, 'theme'),
-        tint: stringAttribute(tag, 'tint'),
-        auto: stringAttribute(tag, 'auto'),
-      });
-      if (color !== null) fill.color = color;
+    case 'fgColor':
+      fill.foreground = readColorAttributes(tag);
       break;
-    }
+    case 'bgColor':
+      fill.background = readColorAttributes(tag);
+      break;
     default:
       break;
   }
@@ -301,7 +383,7 @@ function applyFillChild(
 
 function applyBorderChild(
   tag: { local: string; attributes: Record<string, { local: string; value: string }> },
-  border: BorderAccumulator,
+  border: RawBorder,
   currentEdge: BorderEdgeKey | null,
 ): BorderEdgeKey | null {
   switch (tag.local) {
@@ -310,31 +392,17 @@ function applyBorderChild(
     case 'top':
     case 'bottom':
     case 'diagonal': {
-      const edge: BorderEdgeStyle = {
+      border[tag.local] = {
         style: stringAttribute(tag, 'style') ?? 'none',
         color: null,
       };
-      border[tag.local] = edge;
       return tag.local;
     }
-    case 'diagonalUp':
-      border.diagonalUp = true;
-      return currentEdge;
-    case 'diagonalDown':
-      border.diagonalDown = true;
-      return currentEdge;
     case 'color':
       if (currentEdge !== null) {
-        const edge = border[currentEdge];
         border[currentEdge] = {
-          ...edge,
-          color: resolveColor({
-            rgb: stringAttribute(tag, 'rgb'),
-            indexed: stringAttribute(tag, 'indexed'),
-            theme: stringAttribute(tag, 'theme'),
-            tint: stringAttribute(tag, 'tint'),
-            auto: stringAttribute(tag, 'auto'),
-          }),
+          ...border[currentEdge],
+          color: readColorAttributes(tag),
         };
       }
       return currentEdge;
@@ -343,11 +411,37 @@ function applyBorderChild(
   }
 }
 
-function resolveBorder(accumulator: BorderAccumulator | undefined): BorderStyle {
-  return accumulator ?? DEFAULT_BORDER;
+function resolveBorder(
+  accumulator: RawBorder | undefined,
+  palette: readonly string[] | null,
+): BorderStyle {
+  if (accumulator === undefined) return DEFAULT_BORDER;
+  return {
+    left: resolveBorderEdge(accumulator.left, palette),
+    right: resolveBorderEdge(accumulator.right, palette),
+    top: resolveBorderEdge(accumulator.top, palette),
+    bottom: resolveBorderEdge(accumulator.bottom, palette),
+    diagonal: resolveBorderEdge(accumulator.diagonal, palette),
+    diagonalUp: accumulator.diagonalUp,
+    diagonalDown: accumulator.diagonalDown,
+  };
 }
 
-function resolveFont(accumulator: FontAccumulator | undefined): FontStyle {
+function resolveBorderEdge(
+  edge: RawBorderEdge,
+  palette: readonly string[] | null,
+): BorderEdgeStyle {
+  return {
+    style: edge.style,
+    color: edge.color === null ? null : resolveColor(edge.color, palette),
+    weight: borderWeight(edge.style),
+  };
+}
+
+function resolveFont(
+  accumulator: RawFont | undefined,
+  palette: readonly string[] | null,
+): FontStyle {
   if (accumulator === undefined) return DEFAULT_FONT;
   return {
     name: accumulator.name ?? DEFAULT_FONT.name,
@@ -355,29 +449,39 @@ function resolveFont(accumulator: FontAccumulator | undefined): FontStyle {
     bold: accumulator.bold,
     italic: accumulator.italic,
     underline: accumulator.underline,
+    underlineStyle: accumulator.underlineStyle,
     strike: accumulator.strike,
-    color: accumulator.color,
+    color: accumulator.color === null ? null : resolveColor(accumulator.color, palette),
   };
 }
 
-function resolveFill(accumulator: FillAccumulator | undefined): FillStyle {
+function resolveFill(
+  accumulator: RawFill | undefined,
+  palette: readonly string[] | null,
+): FillStyle {
   if (accumulator === undefined) return DEFAULT_FILL;
   const pattern = accumulator.pattern ?? 'none';
-  if (pattern === 'none' || pattern === 'gray125') {
-    return { pattern, color: null };
+  if (pattern === 'none') {
+    return { pattern, color: null, backgroundColor: null };
   }
-  return { pattern, color: accumulator.color };
+  return {
+    pattern,
+    color: accumulator.foreground === null ? null : resolveColor(accumulator.foreground, palette),
+    backgroundColor:
+      accumulator.background === null ? null : resolveColor(accumulator.background, palette),
+  };
 }
 
 function resolveNumberFormat(
   numFmtId: number,
   customFormats: ReadonlyMap<number, string>,
-): string | null {
+): Pick<StyleRecord, 'numFmtCode' | 'numFmtKind'> {
   const custom = customFormats.get(numFmtId);
-  if (custom !== undefined) return custom;
+  if (custom !== undefined) return { numFmtCode: custom, numFmtKind: 'custom' };
   const builtin = builtinNumberFormat(numFmtId);
-  if (builtin === undefined || builtin === 'General') return null;
-  return builtin;
+  if (builtin === null) return { numFmtCode: null, numFmtKind: 'unknown' };
+  if (builtin === 'General') return { numFmtCode: null, numFmtKind: 'general' };
+  return { numFmtCode: builtin, numFmtKind: 'builtin' };
 }
 
 function readAlignment(tag: {
@@ -388,9 +492,22 @@ function readAlignment(tag: {
   return {
     horizontal: normalizeHorizontalAlignment(stringAttribute(tag, 'horizontal')),
     vertical: normalizeVerticalAlignment(stringAttribute(tag, 'vertical')),
-    wrapText: stringAttribute(tag, 'wrapText') === '1',
+    wrapText: isTruthy(stringAttribute(tag, 'wrapText')),
     indent: Number.isFinite(indent) ? Math.max(0, indent) : 0,
     textRotation: Number.isFinite(rotation) ? rotation : 0,
+    shrinkToFit: isTruthy(stringAttribute(tag, 'shrinkToFit')),
+  };
+}
+
+function readColorAttributes(tag: {
+  attributes: Record<string, { local: string; value: string }>;
+}): ColorAttributes {
+  return {
+    rgb: stringAttribute(tag, 'rgb'),
+    indexed: stringAttribute(tag, 'indexed'),
+    theme: stringAttribute(tag, 'theme'),
+    tint: stringAttribute(tag, 'tint'),
+    auto: stringAttribute(tag, 'auto'),
   };
 }
 

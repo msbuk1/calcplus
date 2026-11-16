@@ -52,11 +52,14 @@ export function resolveNavigation(input: NavigationInput): NavigationOutcome {
     }
     case 'Tab': {
       // Tab and Shift+Tab move the active cell and keep the focus in the grid.
+      const direction = shiftKey ? -1 : 1;
       const target = {
         row: active.row,
-        col: shiftKey
-          ? Math.max(0, active.col - 1)
-          : Math.min(projection.columnCount - 1, active.col + 1),
+        col: nextVisibleColumn(
+          projection,
+          Math.min(projection.columnCount - 1, Math.max(0, active.col + direction)),
+          direction,
+        ),
       };
       return {
         kind: 'move',
@@ -66,10 +69,13 @@ export function resolveNavigation(input: NavigationInput): NavigationOutcome {
     case 'Enter': {
       // Enter and Shift+Enter move the active cell; the editor handles the
       // commit when it is open.
+      const direction = shiftKey ? -1 : 1;
       const target = {
-        row: shiftKey
-          ? Math.max(0, active.row - 1)
-          : Math.min(projection.rowCount - 1, active.row + 1),
+        row: nextVisibleRow(
+          projection,
+          Math.min(projection.rowCount - 1, Math.max(0, active.row + direction)),
+          direction,
+        ),
         col: active.col,
       };
       return {
@@ -79,22 +85,28 @@ export function resolveNavigation(input: NavigationInput): NavigationOutcome {
     }
     case 'Home': {
       if (ctrlKey) {
-        const target = { row: 0, col: 0 };
+        const target = {
+          row: nextVisibleRow(projection, 0, 1),
+          col: nextVisibleColumn(projection, 0, 1),
+        };
         return shiftAware(selection, target, shiftKey);
       }
-      const target = { row: active.row, col: 0 };
+      const target = { row: active.row, col: nextVisibleColumn(projection, 0, 1) };
       return shiftAware(selection, target, shiftKey);
     }
     case 'End': {
       if (ctrlKey) {
         const used = projection.usedRange();
         const target = {
-          row: used?.endRow ?? projection.rowCount - 1,
-          col: used?.endCol ?? projection.columnCount - 1,
+          row: nextVisibleRow(projection, used?.endRow ?? projection.rowCount - 1, -1),
+          col: nextVisibleColumn(projection, used?.endCol ?? projection.columnCount - 1, -1),
         };
         return shiftAware(selection, target, shiftKey);
       }
-      const target = { row: active.row, col: endColumn(projection, active) };
+      const target = {
+        row: active.row,
+        col: nextVisibleColumn(projection, endColumn(projection, active), -1),
+      };
       return shiftAware(selection, target, shiftKey);
     }
     case 'PageUp':
@@ -103,7 +115,12 @@ export function resolveNavigation(input: NavigationInput): NavigationOutcome {
       // shortcuts; the grid leaves them to the browser.
       if (ctrlKey) return { kind: 'none' };
       const rows = Math.max(1, input.pageRows);
-      const row = clamp(active.row + (key === 'PageUp' ? -rows : rows), 0, projection.rowCount - 1);
+      const direction = key === 'PageUp' ? -1 : 1;
+      const row = nextVisibleRow(
+        projection,
+        clamp(active.row + direction * rows, 0, projection.rowCount - 1),
+        direction,
+      );
       const target = { row, col: active.col };
       return shiftAware(selection, target, shiftKey);
     }
@@ -233,23 +250,71 @@ export function skipMerged(
 function step(projection: SheetProjection, active: GridCellAddress, key: string): GridCellAddress {
   const from = mergeAnchor(projection, active);
   switch (key) {
-    case 'ArrowUp':
-      return skipMerged(projection, { row: Math.max(0, from.row - 1), col: from.col }, 'up');
-    case 'ArrowDown':
-      return skipMerged(
+    case 'ArrowUp': {
+      const target = skipMerged(
         projection,
-        { row: Math.min(projection.rowCount - 1, from.row + 1), col: from.col },
+        { row: nextVisibleRow(projection, from.row - 1, -1), col: from.col },
+        'up',
+      );
+      return { row: nextVisibleRow(projection, target.row, -1), col: target.col };
+    }
+    case 'ArrowDown': {
+      const target = skipMerged(
+        projection,
+        { row: nextVisibleRow(projection, from.row + 1, 1), col: from.col },
         'down',
       );
-    case 'ArrowLeft':
-      return skipMerged(projection, { row: from.row, col: Math.max(0, from.col - 1) }, 'left');
-    default:
-      return skipMerged(
+      return { row: nextVisibleRow(projection, target.row, 1), col: target.col };
+    }
+    case 'ArrowLeft': {
+      const target = skipMerged(
         projection,
-        { row: from.row, col: Math.min(projection.columnCount - 1, from.col + 1) },
+        { row: from.row, col: nextVisibleColumn(projection, from.col - 1, -1) },
+        'left',
+      );
+      return { row: target.row, col: nextVisibleColumn(projection, target.col, -1) };
+    }
+    default: {
+      const target = skipMerged(
+        projection,
+        { row: from.row, col: nextVisibleColumn(projection, from.col + 1, 1) },
         'right',
       );
+      return { row: target.row, col: nextVisibleColumn(projection, target.col, 1) };
+    }
   }
+}
+
+/**
+ * The next row in one direction that is not hidden, clamped to the sheet.
+ *
+ * A boundary row may itself be hidden. In that case the target is the first
+ * or last visible row, never the hidden boundary: an arrow key from the
+ * visible edge stays there instead of selecting a collapsed row.
+ */
+function nextVisibleRow(projection: SheetProjection, row: number, direction: 1 | -1): number {
+  let target = row;
+  while (target >= 0 && target < projection.rowCount && projection.isRowHidden(target)) {
+    target += direction;
+  }
+  if (target < 0) return projection.rowAt(0);
+  if (target >= projection.rowCount) {
+    return projection.rowAt(Math.max(0, projection.totalHeight() - 1));
+  }
+  return target;
+}
+
+/** The next column in one direction that is not hidden, clamped to the sheet. */
+function nextVisibleColumn(projection: SheetProjection, column: number, direction: 1 | -1): number {
+  let target = column;
+  while (target >= 0 && target < projection.columnCount && projection.isColumnHidden(target)) {
+    target += direction;
+  }
+  if (target < 0) return projection.columnAt(0);
+  if (target >= projection.columnCount) {
+    return projection.columnAt(Math.max(0, projection.totalWidth() - 1));
+  }
+  return target;
 }
 
 /**
@@ -264,32 +329,38 @@ export function dataEdge(
   switch (key) {
     case 'ArrowUp':
       return {
-        row: edgeInList(projection.columnDataRows(from.col), from.row, -1, projection.rowCount - 1),
+        row: nextVisibleRow(
+          projection,
+          edgeInList(projection.columnDataRows(from.col), from.row, -1, projection.rowCount - 1),
+          -1,
+        ),
         col: from.col,
       };
     case 'ArrowDown':
       return {
-        row: edgeInList(projection.columnDataRows(from.col), from.row, 1, projection.rowCount - 1),
+        row: nextVisibleRow(
+          projection,
+          edgeInList(projection.columnDataRows(from.col), from.row, 1, projection.rowCount - 1),
+          1,
+        ),
         col: from.col,
       };
     case 'ArrowLeft':
       return {
         row: from.row,
-        col: edgeInList(
-          projection.rowDataColumns(from.row),
-          from.col,
+        col: nextVisibleColumn(
+          projection,
+          edgeInList(projection.rowDataColumns(from.row), from.col, -1, projection.columnCount - 1),
           -1,
-          projection.columnCount - 1,
         ),
       };
     default:
       return {
         row: from.row,
-        col: edgeInList(
-          projection.rowDataColumns(from.row),
-          from.col,
+        col: nextVisibleColumn(
+          projection,
+          edgeInList(projection.rowDataColumns(from.row), from.col, 1, projection.columnCount - 1),
           1,
-          projection.columnCount - 1,
         ),
       };
   }

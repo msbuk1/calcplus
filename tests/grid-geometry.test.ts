@@ -53,6 +53,29 @@ describe('sparse axis geometry', () => {
     expect(geometry.sizeAt(999_999)).toBe(40);
   });
 
+  it('never returns a hidden boundary row or column for an offset', () => {
+    const geometry = new SparseAxisGeometry(
+      10,
+      20,
+      new Map([
+        [0, 0],
+        [9, 0],
+        [4, 0],
+      ]),
+    );
+    expect(geometry.indexAt(-1)).toBe(1);
+    expect(geometry.indexAt(0)).toBe(1);
+    expect(geometry.indexAt(geometry.totalSize())).toBe(8);
+    expect(geometry.indexAt(geometry.totalSize() - 1)).toBe(8);
+    // A click inside the collapsed hidden row still belongs to the next
+    // visible row, not the hidden one.
+    expect(geometry.indexAt(59)).toBe(3);
+    expect(geometry.indexAt(60)).toBe(5);
+    expect(geometry.indexAt(61)).toBe(5);
+    expect(geometry.indexAt(79)).toBe(5);
+    expect(geometry.indexAt(80)).toBe(6);
+  });
+
   it('converts Excel row heights and column widths to pixels', () => {
     expect(pointsToPixels(15)).toBe(20);
     expect(pointsToPixels(22)).toBe(29);

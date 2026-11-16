@@ -1,4 +1,13 @@
-import type { Cell, CellAddress, GridRange, SheetId, StyleId, Workbook } from '@model/types';
+import type {
+  Cell,
+  CellAddress,
+  ColumnDimension,
+  GridRange,
+  RowDimension,
+  SheetId,
+  StyleId,
+  Workbook,
+} from '@model/types';
 
 export interface CommandContext {
   readonly workbook: Workbook;
@@ -48,7 +57,21 @@ export interface WorkbookDateSystemChange {
   readonly after: boolean;
 }
 
-export type CommandChange = CellSetChange | StyleSetChange | WorkbookDateSystemChange;
+/** A row or column dimension snapshot; `null` means the record did not exist. */
+export type DimensionRecord = Readonly<RowDimension & ColumnDimension>;
+
+/** One row-height or column-width change, including hidden and best-fit flags. */
+export interface DimensionSetChange {
+  readonly type: 'dimension.set';
+  readonly sheetId: SheetId;
+  readonly axis: 'row' | 'column';
+  readonly index: number;
+  readonly before: DimensionRecord | null;
+  readonly after: DimensionRecord | null;
+}
+
+export type CommandChange =
+  CellSetChange | StyleSetChange | WorkbookDateSystemChange | DimensionSetChange;
 
 /**
  * The calculation layer observes committed changes. It never participates in
@@ -71,7 +94,7 @@ export interface CommandDefinition<Args = unknown> {
 }
 
 export function changeCells(change: CommandChange): CellAddress[] {
-  if (change.type === 'workbook.dateSystem') return [];
+  if (change.type === 'workbook.dateSystem' || change.type === 'dimension.set') return [];
   const cells: CellAddress[] = [];
   for (let row = change.range.startRow; row <= change.range.endRow; row += 1) {
     for (let col = change.range.startCol; col <= change.range.endCol; col += 1) {
@@ -88,6 +111,8 @@ export function inverseChange(change: CommandChange): CommandChange {
     case 'style.set':
       return { ...change, before: change.after, after: change.before };
     case 'workbook.dateSystem':
+      return { ...change, before: change.after, after: change.before };
+    case 'dimension.set':
       return { ...change, before: change.after, after: change.before };
   }
 }

@@ -7,6 +7,7 @@ import type {
 } from 'react';
 import { flushSync } from 'react-dom';
 import type { SheetProjection } from '@view/types';
+import { autofitColumnWidth, autofitRowHeight, type AutofitResult } from './autofit';
 import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
 import { gridDebugState } from './debug';
 import {
@@ -22,7 +23,13 @@ import {
   type EditorCommitDirection,
   type EditorSession,
 } from './editor';
-import type { GridCellAddress, GridRange, GridSelection, RenderFrame } from './frame';
+import {
+  GRID_METRICS,
+  type GridCellAddress,
+  type GridRange,
+  type GridSelection,
+  type RenderFrame,
+} from './frame';
 import { mergeAnchor, resolveNavigation } from './navigation';
 import {
   cellRect,
@@ -55,6 +62,12 @@ export interface CanvasGridProps {
     readonly onPoint: (anchor: GridCellAddress, focus: GridCellAddress) => void;
   } | null;
   /**
+   * A header double-click autofits the row or column. The grid owns the canvas
+   * metrics; the application stores the resulting dimension through the
+   * `dimension.set` command.
+   */
+  readonly onAutofit?: (axis: 'row' | 'column', index: number, result: AutofitResult) => void;
+  /**
    * The focus owner hands the grid shell to the focus manager.
    */
   readonly shellRef?: RefObject<HTMLDivElement | null>;
@@ -79,6 +92,7 @@ export function CanvasGrid({
   onClear,
   onEditorChange,
   formulaBarPointing,
+  onAutofit,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -604,12 +618,33 @@ export function CanvasGrid({
     const layout = layoutRef.current;
     if (layout === null) return;
     const rect = event.currentTarget.getBoundingClientRect();
+    const pointX = event.clientX - rect.left;
+    const pointY = event.clientY - rect.top;
     const current = stateRef.current.projection;
+
+    // A header double-click autofits the row or column from its content.
+    if (onAutofit !== undefined) {
+      const frame = frameRef.current;
+      const measure = frame?.measureText?.bind(frame) ?? null;
+      if (measure !== null && pointY < layout.headerHeight && pointX >= layout.headerWidth) {
+        const col = columnAtHeader(current, layout, pointX, scrollRef.current.x);
+        if (col === null) return;
+        onAutofit('column', col, autofitColumnWidth(current, col, measure));
+        return;
+      }
+      if (measure !== null && pointX < layout.headerWidth && pointY >= layout.headerHeight) {
+        const row = rowAtHeader(current, layout, pointY, scrollRef.current.y);
+        if (row === null) return;
+        onAutofit('row', row, autofitRowHeight(current, row, measure));
+        return;
+      }
+    }
+
     const address = cellAtPoint(
       current,
       layout,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
+      pointX,
+      pointY,
       scrollRef.current.x,
       scrollRef.current.y,
     );
@@ -627,10 +662,9 @@ export function CanvasGrid({
     const { key, ctrlKey, shiftKey, altKey, metaKey } = event;
     const current = stateRef.current;
     const layout = layoutRef.current;
+    const rowHeight = current.projection.rowHeight(0) || GRID_METRICS.rowHeight;
     const pageRows =
-      layout === null
-        ? 20
-        : Math.max(1, Math.floor(layout.scrollRegionHeight / current.projection.rowHeight(0)));
+      layout === null ? 20 : Math.max(1, Math.floor(layout.scrollRegionHeight / rowHeight));
     const pageCols = layout === null ? 10 : Math.max(1, Math.floor(layout.scrollRegionWidth / 64));
     const outcome = resolveNavigation({
       key,
@@ -705,10 +739,9 @@ export function CanvasGrid({
 
     const layout = layoutRef.current;
     const projection = stateRef.current.projection;
+    const rowHeight = projection.rowHeight(0) || GRID_METRICS.rowHeight;
     const pageRows =
-      layout === null
-        ? 20
-        : Math.max(1, Math.floor(layout.scrollRegionHeight / projection.rowHeight(0)));
+      layout === null ? 20 : Math.max(1, Math.floor(layout.scrollRegionHeight / rowHeight));
     const pageCols = layout === null ? 10 : Math.max(1, Math.floor(layout.scrollRegionWidth / 64));
     const pointing = session.pointing;
     const outcome = resolveNavigation({

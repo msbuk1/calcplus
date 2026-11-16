@@ -45,3 +45,18 @@ and workbook name.
 The script targets `fixtures/oracle/m1-values-errors.xlsx`, an Excel-openable
 fixture exercising the M1 value and error surface. The M1 chart fixture is a
 preservation fixture whose minimal chart package Excel 365 refuses to open.
+
+## Number-format differential oracle
+
+`ssf` is a differential oracle for number formats only (number-formats §1 and
+testing-conformance §2). It is not a dependency, is not fetched from the
+network and is not part of the local gate. The committed built-in corpus lives
+in `fixtures/expected/m4a-number-formats.json`; run it with:
+
+```bash
+npm test -- tests/m4a-number-formats.test.ts
+```
+
+If `ssf` is already installed on the maintainer's machine, compare the same
+cases manually before changing an expected string. The committed corpus stays
+the local gate because there is no Excel 365 golden yet.

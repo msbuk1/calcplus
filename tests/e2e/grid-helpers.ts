@@ -26,10 +26,33 @@ export interface DebugApi {
     row: number,
     col: number,
   ): {
-    font: { name: string; size: number; bold: boolean; italic: boolean; color: string | null };
-    fill: { pattern: string; color: string | null };
-    alignment: { horizontal: string; vertical: string; wrapText: boolean; indent: number };
+    font: {
+      name: string;
+      size: number;
+      bold: boolean;
+      italic: boolean;
+      underline: boolean;
+      underlineStyle: string;
+      strike: boolean;
+      color: string | null;
+    };
+    fill: { pattern: string; color: string | null; backgroundColor: string | null };
+    border: {
+      left: { style: string; color: string | null; weight: string | null };
+      right: { style: string; color: string | null; weight: string | null };
+      top: { style: string; color: string | null; weight: string | null };
+      bottom: { style: string; color: string | null; weight: string | null };
+    };
+    alignment: {
+      horizontal: string;
+      vertical: string;
+      wrapText: boolean;
+      indent: number;
+      textRotation: number;
+      shrinkToFit: boolean;
+    };
     numberFormat: string | null;
+    numberFormatColor: string | null;
     displayText: string;
     merge: { anchorRow: number; anchorCol: number; rowSpan: number; colSpan: number } | null;
   } | null;

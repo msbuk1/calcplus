@@ -5,7 +5,8 @@ runtime, build and test dependency, its licence and the obligations that
 come with it. The release build must include the full licence texts for every
 distributed component; this file is the human-readable index.
 
-The audit was last reviewed on **2026-11-15** for the M3A engine wiring.
+The audit was last reviewed on **2026-11-16** for the M4A number-format
+dependency.
 Re-run it whenever a dependency is added, removed or upgraded. The local
 licence gate (`scripts/licence-gate.mjs`) checks the lockfile before each
 commit.
@@ -20,8 +21,9 @@ commit.
 | React / React DOM | 19.3.x | MIT | UI shell | Include the copyright and permission notice. |
 | fflate | 0.8.x | MIT | ZIP read/write | Include the copyright and permission notice. |
 | saxes | 6.0.x | ISC | XML parsing | Include the copyright and permission notice. |
+| numfmt | 4.1.3 | MIT | Excel number-format grammar | Include the copyright and permission notice. The Excel seams (built-in ids, 1904 adapter, width layout, colours, grouping and invalid fallback) are calcplus code. |
 
-Later milestones add `numfmt` (MIT), PDFKit (MIT), the Go standard library
+Later milestones add PDFKit (MIT), the Go standard library
 launcher (BSD-3-Clause) and the OFL-1.1 fonts. They are not installed yet;
 their notices and obligations are recorded in
 [licensing §2](.scratch/calcplus/spec/licensing.md) and must be added here when

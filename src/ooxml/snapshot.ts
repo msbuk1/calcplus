@@ -1,9 +1,12 @@
 import type {
+  BorderStyle,
   Cell,
   ColumnDimension,
   CommentRecord,
   ConditionalFormatRecord,
   DefinedName,
+  FillStyle,
+  FontStyle,
   HyperlinkRecord,
   MergedRange,
   NamedStyleRecord,
@@ -16,7 +19,13 @@ import type {
   WorkbookProtectionRecord,
 } from '@model/types';
 import type { SharedStringsTable, WorkbookPackage } from './types';
-import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
+import {
+  DEFAULT_ALIGNMENT,
+  DEFAULT_BORDER,
+  DEFAULT_FILL,
+  DEFAULT_FONT,
+  builtinNumberFormat,
+} from '@model/style';
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -40,8 +49,9 @@ export interface SnapshotSheet {
   readonly conditionalFormats: ConditionalFormatRecord[];
   readonly protection: { readonly rawXml: string } | null;
   readonly view: Sheet['view'];
+  readonly defaultRowHeight?: number | null;
+  readonly defaultColumnWidth?: number | null;
 }
-
 export interface SnapshotWorkbookMetadata {
   readonly id: string;
   readonly sheets: SnapshotSheet[];
@@ -51,6 +61,7 @@ export interface SnapshotWorkbookMetadata {
   readonly namedStyles: NamedStyleRecord[];
   readonly protection: WorkbookProtectionRecord | null;
   readonly date1904: boolean;
+  readonly indexedPalette?: readonly string[] | null;
 }
 
 export interface SnapshotPart {
@@ -106,6 +117,7 @@ export function snapshotWorkbook(workbook: Workbook, pkg: WorkbookPackage): Work
       namedStyles: workbook.namedStyles.map((style) => ({ ...style })),
       protection: workbook.protection === null ? null : { ...workbook.protection },
       date1904: workbook.date1904,
+      indexedPalette: workbook.indexedPalette === null ? null : [...workbook.indexedPalette],
     },
     package: {
       contentTypesPath: pkg.contentTypesPath,
@@ -160,6 +172,10 @@ export function restoreWorkbook(snapshot: WorkbookSnapshot): {
     protection: snapshot.workbook.protection === null ? null : { ...snapshot.workbook.protection },
     opaqueParts,
     sourceParts,
+    indexedPalette:
+      snapshot.workbook.indexedPalette === undefined || snapshot.workbook.indexedPalette === null
+        ? null
+        : [...snapshot.workbook.indexedPalette],
     date1904: snapshot.workbook.date1904,
   };
 
@@ -218,6 +234,8 @@ function snapshotSheet(sheet: Sheet): SnapshotSheet {
     })),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
+    defaultRowHeight: sheet.defaultRowHeight,
+    defaultColumnWidth: sheet.defaultColumnWidth,
   };
 }
 
@@ -245,6 +263,8 @@ function restoreSheet(sheet: SnapshotSheet): Sheet {
     })),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
+    defaultRowHeight: sheet.defaultRowHeight ?? null,
+    defaultColumnWidth: sheet.defaultColumnWidth ?? null,
     opaqueParts: new Map(),
   };
 }
@@ -260,11 +280,49 @@ function cloneDefinedName(name: DefinedName): DefinedName {
 function normalizeStyle(style: StyleRecord): StyleRecord {
   return {
     ...style,
-    font: style.font ?? DEFAULT_FONT,
-    fill: style.fill ?? DEFAULT_FILL,
-    border: style.border ?? DEFAULT_BORDER,
-    alignment: style.alignment ?? DEFAULT_ALIGNMENT,
+    font: normalizeFont(style.font),
+    fill: normalizeFill(style.fill),
+    border: normalizeBorder(style.border),
+    alignment: { ...DEFAULT_ALIGNMENT, ...(style.alignment ?? {}) },
     numFmtCode: style.numFmtCode ?? null,
+    numFmtKind: style.numFmtKind ?? inferNumberFormatKind(style),
+  };
+}
+
+function inferNumberFormatKind(style: StyleRecord): StyleRecord['numFmtKind'] {
+  if (style.numFmtCode === null) {
+    if (style.numFmtId === 0) return 'general';
+    return builtinNumberFormat(style.numFmtId) === null ? 'unknown' : 'builtin';
+  }
+  const builtin = builtinNumberFormat(style.numFmtId);
+  return builtin !== null && builtin === style.numFmtCode ? 'builtin' : 'custom';
+}
+
+function normalizeFont(font: FontStyle | undefined): FontStyle {
+  if (font === undefined) return DEFAULT_FONT;
+  return {
+    ...DEFAULT_FONT,
+    ...font,
+    underlineStyle:
+      font.underlineStyle ?? (font.underline === true ? 'single' : DEFAULT_FONT.underlineStyle),
+  };
+}
+
+function normalizeFill(fill: FillStyle | undefined): FillStyle {
+  if (fill === undefined) return DEFAULT_FILL;
+  return { ...DEFAULT_FILL, ...fill, backgroundColor: fill.backgroundColor ?? null };
+}
+
+function normalizeBorder(border: BorderStyle | undefined): BorderStyle {
+  if (border === undefined) return DEFAULT_BORDER;
+  return {
+    ...DEFAULT_BORDER,
+    ...border,
+    left: { ...DEFAULT_BORDER.left, ...border.left },
+    right: { ...DEFAULT_BORDER.right, ...border.right },
+    top: { ...DEFAULT_BORDER.top, ...border.top },
+    bottom: { ...DEFAULT_BORDER.bottom, ...border.bottom },
+    diagonal: { ...DEFAULT_BORDER.diagonal, ...border.diagonal },
   };
 }
 

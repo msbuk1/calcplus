@@ -1,4 +1,13 @@
-import type { Cell, CellAddress, GridRange, SheetId, StyleId, Workbook } from '@model/types';
+import type {
+  Cell,
+  CellAddress,
+  ColumnDimension,
+  GridRange,
+  RowDimension,
+  SheetId,
+  StyleId,
+  Workbook,
+} from '@model/types';
 import {
   cellIsEmpty,
   cellStateEquals,
@@ -42,12 +51,22 @@ export interface DispatchOptions {
 const MAX_TRANSACTIONS = 200;
 const MAX_HISTORY_BYTES = 64 * 1024 * 1024;
 
+/** Dimension records captured before a save, so concurrent edits stay dirty. */
+export interface DirtyDimensionSnapshot {
+  readonly rows: ReadonlyMap<number, RowDimension | null>;
+  readonly columns: ReadonlyMap<number, ColumnDimension | null>;
+}
+
 export class DocumentSession {
   readonly workbook: Workbook;
   private readonly registry;
   private readonly undoStack: Transaction[] = [];
   private readonly redoStack: Transaction[] = [];
   private readonly dirtyCells = new Map<SheetId, Set<string>>();
+  private readonly dirtyDimensions = new Map<
+    SheetId,
+    { readonly rows: Set<number>; readonly columns: Set<number> }
+  >();
   private dirtyWorkbook = false;
   private calculationScheduler: CalculationScheduler | null = null;
   private nextSeq = 1;
@@ -100,11 +119,38 @@ export class DocumentSession {
     for (const cells of this.dirtyCells.values()) {
       if (cells.size > 0) return true;
     }
+    for (const dimensions of this.dirtyDimensions.values()) {
+      if (dimensions.rows.size > 0 || dimensions.columns.size > 0) return true;
+    }
     return false;
   }
 
   dirtyCellMap(): ReadonlyMap<SheetId, ReadonlySet<string>> {
     return this.dirtyCells;
+  }
+
+  /**
+   * Capture the dimension state before a save. Rows and columns are kept
+   * separately because the two record shapes have different fields.
+   */
+  dirtyDimensionSnapshot(): Map<SheetId, DirtyDimensionSnapshot> {
+    const snapshot = new Map<SheetId, DirtyDimensionSnapshot>();
+    for (const [sheetId, keys] of this.dirtyDimensions) {
+      if (keys.rows.size === 0 && keys.columns.size === 0) continue;
+      const sheet = getSheetById(this.workbook, sheetId);
+      const rows = new Map<number, RowDimension | null>();
+      for (const row of keys.rows) {
+        const dimension = sheet.rowDimensions.get(row);
+        rows.set(row, dimension === undefined ? null : { ...dimension });
+      }
+      const columns = new Map<number, ColumnDimension | null>();
+      for (const column of keys.columns) {
+        const dimension = sheet.columnDimensions.get(column);
+        columns.set(column, dimension === undefined ? null : { ...dimension });
+      }
+      snapshot.set(sheetId, { rows, columns });
+    }
+    return snapshot;
   }
 
   /**
@@ -180,26 +226,47 @@ export class DocumentSession {
   }
 
   /**
-   * Clear the cells that were saved. When a snapshot is supplied, a cell that
-   * changed while the save was awaiting the file write is compared by state
-   * and stays dirty.
+   * Clear the cells and dimensions that were saved. When a snapshot is
+   * supplied, an item that changed while the save was awaiting the file write
+   * is compared by state and stays dirty.
    */
-  markSaved(saved?: ReadonlyMap<SheetId, ReadonlyMap<string, Cell | null>>): void {
+  markSaved(
+    saved?: ReadonlyMap<SheetId, ReadonlyMap<string, Cell | null>>,
+    savedDimensions?: ReadonlyMap<SheetId, DirtyDimensionSnapshot>,
+  ): void {
     this.dirtyWorkbook = false;
     if (saved === undefined) {
       this.dirtyCells.clear();
-      this.documentVersion += 1;
-      return;
-    }
-    for (const [sheetId, savedCells] of saved) {
-      const dirty = this.dirtyCells.get(sheetId);
-      if (dirty === undefined) continue;
-      const sheet = getSheetById(this.workbook, sheetId);
-      for (const [key, savedCell] of savedCells) {
-        const current = sheet.cells.get(key) ?? null;
-        if (cellStateEquals(current, savedCell)) dirty.delete(key);
+    } else {
+      for (const [sheetId, savedCells] of saved) {
+        const dirty = this.dirtyCells.get(sheetId);
+        if (dirty === undefined) continue;
+        const sheet = getSheetById(this.workbook, sheetId);
+        for (const [key, savedCell] of savedCells) {
+          const current = sheet.cells.get(key) ?? null;
+          if (cellStateEquals(current, savedCell)) dirty.delete(key);
+        }
+        if (dirty.size === 0) this.dirtyCells.delete(sheetId);
       }
-      if (dirty.size === 0) this.dirtyCells.delete(sheetId);
+    }
+    if (savedDimensions === undefined) {
+      this.dirtyDimensions.clear();
+    } else {
+      for (const [sheetId, savedDims] of savedDimensions) {
+        const dirty = this.dirtyDimensions.get(sheetId);
+        if (dirty === undefined) continue;
+        const sheet = getSheetById(this.workbook, sheetId);
+        for (const [row, savedRow] of savedDims.rows) {
+          if (dimensionEquals(sheet.rowDimensions.get(row) ?? null, savedRow))
+            dirty.rows.delete(row);
+        }
+        for (const [column, savedColumn] of savedDims.columns) {
+          if (dimensionEquals(sheet.columnDimensions.get(column) ?? null, savedColumn)) {
+            dirty.columns.delete(column);
+          }
+        }
+        if (dirty.rows.size === 0 && dirty.columns.size === 0) this.dirtyDimensions.delete(sheetId);
+      }
     }
     this.documentVersion += 1;
   }
@@ -329,6 +396,18 @@ export class DocumentSession {
         continue;
       }
       const sheet = getSheetById(this.workbook, change.sheetId);
+      if (change.type === 'dimension.set') {
+        const snapshot = direction === 'after' ? change.after : change.before;
+        if (change.axis === 'row') {
+          if (snapshot === null) sheet.rowDimensions.delete(change.index);
+          else sheet.rowDimensions.set(change.index, { ...snapshot });
+        } else if (snapshot === null) {
+          sheet.columnDimensions.delete(change.index);
+        } else {
+          sheet.columnDimensions.set(change.index, { ...snapshot });
+        }
+        continue;
+      }
       if (change.type === 'cell.set') {
         this.applyCellSnapshots(
           sheet,
@@ -413,6 +492,16 @@ export class DocumentSession {
         this.dirtyWorkbook = true;
         continue;
       }
+      if (change.type === 'dimension.set') {
+        const dimensions = this.dirtyDimensions.get(change.sheetId) ?? {
+          rows: new Set<number>(),
+          columns: new Set<number>(),
+        };
+        if (change.axis === 'row') dimensions.rows.add(change.index);
+        else dimensions.columns.add(change.index);
+        this.dirtyDimensions.set(change.sheetId, dimensions);
+        continue;
+      }
       const cells = this.dirtyCells.get(change.sheetId) ?? new Set<string>();
       for (const cell of changeCells(change)) {
         cells.add(`${cell.row}:${cell.col}`);
@@ -428,6 +517,19 @@ export class DocumentSession {
   }
 }
 
+function dimensionEquals(
+  left: RowDimension | ColumnDimension | null,
+  right: RowDimension | ColumnDimension | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])) {
+    if (leftRecord[key] !== rightRecord[key]) return false;
+  }
+  return true;
+}
+
 function nullableCellValueEquals(left: CellValue | null, right: CellValue | null): boolean {
   if (left === null || right === null) return left === right;
   return cellValueEquals(left, right);
@@ -438,6 +540,10 @@ function estimateBytes(changes: readonly CommandChange[]): number {
   for (const change of changes) {
     if (change.type === 'workbook.dateSystem') {
       total += 8;
+      continue;
+    }
+    if (change.type === 'dimension.set') {
+      total += 64;
       continue;
     }
     if (change.type === 'style.set') {
