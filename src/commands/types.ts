@@ -1,9 +1,11 @@
+import type { ClipboardSnapshot } from '@model/clipboard';
 import type {
   Cell,
   CellAddress,
   ColumnDimension,
   GridRange,
   RowDimension,
+  Sheet,
   SheetId,
   StyleId,
   Workbook,
@@ -26,6 +28,18 @@ export interface CommandUiRequest {
 export interface CommandResult {
   readonly changes: readonly CommandChange[];
   readonly selectionAfter?: GridRange;
+  /**
+   * A view-state hint, never a document change: the sheet the caller should
+   * activate after this command or undo. Undo of an insert names the fallback
+   * tab; a sheet delete is terminal, so it names the neighbouring tab.
+   */
+  readonly activeSheetId?: SheetId | null;
+  /**
+   * The in-app clipboard snapshot captured by `edit.copy` or `edit.cut`. It is
+   * view state at the clipboard edge, not a document change, so it never
+   * enters the undo log.
+   */
+  readonly clipboard?: ClipboardSnapshot;
   readonly ui?: CommandUiRequest;
 }
 
@@ -57,6 +71,18 @@ export interface WorkbookDateSystemChange {
   readonly after: boolean;
 }
 
+/**
+ * A merged-range patch. Merge authoring has no per-cell before/after shape;
+ * the sheet's merge list is the document state, so the change carries the
+ * exact list on both sides. Undo restores the previous list in one step.
+ */
+export interface MergeSetChange {
+  readonly type: 'merge.set';
+  readonly sheetId: SheetId;
+  readonly before: readonly GridRange[];
+  readonly after: readonly GridRange[];
+}
+
 /** A row or column dimension snapshot; `null` means the record did not exist. */
 export type DimensionRecord = Readonly<RowDimension & ColumnDimension>;
 
@@ -70,8 +96,58 @@ export interface DimensionSetChange {
   readonly after: DimensionRecord | null;
 }
 
+/**
+ * A sheet inserted into the tab order. The change carries the detached sheet
+ * so undo restores the same stable id and the same tab position. The sheet is
+ * owned by the change while it is outside the workbook; no other command can
+ * mutate it there.
+ */
+export interface SheetAddChange {
+  readonly type: 'sheet.add';
+  readonly index: number;
+  readonly before: null;
+  readonly after: Sheet;
+}
+
+/**
+ * A sheet removed from the tab order. The change applies the removal; the
+ * delete command is terminal, so no inverse is recorded for it.
+ */
+export interface SheetDeleteChange {
+  readonly type: 'sheet.delete';
+  readonly index: number;
+  readonly before: Sheet;
+  readonly after: null;
+}
+
+/** A rename is a label change only; the stable sheet id does not move. */
+export interface SheetRenameChange {
+  readonly type: 'sheet.rename';
+  readonly sheetId: SheetId;
+  readonly before: string;
+  readonly after: string;
+}
+
+/** A defined-name formula change, in workbook or sheet scope. */
+export interface NameSetChange {
+  readonly type: 'name.set';
+  readonly scope: 'workbook' | 'sheet';
+  readonly sheetId: SheetId | null;
+  readonly name: string;
+  readonly before: string;
+  readonly after: string;
+}
+
 export type CommandChange =
-  CellSetChange | StyleSetChange | WorkbookDateSystemChange | DimensionSetChange;
+  | CellSetChange
+  | StyleSetChange
+  | WorkbookDateSystemChange
+  | DimensionSetChange
+  | MergeSetChange
+  | SheetAddChange
+  | SheetDeleteChange
+  | SheetRenameChange
+  | NameSetChange;
 
 /**
  * The calculation layer observes committed changes. It never participates in
@@ -88,13 +164,19 @@ export interface CommandDefinition<Args = unknown> {
   readonly icon?: string;
   readonly description?: string;
   readonly keybindings: readonly string[];
+  /**
+   * `terminal` applies the changes but records no undo entry and clears the
+   * undo and redo stacks. Sheet delete uses it: Excel makes a delete permanent
+   * and offers save-as, not undo, as the recourse. The default is `record`.
+   */
+  readonly history?: 'record' | 'terminal';
   isEnabled(context: CommandContext): boolean;
   isChecked?(context: CommandContext): boolean;
   run(context: CommandContext, args: Args): CommandResult;
 }
 
 export function changeCells(change: CommandChange): CellAddress[] {
-  if (change.type === 'workbook.dateSystem' || change.type === 'dimension.set') return [];
+  if (change.type !== 'cell.set' && change.type !== 'style.set') return [];
   const cells: CellAddress[] = [];
   for (let row = change.range.startRow; row <= change.range.endRow; row += 1) {
     for (let col = change.range.startCol; col <= change.range.endCol; col += 1) {
@@ -113,6 +195,16 @@ export function inverseChange(change: CommandChange): CommandChange {
     case 'workbook.dateSystem':
       return { ...change, before: change.after, after: change.before };
     case 'dimension.set':
+      return { ...change, before: change.after, after: change.before };
+    case 'merge.set':
+      return { ...change, before: change.after, after: change.before };
+    case 'sheet.add':
+      return { type: 'sheet.delete', index: change.index, before: change.after, after: null };
+    case 'sheet.delete':
+      return { type: 'sheet.add', index: change.index, before: null, after: change.before };
+    case 'sheet.rename':
+      return { ...change, before: change.after, after: change.before };
+    case 'name.set':
       return { ...change, before: change.after, after: change.before };
   }
 }

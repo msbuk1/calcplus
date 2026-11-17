@@ -17,6 +17,7 @@ import type {
   ProjectedStyle,
   ProjectedTextLayout,
   ProjectionOptions,
+  SelectionStatistics,
   SheetProjection,
 } from './types';
 
@@ -25,6 +26,8 @@ const DEFAULT_COLUMN_WIDTH = 64;
 const MAX_ROWS = 1_048_576;
 const MAX_COLUMNS = 16_384;
 const FORMAT_CACHE_LIMIT = 4096;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 4;
 
 /**
  * The sheet index is built once per document version. It is keyed by the
@@ -39,6 +42,11 @@ export function createSheetProjection(
 ): SheetProjection {
   const sheet = workbook.sheets.find((candidate) => candidate.id === sheetId);
   if (sheet === undefined) throw new Error(`Unknown sheet: ${sheetId}`);
+  // The saved zoom is document state; the live zoom override is view state.
+  // Both are ratios here, while the workbook stores an Excel percentage.
+  const zoom = clampZoom(
+    options.zoom === undefined ? sheet.view.zoom / 100 : normalizeZoom(options.zoom),
+  );
   const defaultRowHeight =
     options.defaultRowHeight ??
     (sheet.defaultRowHeight === null ? DEFAULT_ROW_HEIGHT : pointsToPixels(sheet.defaultRowHeight));
@@ -50,16 +58,6 @@ export function createSheetProjection(
   const rowCount = options.rowCount ?? MAX_ROWS;
   const columnCount = options.columnCount ?? MAX_COLUMNS;
 
-  const rowGeometry = new SparseAxisGeometry(
-    rowCount,
-    defaultRowHeight,
-    rowHeightOverrides(sheet.rowDimensions, defaultRowHeight),
-  );
-  const columnGeometry = new SparseAxisGeometry(
-    columnCount,
-    defaultColumnWidth,
-    columnWidthOverrides(sheet.columnDimensions, defaultColumnWidth),
-  );
   const hiddenRows = new Set(
     [...sheet.rowDimensions.entries()]
       .filter(([row, dimension]) => row >= 0 && row < rowCount && dimension.hidden === true)
@@ -69,6 +67,33 @@ export function createSheetProjection(
     [...sheet.columnDimensions.entries()]
       .filter(([col, dimension]) => col >= 0 && col < columnCount && dimension.hidden === true)
       .map(([col]) => col),
+  );
+  const rowOverrides = rowHeightOverrides(sheet.rowDimensions, defaultRowHeight);
+  const columnOverrides = columnWidthOverrides(sheet.columnDimensions, defaultColumnWidth);
+  // A drag resize is view state until the pointer is released. Overriding one
+  // sparse entry keeps the painted geometry live without touching the model.
+  const preview = options.dimensionPreview ?? null;
+  if (preview !== null && Number.isFinite(preview.size) && preview.size >= 0) {
+    // A header drag previews the same size on every selected visible member.
+    for (const index of preview.indices) {
+      if (preview.axis === 'row') {
+        if (index >= 0 && index < rowCount && !hiddenRows.has(index)) {
+          rowOverrides.set(index, pointsToPixels(preview.size));
+        }
+      } else if (index >= 0 && index < columnCount && !hiddenColumns.has(index)) {
+        columnOverrides.set(index, columnWidthCharsToPixels(preview.size));
+      }
+    }
+  }
+  const rowGeometry = new SparseAxisGeometry(
+    rowCount,
+    defaultRowHeight * zoom,
+    scaleOverrides(rowOverrides, zoom),
+  );
+  const columnGeometry = new SparseAxisGeometry(
+    columnCount,
+    defaultColumnWidth * zoom,
+    scaleOverrides(columnOverrides, zoom),
   );
 
   const merges = buildMergeIndex(sheet.merges);
@@ -220,8 +245,9 @@ export function createSheetProjection(
     columnCount,
     freezeRows: Math.min(sheet.view.freezeRows, rowCount),
     freezeCols: Math.min(sheet.view.freezeCols, columnCount),
-    showGridLines: sheet.view.showGridLines,
-    showHeadings: sheet.view.showHeadings,
+    showGridLines: options.showGridLines ?? sheet.view.showGridLines,
+    showHeadings: options.showHeadings ?? sheet.view.showHeadings,
+    zoom,
     date1904: workbook.date1904,
     defaultRowHeightPoints: sheet.defaultRowHeight,
     defaultColumnWidthChars: sheet.defaultColumnWidth,
@@ -298,7 +324,97 @@ export function createSheetProjection(
       const style = styleForValue(cell, styleFor(cell.styleId));
       return layoutTextFor(cell, style, widthPx, measure);
     },
+    selectionStatistics(range) {
+      const startRow = Math.max(0, Math.min(range.startRow, range.endRow));
+      const endRow = Math.min(rowCount - 1, Math.max(range.startRow, range.endRow));
+      const startCol = Math.max(0, Math.min(range.startCol, range.endCol));
+      const endCol = Math.min(columnCount - 1, Math.max(range.startCol, range.endCol));
+      if (startRow > endRow || startCol > endCol) return EMPTY_STATISTICS;
+      const index = indexFor();
+      let count = 0;
+      let sum = 0;
+      const add = (row: number, col: number): void => {
+        const cell = sheet.cells.get(cellKey(row, col));
+        if (cell === undefined || cell.value.type !== 'number') return;
+        count += 1;
+        sum += cell.value.value;
+      };
+      // Walk the smaller axis and binary-search the sparse coordinate list on
+      // the other, so a whole-column or whole-sheet selection touches only
+      // cells that exist, not the addressable grid.
+      if (endRow - startRow <= endCol - startCol) {
+        for (let row = startRow; row <= endRow; row += 1) {
+          const columns = index.rows.get(row);
+          if (columns === undefined) continue;
+          const bounds = sortedBounds(columns, startCol, endCol);
+          for (let position = bounds.start; position < bounds.end; position += 1) {
+            add(row, columns[position]!);
+          }
+        }
+      } else {
+        for (let col = startCol; col <= endCol; col += 1) {
+          const rows = index.columns.get(col);
+          if (rows === undefined) continue;
+          const bounds = sortedBounds(rows, startRow, endRow);
+          for (let position = bounds.start; position < bounds.end; position += 1) {
+            add(rows[position]!, col);
+          }
+        }
+      }
+      return {
+        count,
+        sum,
+        average: count === 0 ? 0 : sum / count,
+      };
+    },
   };
+}
+
+const EMPTY_STATISTICS: SelectionStatistics = Object.freeze({
+  count: 0,
+  sum: 0,
+  average: 0,
+});
+
+function normalizeZoom(value: number): number {
+  // Callers pass a ratio; a value above 400% is read as an Excel percentage
+  // so a direct `zoom: 150` cannot be mistaken for a 15000% scale.
+  return value > MAX_ZOOM ? value / 100 : value;
+}
+
+function clampZoom(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
+function scaleOverrides(overrides: ReadonlyMap<number, number>, zoom: number): Map<number, number> {
+  if (zoom === 1) return overrides as Map<number, number>;
+  const scaled = new Map<number, number>();
+  for (const [index, size] of overrides) scaled.set(index, size * zoom);
+  return scaled;
+}
+
+/** The half-open entries of a sorted index list inside an inclusive range. */
+function sortedBounds(
+  values: readonly number[],
+  low: number,
+  high: number,
+): { readonly start: number; readonly end: number } {
+  let start = 0;
+  let end = values.length;
+  while (start < end) {
+    const middle = (start + end) >> 1;
+    if ((values[middle] ?? 0) < low) start = middle + 1;
+    else end = middle;
+  }
+  const from = start;
+  end = values.length;
+  while (start < end) {
+    const middle = (start + end) >> 1;
+    if ((values[middle] ?? 0) <= high) start = middle + 1;
+    else end = middle;
+  }
+  return { start: from, end: start };
 }
 
 function rowHeightOverrides(

@@ -89,6 +89,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
 
   const sheets: Sheet[] = [];
   const sheetPartPaths = new Map<string, string>();
+  const sheetRelationshipIds = new Map<string, string>();
   const sheetIdByWorkbookIndex: string[] = [];
   for (const [index, reference] of workbookInfo.sheets.entries()) {
     const relationship = findRelationshipById(workbookRelationships, reference.relationshipId);
@@ -109,8 +110,20 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
       name: reference.name,
     });
     const sheet = parsed.sheet;
+    const worksheetRelsPath = relsPathForPart(partPath);
+    for (const relationship of relationshipsByPart.get(worksheetRelsPath) ?? []) {
+      if (relationship.targetMode !== 'Internal') continue;
+      const targetBytes = entries.get(relationship.resolvedTarget);
+      if (targetBytes === undefined) continue;
+      sheet.opaqueParts.set(relationship.resolvedTarget, {
+        path: relationship.resolvedTarget,
+        bytes: targetBytes,
+        anchor: null,
+      });
+    }
     sheets.push(sheet);
     sheetPartPaths.set(sheet.id, partPath);
+    sheetRelationshipIds.set(sheet.id, reference.relationshipId);
     sheetIdByWorkbookIndex[index] = sheet.id;
   }
 
@@ -198,6 +211,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     stylesPath,
     themePath,
     sheetPartPaths,
+    sheetRelationshipIds,
     relationships: relationshipsByPart,
     sharedStrings,
     externalLinkParts,

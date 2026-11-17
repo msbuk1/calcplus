@@ -51,6 +51,8 @@ export interface SnapshotSheet {
   readonly view: Sheet['view'];
   readonly defaultRowHeight?: number | null;
   readonly defaultColumnWidth?: number | null;
+  /** Side parts attached to this sheet, if the snapshot came from an open workbook. */
+  readonly opaquePartPaths?: readonly string[];
 }
 export interface SnapshotWorkbookMetadata {
   readonly id: string;
@@ -79,6 +81,8 @@ export interface SnapshotPackageMetadata {
   readonly stylesPath: string | null;
   readonly themePath: string | null;
   readonly sheetPartPaths: [SheetId, string][];
+  /** Missing on snapshots written before sheet-structure edits existed. */
+  readonly sheetRelationshipIds?: [SheetId, string][];
   readonly sharedStrings: SharedStringsTable | null;
   readonly externalLinkParts: readonly string[];
 }
@@ -99,9 +103,14 @@ export function snapshotWorkbook(workbook: Workbook, pkg: WorkbookPackage): Work
   for (const [path, part] of workbook.opaqueParts) {
     parts.push({ path, kind: 'opaque', bytes: cloneBytes(part.bytes) });
   }
+  const known = new Set(parts.map((part) => part.path));
+  for (const [path, part] of workbook.opaqueParts) {
+    if (known.has(path)) continue;
+    parts.push({ path, kind: 'opaque', bytes: cloneBytes(part.bytes) });
+    known.add(path);
+  }
   // Package infrastructure can be present in entries but not classified on a
   // restored model; keep the union lossless.
-  const known = new Set(parts.map((part) => part.path));
   for (const [path, bytes] of pkg.entries) {
     if (!known.has(path)) parts.push({ path, kind: 'opaque', bytes: cloneBytes(bytes) });
   }
@@ -128,6 +137,7 @@ export function snapshotWorkbook(workbook: Workbook, pkg: WorkbookPackage): Work
       stylesPath: pkg.stylesPath,
       themePath: pkg.themePath,
       sheetPartPaths: [...pkg.sheetPartPaths.entries()],
+      sheetRelationshipIds: [...(pkg.sheetRelationshipIds ?? new Map()).entries()],
       sharedStrings:
         pkg.sharedStrings === null
           ? null
@@ -161,7 +171,7 @@ export function restoreWorkbook(snapshot: WorkbookSnapshot): {
   const themePath = snapshot.workbook.themePath;
   const workbook: Workbook = {
     id: snapshot.workbook.id,
-    sheets: snapshot.workbook.sheets.map(restoreSheet),
+    sheets: snapshot.workbook.sheets.map((sheet) => restoreSheet(sheet, entries)),
     names: snapshot.workbook.names.map(cloneDefinedName),
     styles: snapshot.workbook.styles.map(normalizeStyle),
     theme: {
@@ -190,6 +200,7 @@ export function restoreWorkbook(snapshot: WorkbookSnapshot): {
     stylesPath: snapshot.package.stylesPath,
     themePath: snapshot.package.themePath,
     sheetPartPaths: new Map(snapshot.package.sheetPartPaths),
+    sheetRelationshipIds: new Map(snapshot.package.sheetRelationshipIds ?? []),
     relationships: new Map(),
     sharedStrings:
       snapshot.package.sharedStrings === null
@@ -236,10 +247,11 @@ function snapshotSheet(sheet: Sheet): SnapshotSheet {
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight,
     defaultColumnWidth: sheet.defaultColumnWidth,
+    opaquePartPaths: [...sheet.opaqueParts.keys()],
   };
 }
 
-function restoreSheet(sheet: SnapshotSheet): Sheet {
+function restoreSheet(sheet: SnapshotSheet, parts: ReadonlyMap<string, Uint8Array>): Sheet {
   return {
     id: sheet.id,
     name: sheet.name,
@@ -265,7 +277,12 @@ function restoreSheet(sheet: SnapshotSheet): Sheet {
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight ?? null,
     defaultColumnWidth: sheet.defaultColumnWidth ?? null,
-    opaqueParts: new Map(),
+    opaqueParts: new Map(
+      (sheet.opaquePartPaths ?? []).flatMap((path) => {
+        const bytes = parts.get(path);
+        return bytes === undefined ? [] : [[path, { path, bytes, anchor: null }] as const];
+      }),
+    ),
   };
 }
 

@@ -55,6 +55,24 @@ export function createSheetId(partPath: string): SheetId {
   return `sheet:${partPath}`;
 }
 
+/**
+ * A deterministic stable id for a sheet created in calcplus. It includes the
+ * new part path, so an id is never handed to a sheet with a different part;
+ * the counter keeps successive inserts distinct. LIFO undo means an id can be
+ * reused only after the older sheet has left the workbook and cannot be
+ * restored on top of the newer one.
+ */
+export function nextNewSheetId(workbook: Workbook, partPath: string): SheetId {
+  const used = new Set(workbook.sheets.map((sheet) => sheet.id));
+  let number = 1;
+  let candidate = `sheet:new:${partPath}:${number}`;
+  while (used.has(candidate)) {
+    number += 1;
+    candidate = `sheet:new:${partPath}:${number}`;
+  }
+  return candidate;
+}
+
 export function createDefaultView(): SheetView {
   return {
     freezeRows: 0,
@@ -168,6 +186,98 @@ export function getStyle(workbook: Workbook, styleId: number): StyleRecord {
 
 export function findSheet(workbook: Workbook, sheetId: SheetId): Sheet | undefined {
   return workbook.sheets.find((sheet) => sheet.id === sheetId);
+}
+
+/** Excel's sheet-name limit, in characters. */
+export const MAX_SHEET_NAME_LENGTH = 31;
+
+/**
+ * The next Excel-style default name (`Sheet1`, `Sheet4`, ...) that the
+ * workbook does not already use. Names are unique case-insensitively.
+ */
+export function nextSheetName(workbook: Workbook): string {
+  const used = new Set(workbook.sheets.map((sheet) => sheet.name.toUpperCase()));
+  let number = 1;
+  while (used.has(`SHEET${number}`)) number += 1;
+  return `Sheet${number}`;
+}
+
+/**
+ * Validate a sheet name against Excel's rules and workbook uniqueness.
+ * Returns a message for the user, or `null` when the name is usable.
+ */
+export function validateSheetName(
+  workbook: Workbook,
+  name: string,
+  exceptSheetId: SheetId | null = null,
+): string | null {
+  if (name.trim() === '') return 'A sheet name cannot be blank.';
+  if (name.length > MAX_SHEET_NAME_LENGTH) {
+    return `A sheet name cannot be longer than ${MAX_SHEET_NAME_LENGTH} characters.`;
+  }
+  if (/[:\\/?*[\]]/.test(name)) {
+    return 'A sheet name cannot contain : \\ / ? * [ or ].';
+  }
+  if (name.startsWith("'") || name.endsWith("'")) {
+    return 'A sheet name cannot begin or end with an apostrophe.';
+  }
+  if (name.trim() !== name) {
+    return 'A sheet name cannot begin or end with a space.';
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F]/.test(name)) {
+    return 'A sheet name cannot contain control characters.';
+  }
+  const upper = name.toUpperCase();
+  const existing = workbook.sheets.find(
+    (sheet) => sheet.id !== exceptSheetId && sheet.name.toUpperCase() === upper,
+  );
+  if (existing !== undefined) return `A sheet named "${name}" already exists.`;
+  return null;
+}
+
+/**
+ * A worksheet part path that no current sheet, retained source part or opaque
+ * part already uses. A saved terminal delete releases its part, so a later
+ * insert may reuse the number; that is safe because the old part is gone.
+ */
+export function nextWorksheetPartPath(workbook: Workbook): string {
+  const used = new Set<string>();
+  for (const sheet of workbook.sheets) used.add(sheet.partPath);
+  for (const path of workbook.sourceParts.keys()) used.add(path);
+  for (const path of workbook.opaqueParts.keys()) used.add(path);
+  let highest = 0;
+  for (const path of used) {
+    const match = /^xl\/worksheets\/sheet(\d+)\.xml$/i.exec(path);
+    if (match !== null) highest = Math.max(highest, Number(match[1]));
+  }
+  let number = highest + 1;
+  while (used.has(`xl/worksheets/sheet${number}.xml`)) number += 1;
+  return `xl/worksheets/sheet${number}.xml`;
+}
+
+/**
+ * Whether this sheet holds any document content beyond an empty grid: cells,
+ * formatting, merges or side tables. The terminal delete warning no longer
+ * depends on it, because deleting any sheet is permanent; the helper remains
+ * for callers that need to tell an empty sheet from a populated one.
+ */
+export function sheetHasContent(sheet: Sheet): boolean {
+  return (
+    sheet.cells.size > 0 ||
+    sheet.rowDimensions.size > 0 ||
+    sheet.columnDimensions.size > 0 ||
+    sheet.merges.length > 0 ||
+    sheet.names.length > 0 ||
+    sheet.comments.size > 0 ||
+    sheet.hyperlinks.size > 0 ||
+    sheet.validation.length > 0 ||
+    sheet.conditionalFormats.length > 0 ||
+    sheet.protection !== null ||
+    sheet.defaultRowHeight !== null ||
+    sheet.defaultColumnWidth !== null ||
+    sheet.opaqueParts.size > 0
+  );
 }
 
 export function firstSheet(workbook: Workbook): Sheet {

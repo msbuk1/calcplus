@@ -38,6 +38,17 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
   let inDefinedNames = false;
   let inDefinedName = false;
 
+  const appendDefinedNameText = (text: string): void => {
+    if (!inDefinedName) return;
+    const last = definedNames[definedNames.length - 1];
+    if (last !== undefined) {
+      definedNames[definedNames.length - 1] = {
+        ...last,
+        formula: last.formula + text,
+      };
+    }
+  };
+
   parseXml(
     xml,
     {
@@ -116,14 +127,10 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
         if (tag.local === 'definedNames') inDefinedNames = false;
       },
       onText(text) {
-        if (!inDefinedName) return;
-        const last = definedNames[definedNames.length - 1];
-        if (last !== undefined) {
-          definedNames[definedNames.length - 1] = {
-            ...last,
-            formula: last.formula + text,
-          };
-        }
+        appendDefinedNameText(text);
+      },
+      onCdata(text) {
+        appendDefinedNameText(text);
       },
     },
     partName,

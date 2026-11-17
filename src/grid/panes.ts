@@ -1,5 +1,6 @@
 import type { SheetProjection } from '@view/types';
-import { GRID_METRICS, type GridCellAddress } from './frame';
+import { GRID_METRICS, type GridCellAddress, type GridRange, type GridSelection } from './frame';
+import type { DimensionAxis } from './resize';
 
 /**
  * Four-pane freeze geometry.
@@ -49,8 +50,11 @@ export function computePaneLayout(
   width: number,
   height: number,
 ): PaneLayout {
-  const headerWidth = GRID_METRICS.headerWidth;
-  const headerHeight = GRID_METRICS.headerHeight;
+  // Excel scales the headers with the cells and removes their strips entirely
+  // when headings are hidden; the scrollbars keep their physical size so they
+  // stay usable at low zoom.
+  const headerWidth = projection.showHeadings ? GRID_METRICS.headerWidth * projection.zoom : 0;
+  const headerHeight = projection.showHeadings ? GRID_METRICS.headerHeight * projection.zoom : 0;
   const scrollbarSize = GRID_METRICS.scrollbarSize;
   const bodyWidth = Math.max(0, width - headerWidth - scrollbarSize);
   const bodyHeight = Math.max(0, height - headerHeight - scrollbarSize);
@@ -139,7 +143,10 @@ export function columnAtHeader(
   pointX: number,
   scrollX: number,
 ): number | null {
-  if (pointX < layout.headerWidth || pointX > layout.headerWidth + layout.scrollRegionWidth) {
+  if (
+    pointX < layout.headerWidth ||
+    pointX > layout.headerWidth + layout.frozenWidth + layout.scrollRegionWidth
+  ) {
     return null;
   }
   if (pointX < layout.headerWidth + layout.frozenWidth) {
@@ -158,13 +165,176 @@ export function rowAtHeader(
   pointY: number,
   scrollY: number,
 ): number | null {
-  if (pointY < layout.headerHeight || pointY > layout.headerHeight + layout.scrollRegionHeight) {
+  if (
+    pointY < layout.headerHeight ||
+    pointY > layout.headerHeight + layout.frozenHeight + layout.scrollRegionHeight
+  ) {
     return null;
   }
   if (pointY < layout.headerHeight + layout.frozenHeight) {
     return projection.rowAt(pointY - layout.headerHeight);
   }
   return projection.rowAt(pointY - layout.headerHeight - layout.frozenHeight + scrollY);
+}
+
+/** A row or column whose leading or trailing header edge is under the pointer. */
+export interface HeaderResizeTarget {
+  readonly axis: DimensionAxis;
+  readonly index: number;
+}
+
+/**
+ * The whole-row or whole-column range a header selection covers, or `null`
+ * when the selection is not a header selection on that axis. A whole-sheet
+ * selection is excluded: dragging one header edge must not resize all 16,384
+ * columns or 1,048,576 rows.
+ */
+export function headerSelectionRange(
+  projection: SheetProjection,
+  selection: GridSelection,
+  axis: DimensionAxis,
+): GridRange | null {
+  if (selection.extent.kind !== 'range') return null;
+  const range = selection.extent.range;
+  if (axis === 'column') {
+    if (range.startRow !== 0 || range.endRow !== projection.rowCount - 1) return null;
+    if (range.startCol === 0 && range.endCol === projection.columnCount - 1) return null;
+  } else {
+    if (range.startCol !== 0 || range.endCol !== projection.columnCount - 1) return null;
+    if (range.startRow === 0 && range.endRow === projection.rowCount - 1) return null;
+  }
+  return range;
+}
+
+/**
+ * The visible rows or columns a header selection covers, in order. Hidden
+ * members are skipped so a resize or autofit never changes their stored size
+ * or reveals them.
+ */
+export function headerSelectionIndices(
+  projection: SheetProjection,
+  selection: GridSelection,
+  axis: DimensionAxis,
+): readonly number[] | null {
+  const range = headerSelectionRange(projection, selection, axis);
+  if (range === null) return null;
+  const start = axis === 'column' ? range.startCol : range.startRow;
+  const end = axis === 'column' ? range.endCol : range.endRow;
+  const indices: number[] = [];
+  for (let index = start; index <= end; index += 1) {
+    const hidden =
+      axis === 'column' ? projection.isColumnHidden(index) : projection.isRowHidden(index);
+    if (!hidden) indices.push(index);
+  }
+  return indices.length === 0 ? null : indices;
+}
+
+/**
+ * The header edge under a pointer position, or `null` when the pointer is
+ * elsewhere. The gutter is a few screen pixels wide on either side of a
+ * visible boundary; a hidden row or column has no edge and is never a target.
+ */
+export function headerResizeTarget(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  pointX: number,
+  pointY: number,
+  scrollX: number,
+  scrollY: number,
+): HeaderResizeTarget | null {
+  if (pointY < layout.headerHeight && pointX >= layout.headerWidth) {
+    const col = columnAtHeader(projection, layout, pointX, scrollX);
+    if (col === null) return null;
+    const index = columnResizeEdge(projection, layout, pointX, scrollX, col);
+    return index === null ? null : { axis: 'column', index };
+  }
+  if (pointX < layout.headerWidth && pointY >= layout.headerHeight) {
+    const row = rowAtHeader(projection, layout, pointY, scrollY);
+    if (row === null) return null;
+    const index = rowResizeEdge(projection, layout, pointY, scrollY, row);
+    return index === null ? null : { axis: 'row', index };
+  }
+  return null;
+}
+
+/** The header gutter is measured in screen pixels, like Excel's. */
+const RESIZE_GUTTER_PIXELS = 4;
+
+function columnResizeEdge(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  pointX: number,
+  scrollX: number,
+  col: number,
+): number | null {
+  const width = projection.columnWidth(col);
+  if (width <= 0) return null;
+  const x =
+    col < projection.freezeCols
+      ? layout.headerWidth + projection.columnX(col)
+      : layout.headerWidth + layout.frozenWidth + projection.columnX(col) - scrollX;
+  const edges: { readonly index: number; readonly position: number }[] = [];
+  const start = projection.columnX(col);
+  if (start > 0) edges.push({ index: projection.columnAt(start - 1), position: x });
+  edges.push({ index: col, position: x + width });
+  return closestEdge(
+    pointX,
+    edges,
+    (index) => projection.columnWidth(index),
+    layout.headerWidth,
+    layout.headerWidth + layout.frozenWidth + layout.scrollRegionWidth,
+  );
+}
+
+function rowResizeEdge(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  pointY: number,
+  scrollY: number,
+  row: number,
+): number | null {
+  const height = projection.rowHeight(row);
+  if (height <= 0) return null;
+  const y =
+    row < projection.freezeRows
+      ? layout.headerHeight + projection.rowY(row)
+      : layout.headerHeight + layout.frozenHeight + projection.rowY(row) - scrollY;
+  const edges: { readonly index: number; readonly position: number }[] = [];
+  const start = projection.rowY(row);
+  if (start > 0) edges.push({ index: projection.rowAt(start - 1), position: y });
+  edges.push({ index: row, position: y + height });
+  return closestEdge(
+    pointY,
+    edges,
+    (index) => projection.rowHeight(index),
+    layout.headerHeight,
+    layout.headerHeight + layout.frozenHeight + layout.scrollRegionHeight,
+  );
+}
+
+/** The closest visible edge within the gutter, preferring the earlier index on a tie. */
+function closestEdge(
+  point: number,
+  edges: readonly { readonly index: number; readonly position: number }[],
+  sizeOf: (index: number) => number,
+  minimumPosition: number,
+  maximumPosition: number,
+): number | null {
+  let best: { readonly index: number; readonly distance: number } | null = null;
+  for (const edge of edges) {
+    if (edge.position < minimumPosition || edge.position > maximumPosition) continue;
+    if (sizeOf(edge.index) <= 0) continue;
+    const distance = Math.abs(point - edge.position);
+    if (distance > RESIZE_GUTTER_PIXELS) continue;
+    if (
+      best === null ||
+      distance < best.distance ||
+      (distance === best.distance && edge.index < best.index)
+    ) {
+      best = { index: edge.index, distance };
+    }
+  }
+  return best === null ? null : best.index;
 }
 
 /** Clamp a scroll offset to the range the sheet allows. */
@@ -198,18 +368,21 @@ export function scrollToReveal(
   if (cell.col >= projection.freezeCols) {
     const left = projection.columnX(cell.col);
     const right = left + projection.columnWidth(cell.col);
-    const regionLeft = layout.minScrollX;
-    const regionRight = layout.minScrollX + layout.scrollRegionWidth;
-    if (left < regionLeft) nextX = left;
-    else if (right > regionRight) nextX = right - layout.scrollRegionWidth;
+    // The scrolling viewport starts at the current scroll offset, not at the
+    // frozen boundary: a cell to the left of the viewport must scroll back
+    // into view just as one to the right must scroll forward.
+    const viewLeft = scrollX;
+    const viewRight = scrollX + layout.scrollRegionWidth;
+    if (left < viewLeft) nextX = left;
+    else if (right > viewRight) nextX = right - layout.scrollRegionWidth;
   }
   if (cell.row >= projection.freezeRows) {
     const top = projection.rowY(cell.row);
     const bottom = top + projection.rowHeight(cell.row);
-    const regionTop = layout.minScrollY;
-    const regionBottom = layout.minScrollY + layout.scrollRegionHeight;
-    if (top < regionTop) nextY = top;
-    else if (bottom > regionBottom) nextY = bottom - layout.scrollRegionHeight;
+    const viewTop = scrollY;
+    const viewBottom = scrollY + layout.scrollRegionHeight;
+    if (top < viewTop) nextY = top;
+    else if (bottom > viewBottom) nextY = bottom - layout.scrollRegionHeight;
   }
   return clampScroll(layout, nextX, nextY);
 }

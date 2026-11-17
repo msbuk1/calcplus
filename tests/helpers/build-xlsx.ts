@@ -95,6 +95,136 @@ ${options.sharedStrings.map((text) => `  <si><t>${escapeXml(text)}</t></si>`).jo
   );
 }
 
+export interface MultiSheetSpec {
+  readonly name: string;
+  /** Worksheet XML including the `<worksheet>` root. */
+  readonly worksheetXml: string;
+  readonly state?: 'visible' | 'hidden' | 'veryHidden';
+  /** Defaults to `xl/worksheets/sheetN.xml`. */
+  readonly partPath?: string;
+}
+
+export interface BuildMultiSheetOptions {
+  readonly sharedStrings?: string[];
+  readonly stylesXml?: string;
+  readonly extraParts?: Record<string, string>;
+  readonly workbookExtras?: string;
+}
+
+/**
+ * A multi-sheet package with the tab order, hidden state and section
+ * relationships a workbook-structure test needs. Kept byte-shape compatible
+ * with `buildXlsx` so the same helpers can read it back.
+ */
+export function buildMultiSheetXlsx(
+  sheets: readonly MultiSheetSpec[],
+  options: BuildMultiSheetOptions = {},
+): Uint8Array {
+  if (sheets.length === 0) throw new Error('A workbook needs at least one sheet');
+  const ns = SPREADSHEET_NS;
+  const sheetRelEntries = sheets.map(
+    (sheet, index) =>
+      `<Relationship Id="rId${index + 1}" Type="${REL_NS}/worksheet" Target="worksheets/${sheetFile(sheet, index)}"/>`,
+  );
+  const sheetElements = sheets
+    .map((sheet, index) => {
+      const state =
+        sheet.state === undefined || sheet.state === 'visible' ? '' : ` state="${sheet.state}"`;
+      return `    <sheet name="${escapeXml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"${state}/>`;
+    })
+    .join('\n');
+  const workbook = `${XML_HEADER}
+<workbook xmlns="${ns}" xmlns:r="${REL_NS}">
+  <workbookPr date1904="0"/>
+  <sheets>
+${sheetElements}
+  </sheets>
+  ${options.workbookExtras ?? ''}
+</workbook>`;
+
+  const sharedStrings =
+    options.sharedStrings === undefined
+      ? null
+      : `${XML_HEADER}
+<sst xmlns="${ns}" count="${options.sharedStrings.length}" uniqueCount="${options.sharedStrings.length}">
+${options.sharedStrings.map((text) => `  <si><t>${escapeXml(text)}</t></si>`).join('\n')}
+</sst>`;
+  const nextRelationshipId = sheets.length + 1;
+  const workbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  ${sheetRelEntries.join('\n  ')}
+  ${sharedStrings === null ? '' : `<Relationship Id="rId${nextRelationshipId}" Type="${REL_NS}/sharedStrings" Target="sharedStrings.xml"/>`}
+  ${options.stylesXml === undefined ? '' : `<Relationship Id="rId${nextRelationshipId + (sharedStrings === null ? 0 : 1)}" Type="${REL_NS}/styles" Target="styles.xml"/>`}
+</Relationships>`;
+
+  const overrides = [
+    [
+      'xl/workbook.xml',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
+    ],
+    ...sheets.map(
+      (sheet, index) =>
+        [
+          sheetPartName(sheet, index),
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml',
+        ] as [string, string],
+    ),
+    ...(sharedStrings === null
+      ? []
+      : [
+          [
+            'xl/sharedStrings.xml',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml',
+          ] as [string, string],
+        ]),
+    ...(options.stylesXml === undefined
+      ? []
+      : [
+          [
+            'xl/styles.xml',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml',
+          ] as [string, string],
+        ]),
+  ];
+  const contentTypes = `${XML_HEADER}
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  ${overrides.map(([part, type]) => `<Override PartName="/${part}" ContentType="${type}"/>`).join('\n  ')}
+</Types>`;
+  const rootRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+  const files: Record<string, string> = {
+    '[Content_Types].xml': contentTypes,
+    '_rels/.rels': rootRels,
+    'xl/workbook.xml': workbook,
+    'xl/_rels/workbook.xml.rels': workbookRels,
+    ...(sharedStrings === null ? {} : { 'xl/sharedStrings.xml': sharedStrings }),
+    ...(options.stylesXml === undefined ? {} : { 'xl/styles.xml': options.stylesXml }),
+    ...(options.extraParts ?? {}),
+  };
+  sheets.forEach((sheet, index) => {
+    files[sheetPartName(sheet, index)] = sheet.worksheetXml;
+  });
+  return zipSync(
+    Object.fromEntries(
+      Object.entries(files).map(([name, content]) => [name, new TextEncoder().encode(content)]),
+    ),
+    { level: 6, mtime: new Date('1980-01-01T00:00:00Z') },
+  );
+}
+
+function sheetPartName(sheet: MultiSheetSpec, index: number): string {
+  return sheet.partPath ?? `xl/worksheets/sheet${index + 1}.xml`;
+}
+
+function sheetFile(sheet: MultiSheetSpec, index: number): string {
+  const path = sheetPartName(sheet, index);
+  return path.slice(path.lastIndexOf('/') + 1);
+}
+
 export function unzipPart(bytes: Uint8Array, name: string): string {
   const files = unzipParts(bytes);
   const part = files.get(name);

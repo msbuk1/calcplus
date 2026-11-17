@@ -5,6 +5,7 @@ import type {
   ColumnDimension,
   FillStyle,
   FontStyle,
+  GridRange,
   RowDimension,
 } from '@model/types';
 
@@ -57,6 +58,13 @@ export interface ProjectedCell {
   layoutText(widthPx: number, measure: (text: string) => number): ProjectedTextLayout;
 }
 
+/** Sum, average and numeric count of a selection. */
+export interface SelectionStatistics {
+  readonly count: number;
+  readonly sum: number;
+  readonly average: number;
+}
+
 export interface SheetProjection {
   readonly sheetId: string;
   readonly sheetName: string;
@@ -67,6 +75,11 @@ export interface SheetProjection {
   readonly freezeCols: number;
   readonly showGridLines: boolean;
   readonly showHeadings: boolean;
+  /**
+   * The display scale, where `1` is 100%. Geometry below is already scaled:
+   * row heights, column widths and offsets are CSS pixels at this zoom.
+   */
+  readonly zoom: number;
   readonly date1904: boolean;
   cellAt(row: number, col: number): ProjectedCell | null;
   window(startRow: number, endRow: number, startCol: number, endCol: number): ProjectedCell[];
@@ -111,6 +124,17 @@ export interface SheetProjection {
     widthPx: number,
     measure: (text: string) => number,
   ): ProjectedTextLayout | null;
+  /** Sum, average and numeric count for the cells inside a selection. */
+  selectionStatistics(range: GridRange): SelectionStatistics;
+}
+
+/** A transient row or column size shown while the user drags a header edge. */
+export interface DimensionPreview {
+  readonly axis: 'row' | 'column';
+  /** Every row or column the drag changes; a multi-header selection moves together. */
+  readonly indices: readonly number[];
+  /** Points for a row, Excel character units for a column. */
+  readonly size: number;
 }
 
 export interface ProjectionOptions {
@@ -119,4 +143,21 @@ export interface ProjectionOptions {
   readonly defaultColumnWidth?: number;
   readonly rowCount?: number;
   readonly columnCount?: number;
+  /**
+   * A live resize that is not yet a document change. The projection paints and
+   * hit-tests at this size on every selected visible member while the header
+   * drag is in progress.
+   */
+  readonly dimensionPreview?: DimensionPreview | null;
+  /**
+   * Display scale, where `1` is 100%. Clamped to 10%-400%. A value above `4`
+   * is read as an Excel percentage (`150` means 150%).
+   */
+  readonly zoom?: number;
+  /**
+   * Display overrides for the sheet's imported view state. Omitted values use
+   * the imported setting. These are view state and never mutate the model.
+   */
+  readonly showGridLines?: boolean;
+  readonly showHeadings?: boolean;
 }

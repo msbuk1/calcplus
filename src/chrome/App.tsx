@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import appIcon from '../../assets/calcplus.svg';
 import { DocumentSession } from '@commands/session';
+import type { CommandResult } from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
 import type { EngineCellRef } from '@engine/port';
+import type { ClipboardMode, ClipboardSnapshot } from '@model/clipboard';
 import type { SheetId } from '@model/types';
 import { formatCellRef, cellKey, columnToLetters, createCell } from '@model/types';
 import { resolveReferenceText } from '@model/references';
@@ -20,10 +22,20 @@ import { adoptSavedPackage, saveWorkbook } from '@ooxml/save';
 import { snapshotWorkbook } from '@ooxml/snapshot';
 import { confirmReplaceDocument } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
-import type { SheetProjection } from '@view/types';
+import { firstVisibleSheetId, isSheetVisible, visibleSheetCount } from '@view/sheet-visibility';
+import {
+  DEFAULT_SHEET_VIEW,
+  clampZoomPercent,
+  initialSheetViews,
+  sheetTabList,
+  viewForSheet,
+  type SheetViewState,
+} from '@view/sheets';
+import type { DimensionPreview, SelectionStatistics, SheetProjection } from '@view/types';
 import { CanvasGrid } from '@grid/CanvasGrid';
-import type { AutofitResult } from '@grid/autofit';
+import type { AutofitTarget } from '@grid/autofit';
 import type { GridCellAddress, GridSelection } from '@grid/frame';
+import type { DimensionAxis, DimensionResize } from '@grid/resize';
 import { gridDebugState } from '@grid/debug';
 import { cellRect } from '@grid/panes';
 import { collapseSelection, selectionForRange, selectionRange } from '@grid/selection';
@@ -32,6 +44,8 @@ import { resolveNavigation } from '@grid/navigation';
 import { FormulaBar } from '@chrome/FormulaBar';
 import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
 import { NameBox } from '@chrome/NameBox';
+import { SheetTabs } from '@chrome/SheetTabs';
+import { StatusBar } from '@chrome/StatusBar';
 import { nextFocusZone, type FocusZone } from '@chrome/focus';
 import {
   canUseFileSystemAccess,
@@ -74,6 +88,12 @@ export function App(): JSX.Element {
   const [barDraft, setBarDraft] = useState<string | null>(null);
   const [barCaretRequest, setBarCaretRequest] = useState<{ readonly offset: number } | null>(null);
   const [status, setStatus] = useState('Open an .xlsx workbook to begin.');
+  // Sheet view settings are split: the imported values live in the document;
+  // the live zoom and display toggles are transient view state per sheet.
+  const [sheetViews, setSheetViews] = useState<Record<string, SheetViewState>>({});
+  // A header drag has not changed the document yet; the projection paints the
+  // live size until the pointer release commits one dimension command.
+  const [dimensionPreview, setDimensionPreview] = useState<DimensionPreview | null>(null);
   const [calcWarning, setCalcWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -88,15 +108,44 @@ export function App(): JSX.Element {
   } | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
+  const clipboardRef = useRef<ClipboardSnapshot | null>(null);
 
   const active = selection.focus;
+  const activeView =
+    document === null ? DEFAULT_SHEET_VIEW : (sheetViews[document.sheetId] ?? DEFAULT_SHEET_VIEW);
 
   const projection = useMemo(() => {
     if (document === null) return null;
     // Let the projection use the imported sheetFormatPr defaults, with its
-    // grid metrics as the fallback for a file that declares none.
-    return createSheetProjection(document.session.workbook, document.sheetId, { version });
-  }, [document, document?.sheetId, version]);
+    // grid metrics as the fallback for a file that declares none. The view
+    // overrides are passed in; they are not document mutations.
+    return createSheetProjection(document.session.workbook, document.sheetId, {
+      version,
+      zoom: activeView.zoom / 100,
+      showGridLines: activeView.showGridLines,
+      showHeadings: activeView.showHeadings,
+      dimensionPreview,
+    });
+  }, [
+    document,
+    document?.sheetId,
+    version,
+    activeView.zoom,
+    activeView.showGridLines,
+    activeView.showHeadings,
+    dimensionPreview,
+  ]);
+
+  const sheetTabs = useMemo(
+    () => (document === null ? [] : sheetTabList(document.session.workbook)),
+    [document, version],
+  );
+
+  const selectionStatistics = useMemo<SelectionStatistics | null>(() => {
+    if (projection === null) return null;
+    const statistics = projection.selectionStatistics(selectionRange(selection));
+    return statistics.count === 0 ? null : statistics;
+  }, [projection, selection]);
 
   const nameBoxValue = projection === null ? '' : formatSelectionAddress(selection, projection);
 
@@ -107,6 +156,9 @@ export function App(): JSX.Element {
   ): void => {
     document?.calculation.dispose();
     const session = new DocumentSession(opened.workbook);
+    const initialSheetId = isSheetVisible(opened.workbook, opened.initialSheetId)
+      ? opened.initialSheetId
+      : (firstVisibleSheetId(opened.workbook) ?? opened.initialSheetId);
     const calculation = new CalculationController(session, {
       onModelChanged: () => setVersion((value) => value + 1),
       onCircular: (circular, sheetNames) => {
@@ -125,17 +177,20 @@ export function App(): JSX.Element {
       pkg: opened.package,
       fileName,
       handle,
-      sheetId: opened.initialSheetId,
+      sheetId: initialSheetId,
       compatibility: opened.compatibility,
       calculation,
     });
+    setSheetViews(initialSheetViews(opened.workbook));
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setFocusZone('grid');
     setLiveEditText(null);
     setBarDraft(null);
     setBarCaretRequest(null);
+    setDimensionPreview(null);
     barEditAddressRef.current = null;
     barPointingRef.current = null;
+    clipboardRef.current = null;
     setVersion((value) => value + 1);
     setStatus(`Opened ${fileName}.`);
     setCalcWarning(null);
@@ -197,12 +252,15 @@ export function App(): JSX.Element {
     // browser is writing are not in the saved bytes and must stay dirty.
     const savedDirty = document.session.dirtyCellSnapshot();
     const savedDimensions = document.session.dirtyDimensionSnapshot();
+    const savedMerges = document.session.dirtyMergeSnapshot();
+    const savedStructuralVersion = document.session.structuralVersion;
     try {
       const result = saveWorkbook({
         workbook: document.session.workbook,
         package: document.pkg,
         dirtyCells: dirtyKeysFromSnapshot(savedDirty),
         dirtyDimensions: savedDimensions,
+        dirtyMerges: new Set(savedMerges.keys()),
       });
       const outcome = await saveWorkbookFile(result.bytes, document.fileName, document.handle, {
         forceFallback: FORCE_FALLBACK,
@@ -213,12 +271,24 @@ export function App(): JSX.Element {
         return;
       }
       adoptSavedPackage(document.session.workbook, result.package);
-      document.session.markSaved(savedDirty, savedDimensions);
-      setDocument({
-        ...document,
-        pkg: result.package,
-        fileName: outcome.fileName,
-        handle: outcome.handle ?? document.handle,
+      document.session.markSaved(savedDirty, savedDimensions, savedStructuralVersion, savedMerges);
+      setDocument((current) => {
+        // The file write is asynchronous, so a tab switch or a terminal sheet
+        // delete may have changed the view since this save began. Adopt only
+        // the saved package fields and keep a still-valid active sheet; when
+        // the active sheet was removed, move to the first visible one.
+        if (current === null || current.session !== document.session) return current;
+        const workbook = current.session.workbook;
+        const sheetId = workbook.sheets.some((sheet) => sheet.id === current.sheetId)
+          ? current.sheetId
+          : (firstVisibleSheetId(workbook) ?? workbook.sheets[0]?.id ?? current.sheetId);
+        return {
+          ...current,
+          pkg: result.package,
+          fileName: outcome.fileName,
+          handle: outcome.handle ?? current.handle,
+          sheetId,
+        };
       });
       setVersion((current) => current + 1);
       recoveryRef.current = null;
@@ -263,18 +333,113 @@ export function App(): JSX.Element {
     setStatus(`Edited ${formatCellRef(address.row, address.col)}.`);
   };
 
+  const focusGrid = (): void => {
+    setFocusZone('grid');
+    shellRef.current?.focus();
+  };
+
+  /**
+   * Apply a command's active-sheet hint. It is view state: undo of an insert
+   * returns to the fallback tab, while a terminal sheet delete names the
+   * neighbouring tab the chrome should activate.
+   */
+  const applyActiveSheetHint = (result: CommandResult): void => {
+    if (document === null) return;
+    const workbook = document.session.workbook;
+    const sheetId = result.activeSheetId;
+    if (sheetId === undefined || sheetId === null || sheetId === document.sheetId) return;
+    const hintSheet = workbook.sheets.find((sheet) => sheet.id === sheetId);
+    const currentSheet = workbook.sheets.find((sheet) => sheet.id === document.sheetId);
+    const targetSheet =
+      hintSheet !== undefined && isSheetVisible(workbook, hintSheet.id)
+        ? hintSheet
+        : currentSheet !== undefined && isSheetVisible(workbook, currentSheet.id)
+          ? currentSheet
+          : undefined;
+    // A hidden target is never activated; fall back to the current visible
+    // sheet or the first visible tab. This stays view state only.
+    const targetId = targetSheet?.id ?? firstVisibleSheetId(workbook);
+    if (targetId === null || targetId === document.sheetId) return;
+    setDocument({ ...document, sheetId: targetId });
+    setSelection(collapseSelection({ row: 0, col: 0 }));
+    setLiveEditText(null);
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    barEditAddressRef.current = null;
+    barPointingRef.current = null;
+    focusGrid();
+  };
+
   const undo = (): void => {
     if (document === null) return;
-    document.session.dispatch('edit.undo', undefined);
+    const result = document.session.dispatch('edit.undo', undefined);
+    applyActiveSheetHint(result);
     setVersion((current) => current + 1);
     setStatus('Undo.');
   };
 
   const redo = (): void => {
     if (document === null) return;
-    document.session.dispatch('edit.redo', undefined);
+    const result = document.session.dispatch('edit.redo', undefined);
+    applyActiveSheetHint(result);
     setVersion((current) => current + 1);
     setStatus('Redo.');
+  };
+
+  const copySelection = (mode: ClipboardMode): void => {
+    if (document === null) return;
+    const range = selectionRange(selection);
+    const result = document.session.dispatch(mode === 'copy' ? 'edit.copy' : 'edit.cut', {
+      sheetId: document.sheetId,
+      range,
+    });
+    if (result.ui?.message !== undefined) {
+      setStatus(result.ui.message);
+      return;
+    }
+    if (result.clipboard !== undefined) clipboardRef.current = result.clipboard;
+    const label =
+      projection === null ? 'the selection' : formatSelectionAddress(selection, projection);
+    setStatus(`${mode === 'copy' ? 'Copied' : 'Cut'} ${label}.`);
+    focusGrid();
+  };
+
+  const pasteClipboard = (): void => {
+    if (document === null) return;
+    const snapshot = clipboardRef.current;
+    if (snapshot === null) {
+      setStatus('The clipboard is empty.');
+      return;
+    }
+    const result = document.session.dispatch('edit.paste', {
+      sheetId: document.sheetId,
+      target: selectionRange(selection),
+      snapshot,
+    });
+    setVersion((current) => current + 1);
+    if (result.ui?.message !== undefined) {
+      setStatus(result.ui.message);
+      return;
+    }
+    if (result.selectionAfter !== undefined) {
+      setSelection(
+        selectionForRange(result.selectionAfter, {
+          row: result.selectionAfter.startRow,
+          col: result.selectionAfter.startCol,
+        }),
+      );
+    }
+    if (snapshot.mode === 'cut') clipboardRef.current = null;
+    if (result.changes.length === 0) {
+      setStatus('The paste made no change.');
+    } else {
+      const label =
+        result.selectionAfter === undefined || projection === null
+          ? 'the pasted range'
+          : formatRangeAddress(result.selectionAfter, false, false);
+      setStatus(`Pasted ${label}.`);
+    }
+    focusGrid();
   };
 
   const dirty = document?.session.hasUnsavedChanges ?? false;
@@ -296,6 +461,20 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
 
+  // A sheet inserted by a command starts with its imported/default view.
+  useEffect(() => {
+    if (document === null) return;
+    setSheetViews((previous) => {
+      let next: Record<string, SheetViewState> | null = null;
+      for (const sheet of document.session.workbook.sheets) {
+        if (previous[sheet.id] !== undefined) continue;
+        next ??= { ...previous };
+        next[sheet.id] = viewForSheet(sheet);
+      }
+      return next ?? previous;
+    });
+  }, [document, version]);
+
   const focusZoneRef = useRef<FocusZone>(focusZone);
   focusZoneRef.current = focusZone;
 
@@ -308,6 +487,11 @@ export function App(): JSX.Element {
       }
       if (event.key === 'Escape' && focusZoneRef.current !== 'grid') {
         setFocusZone('grid');
+        return;
+      }
+      if (event.shiftKey && event.key === 'F11') {
+        event.preventDefault();
+        insertSheet();
         return;
       }
       if (!event.ctrlKey && !event.metaKey) return;
@@ -362,6 +546,10 @@ export function App(): JSX.Element {
         setStatus(`"${trimmed}" points at a sheet that is no longer open.`);
         return null;
       }
+      if (!isSheetVisible(document.session.workbook, sheet.id)) {
+        setStatus(`Sheet "${sheet.name}" is hidden and cannot be activated in this milestone.`);
+        return null;
+      }
       const { range } = resolved;
       if (
         range.startRow < 0 ||
@@ -389,6 +577,170 @@ export function App(): JSX.Element {
     },
     [document],
   );
+
+  /** Dispatch a sheet command through the session; the sheet track owns the model. */
+  const dispatchSheetCommand = (commandId: string, args: unknown): CommandResult | null => {
+    if (document === null) return null;
+    try {
+      const result = document.session.dispatch(commandId, args, {
+        activeSheetId: document.sheetId,
+        selection: selectionRange(selection),
+        activeCell: selection.focus,
+      });
+      applyActiveSheetHint(result);
+      setVersion((value) => value + 1);
+      if (result.ui?.message !== undefined) setStatus(result.ui.message);
+      return result;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  };
+
+  /** Switch tabs without touching the document or marking it dirty. */
+  const activateSheet = (sheetId: string): void => {
+    if (document === null || sheetId === document.sheetId) return;
+    const sheet = document.session.workbook.sheets.find((candidate) => candidate.id === sheetId);
+    if (sheet === undefined) return;
+    if (!isSheetVisible(document.session.workbook, sheet.id)) {
+      setStatus(`Sheet "${sheet.name}" is hidden and cannot be activated in this milestone.`);
+      return;
+    }
+    setDocument({ ...document, sheetId: sheet.id });
+    setSelection(collapseSelection({ row: 0, col: 0 }));
+    setLiveEditText(null);
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    barEditAddressRef.current = null;
+    barPointingRef.current = null;
+    focusGrid();
+    setStatus(`Switched to ${sheet.name}.`);
+  };
+
+  const changeZoom = (value: number): void => {
+    if (document === null) return;
+    const zoom = clampZoomPercent(value);
+    const sheetId = document.sheetId;
+    setSheetViews((previous) => {
+      const current = previous[sheetId] ?? DEFAULT_SHEET_VIEW;
+      if (current.zoom === zoom) return previous;
+      return { ...previous, [sheetId]: { ...current, zoom } };
+    });
+  };
+
+  const toggleGridLines = (): void => {
+    if (document === null) return;
+    const sheetId = document.sheetId;
+    setSheetViews((previous) => {
+      const current = previous[sheetId] ?? DEFAULT_SHEET_VIEW;
+      return {
+        ...previous,
+        [sheetId]: { ...current, showGridLines: !current.showGridLines },
+      };
+    });
+  };
+
+  const toggleHeadings = (): void => {
+    if (document === null) return;
+    const sheetId = document.sheetId;
+    setSheetViews((previous) => {
+      const current = previous[sheetId] ?? DEFAULT_SHEET_VIEW;
+      return {
+        ...previous,
+        [sheetId]: { ...current, showHeadings: !current.showHeadings },
+      };
+    });
+  };
+
+  const insertSheet = (): void => {
+    if (document === null) return;
+    focusGrid();
+    const sheets = document.session.workbook.sheets;
+    const activeIndex = sheets.findIndex((sheet) => sheet.id === document.sheetId);
+    const result = dispatchSheetCommand('sheet.insert', {
+      index: activeIndex < 0 ? sheets.length : activeIndex + 1,
+    });
+    if (result === null) return;
+    if (result.changes.length === 0) {
+      setStatus(result.ui?.message ?? 'No sheet was inserted.');
+      return;
+    }
+    const inserted =
+      result.activeSheetId === undefined || result.activeSheetId === null
+        ? undefined
+        : document.session.workbook.sheets.find((sheet) => sheet.id === result.activeSheetId);
+    focusGrid();
+    setStatus(`Inserted ${inserted?.name ?? 'a sheet'}.`);
+  };
+
+  const renameSheet = (sheetId: string, name: string): void => {
+    if (document === null) return;
+    const trimmed = name.trim();
+    if (trimmed === '') {
+      focusGrid();
+      setStatus('A sheet name cannot be empty.');
+      return;
+    }
+    const target = document.session.workbook.sheets.find((sheet) => sheet.id === sheetId);
+    if (target === undefined || target.name === trimmed) {
+      focusGrid();
+      return;
+    }
+    const previousName = target.name;
+    const result = dispatchSheetCommand('sheet.rename', { sheetId, name: trimmed });
+    focusGrid();
+    if (result !== null) {
+      setStatus(result.ui?.message ?? `Renamed ${previousName} to ${trimmed}.`);
+    }
+  };
+
+  const deleteSheet = (sheetId: string): void => {
+    if (document === null) return;
+    focusGrid();
+    const sheets = document.session.workbook.sheets;
+    if (visibleSheetCount(document.session.workbook) <= 1) {
+      setStatus('A workbook must keep at least one visible sheet.');
+      return;
+    }
+    const target = sheets.find((sheet) => sheet.id === sheetId);
+    if (target === undefined) return;
+    if (!isSheetVisible(document.session.workbook, target.id)) {
+      setStatus(`Sheet "${target.name}" is hidden and cannot be deleted from the tab strip.`);
+      return;
+    }
+    const targetName = target.name;
+
+    // The command asks for the permanent-delete warning before it changes the
+    // model. The delete is terminal, so the chrome offers no undo afterwards.
+    const first = dispatchSheetCommand('sheet.delete', { sheetId });
+    if (first === null) return;
+    if (first.changes.length > 0) {
+      setStatus(first.ui?.message ?? `Deleted ${targetName}.`);
+      return;
+    }
+    if (first.ui?.type !== 'dialog') {
+      setStatus(first.ui?.message ?? 'The sheet was not deleted.');
+      return;
+    }
+    const confirmed =
+      typeof window === 'undefined'
+        ? false
+        : window.confirm(
+            first.ui.message ??
+              `Deleting "${targetName}" cannot be undone, and its data may be lost. Delete the sheet?`,
+          );
+    if (!confirmed) {
+      setStatus('Delete cancelled.');
+      return;
+    }
+    const second = dispatchSheetCommand('sheet.delete', { sheetId, confirm: true });
+    if (second === null) return;
+    setStatus(
+      second.changes.length > 0
+        ? (second.ui?.message ?? `Deleted ${targetName}. This cannot be undone.`)
+        : (second.ui?.message ?? 'The sheet was not deleted.'),
+    );
+  };
 
   const loadBenchmarkSheet = (options: {
     rows: number;
@@ -495,6 +847,7 @@ export function App(): JSX.Element {
         activeCell: selection.focus,
         ...options,
       });
+      applyActiveSheetHint(result);
       setVersion((value) => value + 1);
       if (result.ui?.message !== undefined) setStatus(result.ui.message);
       else if (commandId === 'workbook.dateSystem') {
@@ -517,6 +870,34 @@ export function App(): JSX.Element {
         status,
         dateSystem: document === null ? null : dateSystemLabel(document.session.workbook),
       }),
+      getSheets: () => (document === null ? [] : sheetTabList(document.session.workbook)),
+      getViewState: () => ({
+        activeSheetId: document?.sheetId ?? null,
+        zoom: activeView.zoom,
+        showGridLines: activeView.showGridLines,
+        showHeadings: activeView.showHeadings,
+      }),
+      getSavedViewState: () => {
+        if (document === null) return null;
+        const sheet = document.session.workbook.sheets.find(
+          (candidate) => candidate.id === document.sheetId,
+        );
+        return sheet === undefined
+          ? null
+          : {
+              zoom: sheet.view.zoom,
+              showGridLines: sheet.view.showGridLines,
+              showHeadings: sheet.view.showHeadings,
+            };
+      },
+      getSelectionStatistics: () => selectionStatistics,
+      setZoom: changeZoom,
+      toggleGridLines,
+      toggleHeadings,
+      activateSheet,
+      insertSheet,
+      renameSheet,
+      deleteSheet,
       dispatchCommand,
       setDateSystem: (date1904: boolean) => dispatchCommand('workbook.dateSystem', { date1904 }),
       getDateSystem: () =>
@@ -700,32 +1081,88 @@ export function App(): JSX.Element {
   };
 
   /**
-   * Header double-click autofit. The grid measured the content; storing the
-   * result as a dimension keeps the imported dimension's other flags intact
-   * and records the `customHeight`/`customWidth` and `bestFit` state.
+   * Header double-click autofit. The grid measured each selected member's own
+   * content; storing the results as one dimension batch keeps the imported
+   * flags intact, records `customHeight`/`customWidth` and `bestFit`, and makes
+   * the whole selection one undo step.
    */
-  const autofitDimension = (axis: 'row' | 'column', index: number, result: AutofitResult): void => {
-    if (document === null) return;
-    const stored =
-      axis === 'row'
-        ? (projection?.rowDimension(index) ?? null)
-        : (projection?.columnDimension(index) ?? null);
+  const autofitDimension = (axis: DimensionAxis, targets: readonly AutofitTarget[]): void => {
+    if (document === null || targets.length === 0) return;
+    const entries = targets.map(({ index, result }) => {
+      const stored =
+        axis === 'row'
+          ? (projection?.rowDimension(index) ?? null)
+          : (projection?.columnDimension(index) ?? null);
+      return { index, size: result.modelValue, hidden: stored?.hidden };
+    });
     const outcome = document.session.dispatch('dimension.set', {
       sheetId: document.sheetId,
       axis,
-      index,
-      size: result.modelValue,
+      entries,
       custom: true,
       bestFit: axis === 'column' ? true : undefined,
-      hidden: stored?.hidden,
+    });
+    setVersion((current) => current + 1);
+    const labels = targets.map((target) => target.index);
+    setStatus(
+      outcome.changes.length === 0
+        ? `No ${axis === 'row' ? 'row height' : 'column width'} change was needed.`
+        : `Autofitted ${dimensionTargetLabel(axis, labels)}.`,
+    );
+  };
+
+  /** Paint the live header-drag size without touching the document. */
+  const previewDimensionResize = (
+    axis: DimensionAxis,
+    indices: readonly number[],
+    result: DimensionResize | null,
+  ): void => {
+    setDimensionPreview((current) => {
+      if (result === null) return null;
+      if (
+        current !== null &&
+        current.axis === axis &&
+        sameIndices(current.indices, indices) &&
+        current.size === result.modelValue
+      ) {
+        return current;
+      }
+      return { axis, indices: [...indices], size: result.modelValue };
+    });
+  };
+
+  /**
+   * A released header drag is one undoable dimension command for every
+   * selected visible member. The stored hidden flag and every other imported
+   * flag stay with each dimension record; a manual resize clears a previous
+   * autofit's `bestFit`.
+   */
+  const commitDimensionResize = (
+    axis: DimensionAxis,
+    indices: readonly number[],
+    result: DimensionResize,
+  ): void => {
+    setDimensionPreview(null);
+    if (document === null || indices.length === 0) return;
+    const entries = indices.map((index) => {
+      const stored =
+        axis === 'row'
+          ? (projection?.rowDimension(index) ?? null)
+          : (projection?.columnDimension(index) ?? null);
+      return { index, size: result.modelValue, hidden: stored?.hidden };
+    });
+    const outcome = document.session.dispatch('dimension.set', {
+      sheetId: document.sheetId,
+      axis,
+      entries,
+      custom: true,
+      bestFit: axis === 'column' ? false : undefined,
     });
     setVersion((current) => current + 1);
     setStatus(
       outcome.changes.length === 0
         ? `No ${axis === 'row' ? 'row height' : 'column width'} change was needed.`
-        : `Autofitted ${axis === 'row' ? 'row' : 'column'} ${
-            axis === 'row' ? index + 1 : columnToLetters(index)
-          }.`,
+        : `Resized ${dimensionTargetLabel(axis, indices)}.`,
     );
   };
 
@@ -735,7 +1172,7 @@ export function App(): JSX.Element {
         <div className="brand">
           <img className="brand-icon" src={appIcon} alt="" width={28} height={28} />
           <span className="brand-name">calcplus</span>
-          <span className="brand-phase">M3C model depth</span>
+          <span className="brand-phase">M4B workbook view</span>
         </div>
         <div className="file-meta">
           <span data-testid="file-name">{document?.fileName ?? 'No workbook open'}</span>
@@ -849,9 +1286,15 @@ export function App(): JSX.Element {
             onSelectionChange={setSelection}
             onCommit={runCellSet}
             onClear={(address) => runCellSet(address, '')}
+            onCopy={() => copySelection('copy')}
+            onCut={() => copySelection('cut')}
+            onPaste={pasteClipboard}
             onEditorChange={setLiveEditText}
             formulaBarPointing={barFormulaActive ? { onPoint: pointFormulaBarSelection } : null}
             onAutofit={autofitDimension}
+            onResizePreview={previewDimensionResize}
+            onResizeCommit={commitDimensionResize}
+            onZoomChange={changeZoom}
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />
@@ -869,30 +1312,31 @@ export function App(): JSX.Element {
         )}
       </main>
 
-      <footer className="status-bar">
-        <span data-testid="active-cell">
-          {document === null ? '' : formatCellRef(active.row, active.col)}
-        </span>
-        <span data-testid="active-value">
-          {projection?.cellAt(active.row, active.col)?.displayText ?? ''}
-        </span>
-        {activeCell?.stale ? (
-          <span className="stale-marker" data-testid="active-stale">
-            not recalculated
-          </span>
-        ) : null}
-        <span className="status-spacer" />
-        {staleCount > 0 ? (
-          <span
-            className="stale-marker"
-            data-testid="stale-count"
-            title="Cells whose cached result was kept because it could not be recalculated"
-          >
-            {staleCount} not recalculated
-          </span>
-        ) : null}
-        <span data-testid="status-message">{status}</span>
-      </footer>
+      {document !== null ? (
+        <SheetTabs
+          sheets={sheetTabs}
+          activeSheetId={document.sheetId}
+          onSelectSheet={activateSheet}
+          onInsertSheet={insertSheet}
+          onRenameSheet={renameSheet}
+          onDeleteSheet={deleteSheet}
+        />
+      ) : null}
+
+      <StatusBar
+        status={status}
+        activeCell={document === null ? '' : formatCellRef(active.row, active.col)}
+        activeValue={projection?.cellAt(active.row, active.col)?.displayText ?? ''}
+        stale={activeCell?.stale === true}
+        staleCount={staleCount}
+        statistics={selectionStatistics}
+        showGridLines={activeView.showGridLines}
+        showHeadings={activeView.showHeadings}
+        zoom={activeView.zoom}
+        onToggleGridLines={toggleGridLines}
+        onToggleHeadings={toggleHeadings}
+        onZoomChange={changeZoom}
+      />
     </div>
   );
 }
@@ -911,6 +1355,19 @@ function formatSelectionAddress(selection: GridSelection, projection: SheetProje
     return `${startRow + 1}:${endRow + 1}`;
   }
   return `${formatCellRef(startRow, startCol)}:${formatCellRef(endRow, endCol)}`;
+}
+
+/** One dimension uses its sheet label; a multi-header selection counts members. */
+function dimensionTargetLabel(axis: DimensionAxis, indices: readonly number[]): string {
+  if (indices.length === 1) {
+    const index = indices[0]!;
+    return axis === 'row' ? `row ${index + 1}` : `column ${columnToLetters(index)}`;
+  }
+  return `${indices.length} ${axis === 'row' ? 'rows' : 'columns'}`;
+}
+
+function sameIndices(left: readonly number[], right: readonly number[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function formatRangeAddress(

@@ -24,10 +24,13 @@ export type TextRotation =
   | { readonly kind: 'angle'; readonly radians: number }
   | { readonly kind: 'stacked' };
 
-/** A font size in points, rendered at 96 dpi and rounded to a quarter pixel. */
-export function fontSizePixels(style: ProjectedStyle): number {
-  const raw = (Math.max(1, style.font.size) * 96) / 72;
-  return Math.max(1, Math.round(raw * 4) / 4);
+/**
+ * A font size in points, rendered at 96 dpi at the given display zoom and
+ * rounded to a quarter pixel.
+ */
+export function fontSizePixels(style: ProjectedStyle, zoom = 1): number {
+  const raw = ((Math.max(1, style.font.size) * 96) / 72) * zoom;
+  return Math.max(0.5, Math.round(raw * 4) / 4);
 }
 
 /** The CSS font shorthand for a projected style. */
@@ -143,10 +146,12 @@ export function fitFontSize(
   maxWidth: number,
   measure: TextMeasure,
   minimum = MIN_FONT_PIXELS,
+  zoom = 1,
 ): number {
-  const original = fontSizePixels(style);
+  const original = fontSizePixels(style, zoom);
   if (measure(text, fontFor(style, original)) <= maxWidth) return original;
-  let low = Math.min(minimum, original);
+  const minimumSize = Math.max(0.5, minimum * zoom);
+  let low = Math.min(minimumSize, original);
   let high = original;
   let best = low;
   while (high - low > 0.25) {
@@ -158,7 +163,7 @@ export function fitFontSize(
       high = middle;
     }
   }
-  return Math.max(minimum, best);
+  return Math.max(minimumSize, best);
 }
 
 /** The height of one line box for a size in pixels. */
@@ -166,14 +171,14 @@ export function lineHeightFor(sizePixels: number): number {
   return Math.max(1, sizePixels * LINE_SPACING);
 }
 
-/** The horizontal padding a cell adds before its text. */
-export function horizontalPadding(): number {
-  return TEXT_PADDING;
+/** The horizontal padding a cell adds before its text, at the display zoom. */
+export function horizontalPadding(zoom = 1): number {
+  return TEXT_PADDING * zoom;
 }
 
-/** The indentation the aligned side adds, in pixels. */
-export function horizontalIndent(style: ProjectedStyle): number {
-  return Math.max(0, style.alignment.indent) * INDENT_WIDTH;
+/** The indentation the aligned side adds, in pixels at the display zoom. */
+export function horizontalIndent(style: ProjectedStyle, zoom = 1): number {
+  return Math.max(0, style.alignment.indent) * INDENT_WIDTH * zoom;
 }
 
 /**
@@ -183,11 +188,13 @@ export function horizontalIndent(style: ProjectedStyle): number {
 export function textInsets(
   style: ProjectedStyle,
   horizontal: HorizontalTextAlignment,
+  zoom = 1,
 ): { readonly left: number; readonly right: number } {
-  const indent = horizontalIndent(style);
-  if (horizontal === 'left') return { left: TEXT_PADDING + indent, right: TEXT_PADDING };
-  if (horizontal === 'right') return { left: TEXT_PADDING, right: TEXT_PADDING + indent };
-  return { left: TEXT_PADDING, right: TEXT_PADDING };
+  const padding = TEXT_PADDING * zoom;
+  const indent = horizontalIndent(style, zoom);
+  if (horizontal === 'left') return { left: padding + indent, right: padding };
+  if (horizontal === 'right') return { left: padding, right: padding + indent };
+  return { left: padding, right: padding };
 }
 
 function breakLongToken(

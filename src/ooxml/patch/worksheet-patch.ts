@@ -28,6 +28,8 @@ export interface WorksheetSaveInput {
   readonly sheet: Sheet;
   readonly dirtyCells: readonly DirtyCellInput[];
   readonly dirtyDimensions?: DirtyDimensions;
+  /** Replace the merge list from the model, even when no cell changed. */
+  readonly syncMerges?: boolean;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
   readonly options?: WorksheetSaveOptions;
@@ -54,7 +56,11 @@ interface Edit {
 class PositionPatchUnsafe extends Error {}
 
 export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResult {
-  if (input.dirtyCells.length === 0 && !hasDirtyDimensions(input.dirtyDimensions)) {
+  if (
+    input.dirtyCells.length === 0 &&
+    !hasDirtyDimensions(input.dirtyDimensions) &&
+    input.syncMerges !== true
+  ) {
     return { bytes: input.sourceBytes, mode: 'none' };
   }
   const maxFallback = input.options?.maxTreeFallbackBytes ?? MAX_TREE_PATCH_BYTES;
@@ -67,8 +73,12 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
       });
       if (parsed.unsafeReasons.length === 0 && parsed.sheetData !== null) {
         const patched = patchByPosition(parsed, input);
-        if (isWellFormedXml(patched) && preservesCellOrder(patched, input)) {
-          return { bytes: new TextEncoder().encode(patched), mode: 'position' };
+        const withMerges =
+          input.syncMerges === true
+            ? patchMergeCellsXml(patched, parsed.rootPrefix, input.sheet)
+            : patched;
+        if (isWellFormedXml(withMerges) && preservesCellOrder(withMerges, input)) {
+          return { bytes: new TextEncoder().encode(withMerges), mode: 'position' };
         }
       }
     } catch (error) {
@@ -91,6 +101,7 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     sheet: input.sheet,
     dirtyCells: input.dirtyCells,
     dirtyDimensions: input.dirtyDimensions,
+    syncMerges: input.syncMerges,
     sharedStringsTable: input.sharedStringsTable,
     sharedStrings: input.sharedStrings,
   });
@@ -509,6 +520,50 @@ function preservesCellOrder(xml: string, input: WorksheetSaveInput): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Replace the worksheet's `<mergeCells>` element with the model's merge list.
+ * The paste is the only authoring path for merges in this milestone, and it
+ * must survive a save exactly like a cell or a dimension.
+ */
+function patchMergeCellsXml(xml: string, prefix: string, sheet: Sheet): string {
+  const mergeCellsTag = qualified(prefix, 'mergeCells');
+  const mergeCellTag = qualified(prefix, 'mergeCell');
+  const elementPattern = new RegExp(
+    `<${escapeRegExp(mergeCellsTag)}\\b[^>]*?(?:/>|>[\\s\\S]*?</${escapeRegExp(mergeCellsTag)}\\s*>)`,
+  );
+  const replacement =
+    sheet.merges.length === 0
+      ? ''
+      : `<${mergeCellsTag} count="${sheet.merges.length}">${sheet.merges
+          .map((merge) => `<${mergeCellTag} ref="${formatRange(merge.range)}"/>`)
+          .join('')}</${mergeCellsTag}>`;
+  const existing = elementPattern.exec(xml);
+  if (existing !== null) {
+    return (
+      xml.slice(0, existing.index) + replacement + xml.slice(existing.index + existing[0].length)
+    );
+  }
+  if (replacement === '') return xml;
+  const sheetDataTag = qualified(prefix, 'sheetData');
+  const sheetDataPattern = new RegExp(
+    `<${escapeRegExp(sheetDataTag)}\\b[^>]*?(?:/>|>[\\s\\S]*?</${escapeRegExp(sheetDataTag)}\\s*>)`,
+  );
+  const sheetData = sheetDataPattern.exec(xml);
+  if (sheetData === null) return xml;
+  const position = sheetData.index + sheetData[0].length;
+  return xml.slice(0, position) + replacement + xml.slice(position);
+}
+
+function formatRange(range: Sheet['merges'][number]['range']): string {
+  const start = formatCellRef(range.startRow, range.startCol);
+  const end = formatCellRef(range.endRow, range.endCol);
+  return `${start}:${end}`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function insertionPosition(row: WorksheetRowPosition, col: number): number {

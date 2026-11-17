@@ -32,10 +32,16 @@ export const MAX_COLUMN_WIDTH_CHARACTERS = 255;
 const MIN_ROW_HEIGHT_PIXELS = 20;
 
 export interface AutofitResult {
-  /** The size to paint, in CSS pixels. */
+  /** The size to paint at 100%; the grid scales it by the display zoom. */
   readonly pixels: number;
   /** The same size in the unit the model stores: points or characters. */
   readonly modelValue: number;
+}
+
+/** One selected row or column and the content size measured for it. */
+export interface AutofitTarget {
+  readonly index: number;
+  readonly result: AutofitResult;
 }
 
 /** The fitted width of one column, in pixels, and in Excel characters. */
@@ -130,11 +136,11 @@ function cellWidth(
 ): number {
   const merge = cell.merge;
   if (merge === null || merge.anchorRow !== row || merge.anchorCol !== column) {
-    return projection.columnWidth(column);
+    return projection.columnWidth(column) / projection.zoom;
   }
   let width = 0;
   for (let offset = 0; offset < merge.colSpan; offset += 1) {
-    width += projection.columnWidth(merge.anchorCol + offset);
+    width += projection.columnWidth(merge.anchorCol + offset) / projection.zoom;
   }
   return width;
 }

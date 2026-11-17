@@ -7,7 +7,7 @@ import type {
 } from 'react';
 import { flushSync } from 'react-dom';
 import type { SheetProjection } from '@view/types';
-import { autofitColumnWidth, autofitRowHeight, type AutofitResult } from './autofit';
+import { autofitColumnWidth, autofitRowHeight, type AutofitTarget } from './autofit';
 import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
 import { gridDebugState } from './debug';
 import {
@@ -36,11 +36,15 @@ import {
   clampScroll,
   columnAtHeader,
   computePaneLayout,
+  headerResizeTarget,
+  headerSelectionIndices,
+  headerSelectionRange,
   mergedRect,
   rowAtHeader,
   scrollToReveal,
   type PaneLayout,
 } from './panes';
+import { resizeDimension, type DimensionAxis, type DimensionResize } from './resize';
 import { collapseSelection, extendSelection, selectionForRange } from './selection';
 
 export interface CanvasGridProps {
@@ -49,6 +53,10 @@ export interface CanvasGridProps {
   readonly onSelectionChange: (selection: GridSelection) => void;
   readonly onCommit: (address: GridCellAddress, text: string) => void;
   readonly onClear: (address: GridCellAddress) => void;
+  /** In-app clipboard commands; the application owns the snapshot. */
+  readonly onCopy?: () => void;
+  readonly onCut?: () => void;
+  readonly onPaste?: () => void;
   /**
    * Reports the live editor text, or `null` once the edit ends, so the formula
    * bar mirrors in-cell typing before the cell is committed.
@@ -62,11 +70,35 @@ export interface CanvasGridProps {
     readonly onPoint: (anchor: GridCellAddress, focus: GridCellAddress) => void;
   } | null;
   /**
-   * A header double-click autofits the row or column. The grid owns the canvas
-   * metrics; the application stores the resulting dimension through the
-   * `dimension.set` command.
+   * A header double-click autofits every selected row or column to its own
+   * content. The grid owns the canvas metrics; the application stores the
+   * results through one `dimension.set` transaction.
    */
-  readonly onAutofit?: (axis: 'row' | 'column', index: number, result: AutofitResult) => void;
+  readonly onAutofit?: (axis: DimensionAxis, targets: readonly AutofitTarget[]) => void;
+  /**
+   * A header-edge drag previews a row height or column width on every selected
+   * visible member. The size is view state until the pointer is released;
+   * `null` abandons the preview.
+   */
+  readonly onResizePreview?: (
+    axis: DimensionAxis,
+    indices: readonly number[],
+    result: DimensionResize | null,
+  ) => void;
+  /**
+   * A header-edge drag ended. The application stores the result through the
+   * undoable `dimension.set` command as one transaction.
+   */
+  readonly onResizeCommit?: (
+    axis: DimensionAxis,
+    indices: readonly number[],
+    result: DimensionResize,
+  ) => void;
+  /**
+   * Ctrl+wheel changes the display zoom. The application owns the live zoom
+   * because it is view state, not document state.
+   */
+  readonly onZoomChange?: (zoomPercent: number) => void;
   /**
    * The focus owner hands the grid shell to the focus manager.
    */
@@ -90,9 +122,15 @@ export function CanvasGrid({
   onSelectionChange,
   onCommit,
   onClear,
+  onCopy,
+  onCut,
+  onPaste,
   onEditorChange,
   formulaBarPointing,
   onAutofit,
+  onResizePreview,
+  onResizeCommit,
+  onZoomChange,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -108,6 +146,12 @@ export function CanvasGrid({
   const stateRef = useRef({ projection, selection });
   const editorSessionRef = useRef<EditorSession | null>(null);
   const dragRef = useRef<{ axis: 'x' | 'y'; start: number; origin: number } | null>(null);
+  const resizeDragRef = useRef<{
+    readonly pointerId: number;
+    readonly axis: DimensionAxis;
+    readonly index: number;
+  } | null>(null);
+  const zoomWheelRef = useRef(0);
   const selectionDragRef = useRef<{
     readonly pointerId: number;
     readonly anchor: GridCellAddress;
@@ -209,22 +253,18 @@ export function CanvasGrid({
     schedulePaint();
   }, [viewport, schedulePaint]);
 
-  // Keep the active cell visible when the selection moves.
+  // Keep the active cell visible when the selection moves or the zoom changes.
+  // The layout is recomputed here because the paint may not have run with the
+  // new projection yet.
   useEffect(() => {
-    const layout = layoutRef.current;
-    if (layout === null) return;
-    const next = scrollToReveal(
-      projection,
-      layout,
-      scrollRef.current.x,
-      scrollRef.current.y,
-      selection.focus,
-    );
+    const layout = computePaneLayout(projection, viewport.width, viewport.height);
+    const clamped = clampScroll(layout, scrollRef.current.x, scrollRef.current.y);
+    const next = scrollToReveal(projection, layout, clamped.x, clamped.y, selection.focus);
     if (next.x !== scrollRef.current.x || next.y !== scrollRef.current.y) {
       scrollRef.current = next;
       schedulePaint();
     }
-  }, [projection, selection, schedulePaint]);
+  }, [projection, selection, viewport, schedulePaint]);
 
   const editorId = editor?.id ?? null;
 
@@ -259,6 +299,18 @@ export function CanvasGrid({
     const onWheel = (event: WheelEvent): void => {
       const layout = layoutRef.current;
       if (layout === null) return;
+      // Pinch-to-zoom arrives as a ctrl+wheel event. Accumulate small
+      // trackpad deltas so one gesture becomes a few zoom steps, not dozens.
+      if ((event.ctrlKey || event.metaKey) && onZoomChange !== undefined) {
+        event.preventDefault();
+        zoomWheelRef.current += event.deltaY;
+        if (Math.abs(zoomWheelRef.current) < 30) return;
+        const direction = zoomWheelRef.current < 0 ? 1 : -1;
+        zoomWheelRef.current = 0;
+        const current = Math.round(stateRef.current.projection.zoom * 100);
+        onZoomChange(current + direction * 10);
+        return;
+      }
       event.preventDefault();
       const deltaX = event.shiftKey ? event.deltaY : event.deltaX;
       const deltaY = event.shiftKey ? 0 : event.deltaY;
@@ -268,7 +320,7 @@ export function CanvasGrid({
     };
     container.addEventListener('wheel', onWheel, { passive: false });
     return () => container.removeEventListener('wheel', onWheel);
-  }, [schedulePaint]);
+  }, [onZoomChange, schedulePaint]);
 
   const setShellRef = useCallback(
     (element: HTMLDivElement | null): void => {
@@ -447,6 +499,73 @@ export function CanvasGrid({
     window.addEventListener('pointercancel', end);
   };
 
+  /** Drag across a row or column header strip to select a contiguous run. */
+  const beginHeaderSelectionDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    axis: DimensionAxis,
+    index: number,
+    focus: GridCellAddress,
+  ): void => {
+    if (event.button !== 0) return;
+    const drag = {
+      pointerId: event.pointerId,
+      axis,
+      startIndex: index,
+      focus,
+      last: index,
+    };
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      const canvas = canvasRef.current;
+      const layout = layoutRef.current;
+      if (canvas === null || layout === null) return;
+      const rect = canvas.getBoundingClientRect();
+      const pointX = moveEvent.clientX - rect.left;
+      const pointY = moveEvent.clientY - rect.top;
+      const projection = stateRef.current.projection;
+      const target =
+        axis === 'column'
+          ? columnAtHeader(projection, layout, pointX, scrollRef.current.x)
+          : rowAtHeader(projection, layout, pointY, scrollRef.current.y);
+      if (target === null || target === drag.last) return;
+      drag.last = target;
+      if (axis === 'column') {
+        onSelectionChange(
+          selectionForRange(
+            {
+              startRow: 0,
+              startCol: Math.min(drag.startIndex, target),
+              endRow: projection.rowCount - 1,
+              endCol: Math.max(drag.startIndex, target),
+            },
+            drag.focus,
+          ),
+        );
+        return;
+      }
+      onSelectionChange(
+        selectionForRange(
+          {
+            startRow: Math.min(drag.startIndex, target),
+            startCol: 0,
+            endRow: Math.max(drag.startIndex, target),
+            endCol: projection.columnCount - 1,
+          },
+          drag.focus,
+        ),
+      );
+    };
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  };
+
   /** Drag a formula reference from the pressed cell to the cell under the pointer. */
   const beginFormulaDrag = (
     event: ReactPointerEvent<HTMLCanvasElement>,
@@ -528,6 +647,136 @@ export function CanvasGrid({
     window.addEventListener('pointercancel', end);
   };
 
+  /** The resize cursor belongs to the DOM canvas, not to a repaint. */
+  const setCanvasCursor = (axis: DimensionAxis | null): void => {
+    const canvas = canvasRef.current;
+    if (canvas === null) return;
+    canvas.style.cursor = axis === 'column' ? 'col-resize' : axis === 'row' ? 'row-resize' : '';
+  };
+
+  /**
+   * A header-edge drag changes every selected visible row height or column
+   * width to the same size. The live size is previewed through the application
+   * so the projection paints it immediately; the release commits one undoable
+   * `dimension.set` transaction for the whole selection.
+   */
+  const beginDimensionResize = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    axis: DimensionAxis,
+    index: number,
+  ): void => {
+    if (event.button !== 0) return;
+    const projection = stateRef.current.projection;
+    const selected = headerSelectionIndices(projection, stateRef.current.selection, axis);
+    let indices: readonly number[] = [index];
+    let anchor = index;
+    if (selected !== null && selected.length > 1) {
+      // A leading edge belongs to the column or row before it; when that edge
+      // touches the selection, the whole selection is the resize target. A
+      // single header keeps the edge owner, as it always has.
+      if (selected.includes(index)) {
+        indices = selected;
+        anchor = index;
+      } else if (selected.includes(index + 1)) {
+        indices = selected;
+        anchor = selected[0] ?? index;
+      }
+    }
+    const origin =
+      axis === 'column' ? projection.columnWidth(anchor) : projection.rowHeight(anchor);
+    if (!(origin > 0)) return;
+    const drag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originPixels: origin / projection.zoom,
+      zoom: projection.zoom,
+      indices,
+      moved: false,
+      last: null as DimensionResize | null,
+    };
+    resizeDragRef.current = { pointerId: drag.pointerId, axis, index };
+    setCanvasCursor(axis);
+
+    const update = (clientX: number, clientY: number): void => {
+      const delta = axis === 'column' ? clientX - drag.startX : clientY - drag.startY;
+      // A double-click on the gutter must reach the autofit path, so small
+      // pointer jitter is not a resize at all.
+      if (!drag.moved && Math.abs(delta) < RESIZE_DRAG_THRESHOLD_PIXELS) return;
+      drag.moved = true;
+      drag.last = resizeDimension(axis, drag.originPixels, delta, drag.zoom);
+      onResizePreview?.(axis, drag.indices, drag.last);
+    };
+
+    const finish = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId || resizeDragRef.current === null) return;
+      update(upEvent.clientX, upEvent.clientY);
+      stopTracking();
+      resizeDragRef.current = null;
+      setCanvasCursor(null);
+      if (drag.moved && drag.last !== null) {
+        if (onResizeCommit !== undefined) onResizeCommit(axis, drag.indices, drag.last);
+        else onResizePreview?.(axis, drag.indices, null);
+      } else {
+        onResizePreview?.(axis, drag.indices, null);
+      }
+    };
+
+    const cancel = (cancelEvent: PointerEvent): void => {
+      if (cancelEvent.pointerId !== drag.pointerId) return;
+      abandon();
+    };
+
+    function abandon(): void {
+      if (resizeDragRef.current === null) return;
+      stopTracking();
+      resizeDragRef.current = null;
+      setCanvasCursor(null);
+      onResizePreview?.(axis, drag.indices, null);
+    }
+
+    function onWindowBlur(): void {
+      abandon();
+    }
+
+    function stopTracking(): void {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', onWindowBlur);
+    }
+
+    function move(moveEvent: PointerEvent): void {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      update(moveEvent.clientX, moveEvent.clientY);
+    }
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', onWindowBlur);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
+    if (resizeDragRef.current !== null) return;
+    const layout = layoutRef.current;
+    if (layout === null) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const target = headerResizeTarget(
+      stateRef.current.projection,
+      layout,
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+      scrollRef.current.x,
+      scrollRef.current.y,
+    );
+    setCanvasCursor(target === null ? null : target.axis);
+  };
+
+  const handlePointerLeave = (): void => {
+    if (resizeDragRef.current === null) setCanvasCursor(null);
+  };
+
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
     const layout = layoutRef.current;
     if (layout === null) return;
@@ -584,16 +833,44 @@ export function CanvasGrid({
 
     containerRef.current?.focus();
 
+    if (event.button === 0) {
+      const resize = headerResizeTarget(current, layout, pointX, pointY, scroll.x, scroll.y);
+      if (resize !== null) {
+        beginDimensionResize(event, resize.axis, resize.index);
+        return;
+      }
+    }
+
     if (pointY < layout.headerHeight && pointX >= layout.headerWidth) {
       const col = columnAtHeader(current, layout, pointX, scroll.x);
       if (col === null) return;
-      onSelectionChange(columnHeaderSelection(current, col, stateRef.current.selection, scroll));
+      const next = columnHeaderSelection(
+        current,
+        col,
+        stateRef.current.selection,
+        scroll,
+        event.shiftKey,
+      );
+      onSelectionChange(next);
+      if (!event.shiftKey) {
+        beginHeaderSelectionDrag(event, 'column', col, { row: next.focus.row, col });
+      }
       return;
     }
     if (pointX < layout.headerWidth && pointY >= layout.headerHeight) {
       const row = rowAtHeader(current, layout, pointY, scroll.y);
       if (row === null) return;
-      onSelectionChange(rowHeaderSelection(current, row, stateRef.current.selection, scroll));
+      const next = rowHeaderSelection(
+        current,
+        row,
+        stateRef.current.selection,
+        scroll,
+        event.shiftKey,
+      );
+      onSelectionChange(next);
+      if (!event.shiftKey) {
+        beginHeaderSelectionDrag(event, 'row', row, { row, col: next.focus.col });
+      }
       return;
     }
 
@@ -622,20 +899,39 @@ export function CanvasGrid({
     const pointY = event.clientY - rect.top;
     const current = stateRef.current.projection;
 
-    // A header double-click autofits the row or column from its content.
+    // A header double-click autofits every selected visible row or column to
+    // its own content. One transaction stores the whole selection.
     if (onAutofit !== undefined) {
       const frame = frameRef.current;
       const measure = frame?.measureText?.bind(frame) ?? null;
       if (measure !== null && pointY < layout.headerHeight && pointX >= layout.headerWidth) {
         const col = columnAtHeader(current, layout, pointX, scrollRef.current.x);
         if (col === null) return;
-        onAutofit('column', col, autofitColumnWidth(current, col, measure));
+        const selected = headerSelectionIndices(current, stateRef.current.selection, 'column');
+        const indices =
+          selected !== null && selected.length > 1 && selected.includes(col) ? selected : [col];
+        onAutofit(
+          'column',
+          indices.map((index) => ({
+            index,
+            result: autofitColumnWidth(current, index, measure),
+          })),
+        );
         return;
       }
       if (measure !== null && pointX < layout.headerWidth && pointY >= layout.headerHeight) {
         const row = rowAtHeader(current, layout, pointY, scrollRef.current.y);
         if (row === null) return;
-        onAutofit('row', row, autofitRowHeight(current, row, measure));
+        const selected = headerSelectionIndices(current, stateRef.current.selection, 'row');
+        const indices =
+          selected !== null && selected.length > 1 && selected.includes(row) ? selected : [row];
+        onAutofit(
+          'row',
+          indices.map((index) => ({
+            index,
+            result: autofitRowHeight(current, index, measure),
+          })),
+        );
         return;
       }
     }
@@ -661,11 +957,30 @@ export function CanvasGrid({
     if (event.nativeEvent.isComposing) return;
     const { key, ctrlKey, shiftKey, altKey, metaKey } = event;
     const current = stateRef.current;
+    if ((ctrlKey || metaKey) && !shiftKey && !altKey) {
+      const shortcut = key.toLowerCase();
+      const clipboardAction =
+        shortcut === 'c' ? onCopy : shortcut === 'x' ? onCut : shortcut === 'v' ? onPaste : null;
+      if (clipboardAction !== undefined && clipboardAction !== null) {
+        event.preventDefault();
+        clipboardAction();
+        return;
+      }
+    }
     const layout = layoutRef.current;
-    const rowHeight = current.projection.rowHeight(0) || GRID_METRICS.rowHeight;
+    const rowHeight =
+      current.projection.rowHeight(0) || GRID_METRICS.rowHeight * current.projection.zoom;
     const pageRows =
       layout === null ? 20 : Math.max(1, Math.floor(layout.scrollRegionHeight / rowHeight));
-    const pageCols = layout === null ? 10 : Math.max(1, Math.floor(layout.scrollRegionWidth / 64));
+    const pageCols =
+      layout === null
+        ? 10
+        : Math.max(
+            1,
+            Math.floor(
+              layout.scrollRegionWidth / (GRID_METRICS.columnWidth * current.projection.zoom),
+            ),
+          );
     const outcome = resolveNavigation({
       key,
       ctrlKey,
@@ -739,10 +1054,16 @@ export function CanvasGrid({
 
     const layout = layoutRef.current;
     const projection = stateRef.current.projection;
-    const rowHeight = projection.rowHeight(0) || GRID_METRICS.rowHeight;
+    const rowHeight = projection.rowHeight(0) || GRID_METRICS.rowHeight * projection.zoom;
     const pageRows =
       layout === null ? 20 : Math.max(1, Math.floor(layout.scrollRegionHeight / rowHeight));
-    const pageCols = layout === null ? 10 : Math.max(1, Math.floor(layout.scrollRegionWidth / 64));
+    const pageCols =
+      layout === null
+        ? 10
+        : Math.max(
+            1,
+            Math.floor(layout.scrollRegionWidth / (GRID_METRICS.columnWidth * projection.zoom)),
+          );
     const pointing = session.pointing;
     const outcome = resolveNavigation({
       key: event.key,
@@ -879,6 +1200,8 @@ export function CanvasGrid({
           top: `${editorRect.y}px`,
           width: `${editorRect.width}px`,
           height: `${editorRect.height}px`,
+          fontSize: `${Math.max(9, 13 * projection.zoom)}px`,
+          padding: `0 ${Math.max(2, 4 * projection.zoom)}px`,
         };
 
   return (
@@ -912,11 +1235,19 @@ export function CanvasGrid({
         ref={canvasRef}
         className="grid-canvas"
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
         onDoubleClick={handleDoubleClick}
         data-testid="grid-canvas"
       />
       <div
         className="grid-scrollbar grid-scrollbar-vertical"
+        style={{
+          top: `${layout.headerHeight}px`,
+          right: 0,
+          bottom: `${layout.scrollbarSize}px`,
+          width: `${layout.scrollbarSize}px`,
+        }}
         data-testid="grid-vscroll"
         onPointerDown={handleScrollbarPointerDown('y')}
       >
@@ -928,6 +1259,12 @@ export function CanvasGrid({
       </div>
       <div
         className="grid-scrollbar grid-scrollbar-horizontal"
+        style={{
+          left: `${layout.headerWidth}px`,
+          right: `${layout.scrollbarSize}px`,
+          bottom: 0,
+          height: `${layout.scrollbarSize}px`,
+        }}
         data-testid="grid-hscroll"
         onPointerDown={handleScrollbarPointerDown('x')}
       >
@@ -965,6 +1302,9 @@ export function CanvasGrid({
     </div>
   );
 }
+
+/** Movement below this is a click, so a header double-click can autofit. */
+const RESIZE_DRAG_THRESHOLD_PIXELS = 3;
 
 const POINTING_KEYS: ReadonlySet<string> = new Set([
   'ArrowUp',
@@ -1042,15 +1382,38 @@ function positionEditor(
 }
 
 /**
- * A column header click selects the whole column. The active cell stays in
- * the visible part of the sheet, so the grid does not scroll to the far edge.
+ * A column header click selects the whole column. Shift extends the header
+ * selection to a contiguous run. A click inside an existing multi-column
+ * selection keeps it, so a double-click can autofit every selected column. The
+ * active cell stays in the visible part of the sheet, so the grid does not
+ * scroll to the far edge.
  */
 function columnHeaderSelection(
   projection: SheetProjection,
   col: number,
   selection: GridSelection,
   scroll: ScrollOffset,
+  extend: boolean,
 ): GridSelection {
+  const current = headerSelectionRange(projection, selection, 'column');
+  if (extend && current !== null) {
+    if (col >= current.startCol && col <= current.endCol) {
+      return selectionForRange(current, selection.focus);
+    }
+    return selectionForRange(
+      {
+        startRow: 0,
+        startCol: Math.min(current.startCol, col),
+        endRow: projection.rowCount - 1,
+        endCol: Math.max(current.endCol, col),
+      },
+      selection.focus,
+    );
+  }
+  if (current !== null) {
+    const visible = headerSelectionIndices(projection, selection, 'column');
+    if (visible !== null && visible.length > 1 && visible.includes(col)) return selection;
+  }
   const firstVisibleRow = Math.max(projection.freezeRows, projection.rowAt(scroll.y));
   const focus = selection.focus.col === col ? selection.focus : { row: firstVisibleRow, col };
   return selectionForRange(
@@ -1065,15 +1428,37 @@ function columnHeaderSelection(
 }
 
 /**
- * A row header click selects the whole row, keeping the active cell in the
- * visible part of the sheet.
+ * A row header click selects the whole row, with Shift extending a contiguous
+ * run and a click inside an existing multi-row selection keeping it for an
+ * autofit double-click. The active cell stays in the visible part of the
+ * sheet.
  */
 function rowHeaderSelection(
   projection: SheetProjection,
   row: number,
   selection: GridSelection,
   scroll: ScrollOffset,
+  extend: boolean,
 ): GridSelection {
+  const current = headerSelectionRange(projection, selection, 'row');
+  if (extend && current !== null) {
+    if (row >= current.startRow && row <= current.endRow) {
+      return selectionForRange(current, selection.focus);
+    }
+    return selectionForRange(
+      {
+        startRow: Math.min(current.startRow, row),
+        startCol: 0,
+        endRow: Math.max(current.endRow, row),
+        endCol: projection.columnCount - 1,
+      },
+      selection.focus,
+    );
+  }
+  if (current !== null) {
+    const visible = headerSelectionIndices(projection, selection, 'row');
+    if (visible !== null && visible.length > 1 && visible.includes(row)) return selection;
+  }
   const firstVisibleCol = Math.max(projection.freezeCols, projection.columnAt(scroll.x));
   const focus = selection.focus.row === row ? selection.focus : { row, col: firstVisibleCol };
   return selectionForRange(

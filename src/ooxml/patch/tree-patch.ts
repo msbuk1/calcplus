@@ -27,6 +27,7 @@ export interface TreePatchInput {
   readonly sheet: Sheet;
   readonly dirtyCells: readonly DirtyCellInput[];
   readonly dirtyDimensions?: DirtyDimensions;
+  readonly syncMerges?: boolean;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
 }
@@ -96,8 +97,37 @@ export function patchWorksheetAsTree(input: TreePatchInput): Uint8Array {
   }
 
   applyDimensions(document.root, sheetData, input.dirtyDimensions);
+  applyMerges(document.root, sheetData, input);
 
   return new TextEncoder().encode(serializeXmlDocument(document));
+}
+
+function applyMerges(root: XmlElement, sheetData: XmlElement, input: TreePatchInput): void {
+  if (input.syncMerges !== true) return;
+  for (const existing of findElements(root, 'mergeCells')) {
+    const index = root.children.indexOf(existing);
+    if (index >= 0) root.children.splice(index, 1);
+  }
+  if (input.sheet.merges.length === 0) return;
+  const prefix = elementPrefix(root);
+  const mergeCells = makeElement(qualifiedName(prefix, 'mergeCells'), [
+    { name: 'count', value: String(input.sheet.merges.length) },
+  ]);
+  for (const merge of input.sheet.merges) {
+    mergeCells.children.push(
+      makeElement(qualifiedName(prefix, 'mergeCell'), [
+        {
+          name: 'ref',
+          value: `${formatCellRef(merge.range.startRow, merge.range.startCol)}:${formatCellRef(
+            merge.range.endRow,
+            merge.range.endCol,
+          )}`,
+        },
+      ]),
+    );
+  }
+  const position = root.children.indexOf(sheetData);
+  root.children.splice(position + 1, 0, mergeCells);
 }
 
 function applyDimensions(

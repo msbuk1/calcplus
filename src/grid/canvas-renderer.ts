@@ -1,10 +1,5 @@
 import type { ProjectedCell, ProjectedStyle, SheetProjection } from '@view/types';
-import {
-  GRID_METRICS,
-  type GridCellAddress,
-  type GridRenderState,
-  type RenderFrame,
-} from './frame';
+import type { GridCellAddress, GridRenderState, RenderFrame } from './frame';
 import { gridDebugState } from './debug';
 import { mergedBorderStyle } from './merged-borders';
 import {
@@ -18,6 +13,7 @@ import {
 import { selectionRange } from './selection';
 import {
   DEFAULT_TEXT_COLOR,
+  MIN_FONT_PIXELS,
   fontFor,
   fontSizePixels,
   fitFontSize,
@@ -218,7 +214,7 @@ export class CanvasRenderFrame implements RenderFrame {
     }
     for (const visible of cells) {
       if (visible.paintText && visible.cell.displayText !== '') {
-        this.paintText(visible.cell, visible.rect);
+        this.paintText(visible.cell, visible.rect, projection.zoom);
       }
     }
     for (const visible of cells) {
@@ -447,30 +443,37 @@ export class CanvasRenderFrame implements RenderFrame {
     context.setLineDash([]);
   }
 
-  private paintText(cell: ProjectedCell, rect: CellRect): void {
+  private paintText(cell: ProjectedCell, rect: CellRect, zoom: number): void {
     const style = cell.style;
     const rotation = rotationFor(style);
     if (rotation.kind === 'stacked') {
-      this.paintStackedText(cell.displayText, style, rect);
+      this.paintStackedText(cell.displayText, style, rect, zoom);
       return;
     }
     if (rotation.kind === 'angle') {
-      this.paintRotatedText(cell, rect, rotation.radians);
+      this.paintRotatedText(cell, rect, rotation.radians, zoom);
       return;
     }
 
     const { context } = this;
     const horizontal = horizontalFor(style, cell.value);
-    const insets = textInsets(style, horizontal);
+    const insets = textInsets(style, horizontal, zoom);
     const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
     const shrink = style.alignment.shrinkToFit && !style.alignment.wrapText;
-    const baseSize = fontSizePixels(style);
+    const baseSize = fontSizePixels(style, zoom);
     const baseFont = fontFor(style, baseSize);
     // The projection owns the width layout (`*` fill, `_` skip and the `#`
     // overflow marker); the renderer supplies the paint width and metrics.
     const laidOut = cell.layoutText(maxWidth, (value) => this.measure(value, baseFont));
     const size = shrink
-      ? fitFontSize(style, laidOut.text, maxWidth, (value, font) => this.measure(value, font))
+      ? fitFontSize(
+          style,
+          laidOut.text,
+          maxWidth,
+          (value, font) => this.measure(value, font),
+          undefined,
+          zoom,
+        )
       : baseSize;
     const font = fontFor(style, size);
     // Shrinking changes the metrics, so lay the text out again at the painted
@@ -538,18 +541,30 @@ export class CanvasRenderFrame implements RenderFrame {
     context.restore();
   }
 
-  private paintRotatedText(cell: ProjectedCell, rect: CellRect, radians: number): void {
+  private paintRotatedText(
+    cell: ProjectedCell,
+    rect: CellRect,
+    radians: number,
+    zoom: number,
+  ): void {
     const { context } = this;
     const style = cell.style;
-    const padding = horizontalPadding();
+    const padding = horizontalPadding(zoom);
     // Rotation gives the cell's height to the text run.
     const available = Math.max(1, rect.height - padding * 2);
     const shrink = style.alignment.shrinkToFit;
-    const baseSize = fontSizePixels(style);
+    const baseSize = fontSizePixels(style, zoom);
     const baseFont = fontFor(style, baseSize);
     const laidOut = cell.layoutText(available, (value) => this.measure(value, baseFont));
     const size = shrink
-      ? fitFontSize(style, laidOut.text, available, (value, font) => this.measure(value, font))
+      ? fitFontSize(
+          style,
+          laidOut.text,
+          available,
+          (value, font) => this.measure(value, font),
+          undefined,
+          zoom,
+        )
       : baseSize;
     const font = fontFor(style, size);
     const paint =
@@ -597,20 +612,25 @@ export class CanvasRenderFrame implements RenderFrame {
     context.restore();
   }
 
-  private paintStackedText(text: string, style: ProjectedStyle, rect: CellRect): void {
+  private paintStackedText(
+    text: string,
+    style: ProjectedStyle,
+    rect: CellRect,
+    zoom: number,
+  ): void {
     const { context } = this;
     const characters = Array.from(text);
     if (characters.length === 0) return;
-    const padding = horizontalPadding();
+    const padding = horizontalPadding(zoom);
     const width = Math.max(1, rect.width - padding * 2);
     const height = Math.max(1, rect.height - padding * 2);
-    let size = fontSizePixels(style);
+    let size = fontSizePixels(style, zoom);
     const oneCharacter = (value: string, font: string): number => this.measure(value, font);
     let widest = 0;
     for (const character of characters) {
       widest = Math.max(widest, oneCharacter(character, fontFor(style, size)));
     }
-    if (widest > width) size = Math.max(6, size * (width / widest));
+    if (widest > width) size = Math.max(MIN_FONT_PIXELS * zoom, size * (width / widest));
     const lineHeight = Math.min(lineHeightFor(size), height / characters.length);
     const font = fontFor(style, size);
     this.ensureFont(font);
@@ -977,7 +997,7 @@ export class CanvasRenderFrame implements RenderFrame {
       const frozenColPane = panes.find((pane) => pane.frozenCols);
       const scrollingColPane = panes.find((pane) => !pane.frozenCols);
 
-      context.font = '12px system-ui, sans-serif';
+      context.font = `${Math.max(6, 12 * projection.zoom)}px system-ui, sans-serif`;
       context.textBaseline = 'middle';
       context.textAlign = 'center';
       this.lastFont = '';
@@ -990,6 +1010,7 @@ export class CanvasRenderFrame implements RenderFrame {
             projection,
             layout.headerWidth + projection.columnX(col),
             projection.columnWidth(col),
+            layout.headerHeight,
             col,
             active,
           );
@@ -1011,7 +1032,14 @@ export class CanvasRenderFrame implements RenderFrame {
           if (projection.isColumnHidden(col)) continue;
           if (projection.columnWidth(col) <= 0) continue;
           const x = layout.headerWidth + layout.frozenWidth + projection.columnX(col) - scrollX;
-          this.paintColumnHeader(projection, x, projection.columnWidth(col), col, active);
+          this.paintColumnHeader(
+            projection,
+            x,
+            projection.columnWidth(col),
+            layout.headerHeight,
+            col,
+            active,
+          );
         }
         context.restore();
       }
@@ -1022,7 +1050,14 @@ export class CanvasRenderFrame implements RenderFrame {
           if (projection.isRowHidden(row)) continue;
           if (projection.rowHeight(row) <= 0) continue;
           const y = layout.headerHeight + projection.rowY(row);
-          this.paintRowHeader(projection, y, projection.rowHeight(row), row, active);
+          this.paintRowHeader(
+            projection,
+            y,
+            projection.rowHeight(row),
+            layout.headerWidth,
+            row,
+            active,
+          );
         }
       }
       if (scrollingRowPane !== undefined) {
@@ -1030,7 +1065,14 @@ export class CanvasRenderFrame implements RenderFrame {
           if (projection.isRowHidden(row)) continue;
           if (projection.rowHeight(row) <= 0) continue;
           const y = layout.headerHeight + layout.frozenHeight + projection.rowY(row) - scrollY;
-          this.paintRowHeader(projection, y, projection.rowHeight(row), row, active);
+          this.paintRowHeader(
+            projection,
+            y,
+            projection.rowHeight(row),
+            layout.headerWidth,
+            row,
+            active,
+          );
         }
       }
     }
@@ -1065,38 +1107,40 @@ export class CanvasRenderFrame implements RenderFrame {
     projection: SheetProjection,
     x: number,
     width: number,
+    headerHeight: number,
     col: number,
     active: GridCellAddress,
   ): void {
     const { context } = this;
     if (active.col === col) {
       context.fillStyle = COLORS.headerActiveBackground;
-      context.fillRect(x, 0, width, GRID_METRICS.headerHeight);
+      context.fillRect(x, 0, width, headerHeight);
       context.fillStyle = COLORS.headerActiveText;
     } else {
       context.fillStyle = COLORS.headerText;
     }
     context.textAlign = 'center';
-    context.fillText(projection.columnLabel(col), x + width / 2, GRID_METRICS.headerHeight / 2);
+    context.fillText(projection.columnLabel(col), x + width / 2, headerHeight / 2);
   }
 
   private paintRowHeader(
     projection: SheetProjection,
     y: number,
     height: number,
+    headerWidth: number,
     row: number,
     active: GridCellAddress,
   ): void {
     const { context } = this;
     if (active.row === row) {
       context.fillStyle = COLORS.headerActiveBackground;
-      context.fillRect(0, y, GRID_METRICS.headerWidth, height);
+      context.fillRect(0, y, headerWidth, height);
       context.fillStyle = COLORS.headerActiveText;
     } else {
       context.fillStyle = COLORS.headerText;
     }
     context.textAlign = 'right';
-    context.fillText(projection.rowLabel(row), GRID_METRICS.headerWidth - 8, y + height / 2);
+    context.fillText(projection.rowLabel(row), headerWidth - 8 * projection.zoom, y + height / 2);
   }
 
   destroy(): void {

@@ -1,7 +1,9 @@
 import type { CommandDefinition } from './types';
 import { cellSetCommand } from './cell-set';
+import { clipboardCommands } from './clipboard';
 import { dimensionSetCommand } from './dimension';
 import { formatCommands } from './format';
+import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { workbookDateSystemCommand } from './workbook';
 
 export class CommandRegistry {
@@ -60,6 +62,10 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(cellSetCommand);
   registry.register(workbookDateSystemCommand);
   registry.register(dimensionSetCommand);
+  registry.register(sheetInsertCommand);
+  registry.register(sheetDeleteCommand);
+  registry.register(sheetRenameCommand);
+  for (const command of clipboardCommands()) registry.register(command);
   for (const command of formatCommands()) registry.register(command);
   registry.register(undoCommand);
   registry.register(redoCommand);

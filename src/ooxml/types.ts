@@ -48,6 +48,11 @@ export interface WorkbookPackage {
   readonly themePath: string | null;
   /** Sheet id -> worksheet part path. */
   readonly sheetPartPaths: Map<SheetId, string>;
+  /**
+   * Sheet id -> workbook relationship id. Kept separately from the parsed
+   * relationship list so a restored snapshot can still patch the sheet list.
+   */
+  readonly sheetRelationshipIds: Map<SheetId, string>;
   readonly relationships: ReadonlyMap<string, Relationship[]>;
   readonly sharedStrings: SharedStringsTable | null;
   /** External links are never refreshed; this list is report material only. */
@@ -60,6 +65,6 @@ export interface PackagePatchReport {
   readonly patchedParts: string[];
   readonly modeByPart: ReadonlyMap<string, PatchMode>;
   readonly appendedSharedStrings: number;
-  /** Parts deleted because a formula change made them untrustworthy. */
+  /** Parts removed by this save: a stale calcChain or a deleted sheet part. */
   readonly removedParts: readonly string[];
 }

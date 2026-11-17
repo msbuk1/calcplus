@@ -56,6 +56,8 @@ export class CalculationController implements CalculationScheduler {
   private circularCount = 0;
   private staleCount = 0;
   private unsupportedCount = 0;
+  /** Edit version of the last structural rebuild; older results are ignored. */
+  private lastRebuildEditVersion = 0;
 
   constructor(
     private readonly session: DocumentSession,
@@ -93,12 +95,18 @@ export class CalculationController implements CalculationScheduler {
   rebuild(): void {
     if (this.disposed) return;
     this.started = true;
+    this.lastRebuildEditVersion = this.session.editVersion;
+    this.editsByVersion.clear();
     this.buildFromWorkbook();
   }
 
   afterChanges(changes: readonly CommandChange[]): void {
     if (this.disposed || changes.length === 0) return;
-    if (changes.some((change) => change.type === 'workbook.dateSystem')) {
+    if (changesRequireRebuild(changes)) {
+      // Sheet structure and defined-name text change how the engine resolves
+      // every formula, so the derived graph is rebuilt rather than patched
+      // cell by cell (workbook-model §5). Results from a batch started before
+      // the rebuild address the old sheet indices and are discarded.
       this.rebuild();
       return;
     }
@@ -150,6 +158,7 @@ export class CalculationController implements CalculationScheduler {
     phase: 'load' | 'apply',
   ): void {
     if (this.disposed) return;
+    if (baseEditVersion < this.lastRebuildEditVersion) return;
     this.lastElapsedMs = result.elapsedMs;
     this.lastCellCount = result.cells.length;
 
@@ -229,6 +238,21 @@ export class CalculationController implements CalculationScheduler {
     this.staleCount = stale;
     this.unsupportedCount = unsupported;
   }
+}
+
+/**
+ * A sheet insert/delete/rename or a defined-name text change alters the
+ * engine's sheet list or name table, so the dependency graph is rebuilt.
+ */
+export function changesRequireRebuild(changes: readonly CommandChange[]): boolean {
+  return changes.some(
+    (change) =>
+      change.type === 'workbook.dateSystem' ||
+      change.type === 'name.set' ||
+      change.type === 'sheet.add' ||
+      change.type === 'sheet.delete' ||
+      change.type === 'sheet.rename',
+  );
 }
 
 interface WorkbookSnapshot {
