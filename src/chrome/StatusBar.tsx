@@ -12,6 +12,8 @@ export interface StatusBarProps {
   readonly statistics: SelectionStatistics | null;
   readonly showGridLines: boolean;
   readonly showHeadings: boolean;
+  readonly gridLinesEnabled: boolean;
+  readonly headingsEnabled: boolean;
   /** Display zoom as an Excel percentage, 10-400. */
   readonly zoom: number;
   readonly onToggleGridLines: () => void;
@@ -35,6 +37,8 @@ export function StatusBar({
   statistics,
   showGridLines,
   showHeadings,
+  gridLinesEnabled,
+  headingsEnabled,
   zoom,
   onToggleGridLines,
   onToggleHeadings,
@@ -81,7 +85,9 @@ export function StatusBar({
         <input
           type="checkbox"
           checked={showGridLines}
+          disabled={!gridLinesEnabled}
           onChange={onToggleGridLines}
+          data-command="view.gridlines"
           data-testid="gridlines-toggle"
         />
         Gridlines
@@ -90,7 +96,9 @@ export function StatusBar({
         <input
           type="checkbox"
           checked={showHeadings}
+          disabled={!headingsEnabled}
           onChange={onToggleHeadings}
+          data-command="view.headings"
           data-testid="headings-toggle"
         />
         Headings

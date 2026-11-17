@@ -2,7 +2,9 @@
 
 The baseline PNG is generated on the maintainer's pinned Chromium runner; it
 is tied to that machine, Chromium version and pinned font set
-(testing-conformance §6). Generate or deliberately refresh it with:
+(testing-conformance §6). The test pins the canvas viewport to 1254 by 614, so
+a ribbon or status-bar height change never reshapes the baseline. Generate or
+deliberately refresh it with:
 
 ```powershell
 npx playwright test tests/e2e/formatted-visual.spec.ts --update-snapshots

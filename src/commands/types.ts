@@ -11,14 +11,29 @@ import type {
   Workbook,
 } from '@model/types';
 
+/** The live view flags a view or toggle command needs to report its state. */
+export interface CommandViewState {
+  readonly showGridLines: boolean;
+  readonly showHeadings: boolean;
+  readonly zoom: number;
+  readonly freezeRows: number;
+  readonly freezeCols: number;
+}
+
 export interface CommandContext {
   readonly workbook: Workbook;
   readonly activeSheetId: SheetId | null;
   readonly selection: GridRange | null;
   readonly activeCell: CellAddress | null;
+  /** Transient view state, never document state. */
+  readonly view?: CommandViewState;
+  /** The file layer is writing or picking a file. */
+  readonly busy?: boolean;
+  readonly canUndo?: boolean;
+  readonly canRedo?: boolean;
 }
 
-export type CommandCategory = 'edit' | 'file' | 'view' | 'data' | 'format';
+export type CommandCategory = 'edit' | 'file' | 'view' | 'data' | 'format' | 'formula' | 'help';
 
 export interface CommandUiRequest {
   readonly type: 'toast' | 'dialog' | 'focus';

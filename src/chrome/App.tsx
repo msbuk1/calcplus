@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import appIcon from '../../assets/calcplus.svg';
+import type { RibbonTabId } from '@commands/inventory';
 import { DocumentSession } from '@commands/session';
 import type { CommandResult } from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
@@ -41,12 +41,21 @@ import { cellRect } from '@grid/panes';
 import { collapseSelection, selectionForRange, selectionRange } from '@grid/selection';
 import { isPointingBoundary, pointingReference } from '@grid/editor';
 import { resolveNavigation } from '@grid/navigation';
+import { AboutDialog } from '@chrome/AboutDialog';
+import { AppHeader } from '@chrome/AppHeader';
+import { CompactBar } from '@chrome/CompactBar';
+import { ContextMenu } from '@chrome/ContextMenu';
 import { FormulaBar } from '@chrome/FormulaBar';
 import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
 import { NameBox } from '@chrome/NameBox';
+import { Ribbon } from '@chrome/Ribbon';
 import { SheetTabs } from '@chrome/SheetTabs';
 import { StatusBar } from '@chrome/StatusBar';
+import { resolveCommandState } from '@chrome/command-state';
+import type { ChromeCommandContext } from '@chrome/command-state';
 import { nextFocusZone, type FocusZone } from '@chrome/focus';
+import { contextMenuItems } from '@chrome/ribbon-model';
+import { useMediaQuery } from '@chrome/useMediaQuery';
 import {
   canUseFileSystemAccess,
   pickWorkbookFile,
@@ -96,6 +105,16 @@ export function App(): JSX.Element {
   const [dimensionPreview, setDimensionPreview] = useState<DimensionPreview | null>(null);
   const [calcWarning, setCalcWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ribbonTab, setRibbonTab] = useState<RibbonTabId>('Home');
+  const [ribbonExpanded, setRibbonExpanded] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ readonly x: number; readonly y: number } | null>(
+    null,
+  );
+  const [dialog, setDialog] = useState<'about' | null>(null);
+  const narrow = useMediaQuery('(max-width: 899px)');
+  const ribbonRef = useRef<HTMLElement | null>(null);
+  const compactRef = useRef<HTMLElement | null>(null);
+  const runCommandRef = useRef<((commandId: string, args?: unknown) => void) | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nameBoxRef = useRef<HTMLInputElement | null>(null);
   const formulaBarRef = useRef<HTMLInputElement | null>(null);
@@ -188,6 +207,9 @@ export function App(): JSX.Element {
     setBarDraft(null);
     setBarCaretRequest(null);
     setDimensionPreview(null);
+    setContextMenu(null);
+    setDialog(null);
+    setRibbonTab('Home');
     barEditAddressRef.current = null;
     barPointingRef.current = null;
     clipboardRef.current = null;
@@ -338,6 +360,13 @@ export function App(): JSX.Element {
     shellRef.current?.focus();
   };
 
+  /** A file command must not steal an in-progress cell or formula-bar edit. */
+  const focusGridUnlessEditing = (): void => {
+    const active = window.document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+    focusGrid();
+  };
+
   /**
    * Apply a command's active-sheet hint. It is view state: undo of an insert
    * returns to the fallback tab, while a terminal sheet delete names the
@@ -395,6 +424,7 @@ export function App(): JSX.Element {
     });
     if (result.ui?.message !== undefined) {
       setStatus(result.ui.message);
+      focusGrid();
       return;
     }
     if (result.clipboard !== undefined) clipboardRef.current = result.clipboard;
@@ -409,6 +439,7 @@ export function App(): JSX.Element {
     const snapshot = clipboardRef.current;
     if (snapshot === null) {
       setStatus('The clipboard is empty.');
+      focusGrid();
       return;
     }
     const result = document.session.dispatch('edit.paste', {
@@ -419,6 +450,7 @@ export function App(): JSX.Element {
     setVersion((current) => current + 1);
     if (result.ui?.message !== undefined) {
       setStatus(result.ui.message);
+      focusGrid();
       return;
     }
     if (result.selectionAfter !== undefined) {
@@ -451,6 +483,53 @@ export function App(): JSX.Element {
   const barText = barDraft ?? liveEditText ?? projection?.rawTextAt(active.row, active.col) ?? '';
   const barFormulaActive = barDraft !== null && barDraft.startsWith('=');
 
+  const commandContext = useMemo<ChromeCommandContext>(
+    () => ({
+      workbook: document?.session.workbook ?? null,
+      activeSheetId: document?.sheetId ?? null,
+      selection: selectionRange(selection),
+      activeCell: selection.focus,
+      view: {
+        showGridLines: activeView.showGridLines,
+        showHeadings: activeView.showHeadings,
+        zoom: activeView.zoom,
+        freezeRows: projection?.freezeRows ?? 0,
+        freezeCols: projection?.freezeCols ?? 0,
+      },
+      busy,
+      canUndo: document?.session.canUndo ?? false,
+      canRedo: document?.session.canRedo ?? false,
+    }),
+    [
+      document,
+      selection,
+      activeView.showGridLines,
+      activeView.showHeadings,
+      activeView.zoom,
+      projection,
+      busy,
+      version,
+    ],
+  );
+
+  const resolveState = useCallback(
+    (commandId: string) => resolveCommandState(commandContext, commandId),
+    [commandContext],
+  );
+
+  const controlValues = useMemo(
+    () => ({
+      'font-family': activeCell?.style.font.name ?? 'Calibri',
+      'font-size': activeCell === null ? '11' : String(activeCell.style.font.size),
+      'number-format': activeCell?.style.numberFormat ?? 'General',
+    }),
+    [activeCell],
+  );
+
+  useEffect(() => {
+    if (!narrow) setRibbonExpanded(false);
+  }, [narrow]);
+
   useEffect(() => {
     if (!dirty) return;
     const listener = (event: BeforeUnloadEvent): void => {
@@ -480,6 +559,9 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const listener = (event: KeyboardEvent): void => {
+      // The dialog owns Esc and Tab; do not let global shortcuts move a zone
+      // behind the modal while it is open.
+      if (dialog !== null) return;
       if (event.key === 'F6') {
         event.preventDefault();
         setFocusZone((zone) => nextFocusZone(zone, event.shiftKey));
@@ -489,9 +571,15 @@ export function App(): JSX.Element {
         setFocusZone('grid');
         return;
       }
+      if (event.altKey && event.key === '=') {
+        event.preventDefault();
+        setFocusZone('grid');
+        runCommandRef.current?.('formula.autosum');
+        return;
+      }
       if (event.shiftKey && event.key === 'F11') {
         event.preventDefault();
-        insertSheet();
+        runCommandRef.current?.('sheet.insert');
         return;
       }
       if (!event.ctrlKey && !event.metaKey) return;
@@ -500,17 +588,28 @@ export function App(): JSX.Element {
         target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
       if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
-        void saveFile(event.shiftKey);
+        runCommandRef.current?.(event.shiftKey ? 'file.saveAs' : 'file.save');
       } else if (event.key === 'o' || event.key === 'O') {
         event.preventDefault();
-        void openFile();
+        runCommandRef.current?.('file.open');
       } else if (!inTextInput && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
+        runCommandRef.current?.(event.shiftKey ? 'edit.redo' : 'edit.undo');
       } else if (!inTextInput && (event.key === 'y' || event.key === 'Y')) {
         event.preventDefault();
-        redo();
+        runCommandRef.current?.('edit.redo');
+      } else if (!inTextInput && !event.shiftKey && (event.key === 'b' || event.key === 'B')) {
+        event.preventDefault();
+        runCommandRef.current?.('format.bold');
+      } else if (!inTextInput && !event.shiftKey && (event.key === 'i' || event.key === 'I')) {
+        event.preventDefault();
+        runCommandRef.current?.('format.italic');
+      } else if (!inTextInput && !event.shiftKey && (event.key === 'u' || event.key === 'U')) {
+        event.preventDefault();
+        runCommandRef.current?.('format.underline');
+      } else if (!inTextInput && !event.shiftKey && event.key === '5') {
+        event.preventDefault();
+        runCommandRef.current?.('format.strike');
       }
     };
     window.addEventListener('keydown', listener);
@@ -527,8 +626,13 @@ export function App(): JSX.Element {
       nameBoxRef.current?.focus();
       return;
     }
-    formulaBarRef.current?.focus();
-  }, [focusZone]);
+    if (focusZone === 'formula-bar') {
+      formulaBarRef.current?.focus();
+      return;
+    }
+    const target = narrow && !ribbonExpanded ? compactRef.current : ribbonRef.current;
+    if (target !== null && !target.contains(window.document.activeElement)) target.focus();
+  }, [focusZone, narrow, ribbonExpanded]);
 
   const navigateToAddress = useCallback(
     (text: string): string | null => {
@@ -589,6 +693,15 @@ export function App(): JSX.Element {
       });
       applyActiveSheetHint(result);
       setVersion((value) => value + 1);
+      if (result.selectionAfter !== undefined) {
+        setSelection(
+          selectionForRange(result.selectionAfter, {
+            row: result.selectionAfter.startRow,
+            col: result.selectionAfter.startCol,
+          }),
+        );
+      }
+      if (result.clipboard !== undefined) clipboardRef.current = result.clipboard;
       if (result.ui?.message !== undefined) setStatus(result.ui.message);
       return result;
     } catch (error) {
@@ -1166,75 +1279,119 @@ export function App(): JSX.Element {
     );
   };
 
+  const runCommand = (commandId: string, args?: unknown): string | null => {
+    switch (commandId) {
+      case 'file.new':
+        newWorkbook();
+        focusGrid();
+        return null;
+      case 'file.open':
+        // The picker owns focus until it closes; a successful open returns it to the grid.
+        void openFile();
+        return null;
+      case 'file.save':
+        void saveFile(false).finally(focusGridUnlessEditing);
+        return null;
+      case 'file.saveAs':
+        void saveFile(true).finally(focusGridUnlessEditing);
+        return null;
+      case 'edit.undo':
+        undo();
+        focusGrid();
+        return null;
+      case 'edit.redo':
+        redo();
+        focusGrid();
+        return null;
+      case 'edit.copy':
+        copySelection('copy');
+        return null;
+      case 'edit.cut':
+        copySelection('cut');
+        return null;
+      case 'edit.paste':
+        pasteClipboard();
+        return null;
+      case 'sheet.insert':
+        insertSheet();
+        return null;
+      case 'view.gridlines':
+        toggleGridLines();
+        focusGrid();
+        return null;
+      case 'view.headings':
+        toggleHeadings();
+        focusGrid();
+        return null;
+      case 'view.zoom100':
+        changeZoom(100);
+        focusGrid();
+        return null;
+      case 'help.about':
+        setDialog('about');
+        return null;
+      case 'nameBox.navigate': {
+        const text = commandTextArgument(args);
+        return text === null ? null : navigateToAddress(text);
+      }
+      default: {
+        const result = dispatchSheetCommand(commandId, args);
+        if (result?.ui?.type !== 'dialog') focusGrid();
+        return null;
+      }
+    }
+  };
+  runCommandRef.current = runCommand;
+
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="brand">
-          <img className="brand-icon" src={appIcon} alt="" width={28} height={28} />
-          <span className="brand-name">calcplus</span>
-          <span className="brand-phase">M4B workbook view</span>
-        </div>
-        <div className="file-meta">
-          <span data-testid="file-name">{document?.fileName ?? 'No workbook open'}</span>
-          {dirty ? (
-            <span className="dirty-dot" title="Unsaved changes" data-testid="dirty-indicator">
-              ●
-            </span>
-          ) : null}
-        </div>
-      </header>
+      <AppHeader
+        fileName={document?.fileName ?? null}
+        dirty={dirty}
+        canSave={resolveState('file.save').enabled}
+        canUndo={resolveState('edit.undo').enabled}
+        canRedo={resolveState('edit.redo').enabled}
+        onCommand={runCommand}
+      />
 
-      <div className="toolbar" role="toolbar" aria-label="Workbook commands">
-        <button type="button" onClick={newWorkbook} disabled={busy} data-testid="new-button">
-          New
-        </button>
-        <button
-          type="button"
-          onClick={() => void openFile()}
-          disabled={busy}
-          data-testid="open-button"
-        >
-          Open
-        </button>
-        <button
-          type="button"
-          onClick={() => void saveFile(false)}
-          disabled={document === null || busy}
-          data-testid="save-button"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          onClick={() => void saveFile(true)}
-          disabled={document === null || busy}
-          data-testid="save-as-button"
-        >
-          Save As
-        </button>
-        <span className="toolbar-divider" />
-        <button
-          type="button"
-          onClick={undo}
-          disabled={document === null || !document.session.canUndo}
-          data-testid="undo-button"
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          disabled={document === null || !document.session.canRedo}
-          data-testid="redo-button"
-        >
-          Redo
-        </button>
-      </div>
+      {narrow ? (
+        <>
+          <CompactBar
+            onCommand={runCommand}
+            resolveState={resolveState}
+            ribbonExpanded={ribbonExpanded}
+            onToggleRibbon={() => setRibbonExpanded((expanded) => !expanded)}
+            compactRef={compactRef}
+            onFocus={() => setFocusZone('ribbon')}
+          />
+          {ribbonExpanded ? (
+            <Ribbon
+              activeTab={ribbonTab}
+              onTabChange={setRibbonTab}
+              onCommand={runCommand}
+              resolveState={resolveState}
+              controlValues={controlValues}
+              ribbonRef={ribbonRef}
+              onFocus={() => setFocusZone('ribbon')}
+            />
+          ) : null}
+        </>
+      ) : (
+        <Ribbon
+          activeTab={ribbonTab}
+          onTabChange={setRibbonTab}
+          onCommand={runCommand}
+          resolveState={resolveState}
+          controlValues={controlValues}
+          ribbonRef={ribbonRef}
+          onFocus={() => setFocusZone('ribbon')}
+        />
+      )}
 
       <div className="formula-row">
         <NameBox
           value={nameBoxValue}
-          onNavigate={navigateToAddress}
+          onNavigate={(text) => runCommand('nameBox.navigate', { text })}
           onCancel={() => setFocusZone('grid')}
           onFocused={() => setFocusZone('name-box')}
           inputRef={nameBoxRef}
@@ -1267,25 +1424,51 @@ export function App(): JSX.Element {
       />
 
       {document?.compatibility.notes.length ? (
-        <div className="compat-banner" data-testid="compat-banner">
+        <div
+          className="compat-banner"
+          title={document.compatibility.notes.join(' ')}
+          data-testid="compat-banner"
+        >
           {document.compatibility.notes.join(' ')}
         </div>
       ) : null}
 
       {calcWarning !== null ? (
-        <div className="calc-warning" role="status" data-testid="calc-warning">
+        <div className="calc-warning" role="status" title={calcWarning} data-testid="calc-warning">
           {calcWarning}
         </div>
       ) : null}
 
-      <main className="grid-area">
+      <main
+        className="grid-area"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (document !== null) setContextMenu({ x: event.clientX, y: event.clientY });
+        }}
+      >
         {document !== null && projection !== null ? (
           <CanvasGrid
             projection={projection}
             selection={selection}
             onSelectionChange={setSelection}
             onCommit={runCellSet}
-            onClear={(address) => runCellSet(address, '')}
+            onClear={(address) => {
+              const result = dispatchSheetCommand('edit.clearContents', {
+                range: {
+                  startRow: address.row,
+                  startCol: address.col,
+                  endRow: address.row,
+                  endCol: address.col,
+                },
+              });
+              if (result === null) return;
+              setStatus(
+                result.changes.length === 0
+                  ? `${formatCellRef(address.row, address.col)} was already empty.`
+                  : `Cleared ${formatCellRef(address.row, address.col)}.`,
+              );
+              if (result.ui?.type !== 'dialog') focusGrid();
+            }}
             onCopy={() => copySelection('copy')}
             onCut={() => copySelection('cut')}
             onPaste={pasteClipboard}
@@ -1305,7 +1488,12 @@ export function App(): JSX.Element {
               The grid scrolls a full 1,048,576 by 16,384 sheet, freezes panes, and edits cells
               without touching the parts of the package calcplus does not model.
             </p>
-            <button type="button" onClick={() => void openFile()} data-testid="empty-open-button">
+            <button
+              type="button"
+              data-command="file.open"
+              onClick={() => runCommand('file.open')}
+              data-testid="empty-open-button"
+            >
               Open workbook
             </button>
           </div>
@@ -1317,7 +1505,7 @@ export function App(): JSX.Element {
           sheets={sheetTabs}
           activeSheetId={document.sheetId}
           onSelectSheet={activateSheet}
-          onInsertSheet={insertSheet}
+          onInsertSheet={() => runCommand('sheet.insert')}
           onRenameSheet={renameSheet}
           onDeleteSheet={deleteSheet}
         />
@@ -1330,15 +1518,48 @@ export function App(): JSX.Element {
         stale={activeCell?.stale === true}
         staleCount={staleCount}
         statistics={selectionStatistics}
-        showGridLines={activeView.showGridLines}
-        showHeadings={activeView.showHeadings}
+        showGridLines={resolveState('view.gridlines').checked}
+        showHeadings={resolveState('view.headings').checked}
+        gridLinesEnabled={resolveState('view.gridlines').enabled}
+        headingsEnabled={resolveState('view.headings').enabled}
         zoom={activeView.zoom}
-        onToggleGridLines={toggleGridLines}
-        onToggleHeadings={toggleHeadings}
+        onToggleGridLines={() => runCommand('view.gridlines')}
+        onToggleHeadings={() => runCommand('view.headings')}
         onZoomChange={changeZoom}
       />
+
+      {contextMenu !== null ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems(resolveState)}
+          onSelect={(item) => {
+            setContextMenu(null);
+            if (item.commandId !== undefined) runCommand(item.commandId, item.args);
+          }}
+          onClose={() => {
+            setContextMenu(null);
+            focusGrid();
+          }}
+        />
+      ) : null}
+
+      {dialog === 'about' ? (
+        <AboutDialog
+          onClose={(reason) => {
+            setDialog(null);
+            if (reason === 'escape') focusGrid();
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+function commandTextArgument(args: unknown): string | null {
+  if (typeof args !== 'object' || args === null || !('text' in args)) return null;
+  const text = (args as { readonly text?: unknown }).text;
+  return typeof text === 'string' ? text : null;
 }
 
 function formatSelectionAddress(selection: GridSelection, projection: SheetProjection): string {

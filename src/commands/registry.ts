@@ -1,5 +1,8 @@
 import type { CommandDefinition } from './types';
+import { autoSumCommand } from './autosum';
 import { cellSetCommand } from './cell-set';
+import { chromeCommands } from './chrome';
+import { clearContentsCommand } from './clear';
 import { clipboardCommands } from './clipboard';
 import { dimensionSetCommand } from './dimension';
 import { formatCommands } from './format';
@@ -37,7 +40,7 @@ const undoCommand: CommandDefinition<void> = {
   category: 'edit',
   keybindings: ['Ctrl+Z'],
   isEnabled(context) {
-    return context.workbook.sheets.length > 0;
+    return context.canUndo ?? context.workbook.sheets.length > 0;
   },
   run() {
     return { changes: [] };
@@ -50,7 +53,7 @@ const redoCommand: CommandDefinition<void> = {
   category: 'edit',
   keybindings: ['Ctrl+Y', 'Ctrl+Shift+Z'],
   isEnabled(context) {
-    return context.workbook.sheets.length > 0;
+    return context.canRedo ?? context.workbook.sheets.length > 0;
   },
   run() {
     return { changes: [] };
@@ -65,8 +68,11 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(sheetInsertCommand);
   registry.register(sheetDeleteCommand);
   registry.register(sheetRenameCommand);
+  registry.register(clearContentsCommand);
+  registry.register(autoSumCommand);
   for (const command of clipboardCommands()) registry.register(command);
   for (const command of formatCommands()) registry.register(command);
+  for (const command of chromeCommands()) registry.register(command);
   registry.register(undoCommand);
   registry.register(redoCommand);
   return registry;

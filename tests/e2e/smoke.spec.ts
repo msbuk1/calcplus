@@ -69,6 +69,7 @@ test('edited save downloads a workbook that preserves Tier B parts', async ({ pa
 
 test('creates a new blank workbook and saves it through Save As', async ({ page }, testInfo) => {
   await page.goto('/?fsa=0');
+  await page.getByTestId('file-menu-button').click();
   await page.getByTestId('new-button').click();
   await expect(page.getByTestId('file-name')).toHaveText('Untitled.xlsx');
   await expect(page.getByTestId('grid-canvas')).toBeVisible();
@@ -78,6 +79,7 @@ test('creates a new blank workbook and saves it through Save As', async ({ page 
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('dirty-indicator')).toBeVisible();
 
+  await page.getByTestId('file-menu-button').click();
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('save-as-button').click();
   const download = await downloadPromise;

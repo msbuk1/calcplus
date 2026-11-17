@@ -1,10 +1,10 @@
 /**
- * Focus zones (command-system §7). The grid, the formula bar and the name
- * box own keyboard input; the focus manager routes events by zone.
+ * Focus zones (command-system §7). The grid, the formula bar, the name box and
+ * the ribbon own keyboard input; the focus manager routes events by zone.
  */
-export type FocusZone = 'name-box' | 'formula-bar' | 'grid';
+export type FocusZone = 'name-box' | 'formula-bar' | 'grid' | 'ribbon';
 
-export const FOCUS_ZONES: readonly FocusZone[] = ['name-box', 'formula-bar', 'grid'];
+export const FOCUS_ZONES: readonly FocusZone[] = ['name-box', 'formula-bar', 'grid', 'ribbon'];
 
 /** F6 moves to the next zone; Shift+F6 moves back. */
 export function nextFocusZone(current: FocusZone, backwards: boolean): FocusZone {

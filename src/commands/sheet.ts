@@ -43,8 +43,8 @@ export const sheetInsertCommand: CommandDefinition<SheetInsertArgs> = {
   label: 'Insert sheet',
   category: 'edit',
   keybindings: ['Shift+F11'],
-  isEnabled() {
-    return true;
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
   },
   run(context, args): CommandResult {
     const index =

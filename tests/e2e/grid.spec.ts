@@ -120,17 +120,27 @@ test('cycles the focus zones with F6 and returns to the grid with Escape', async
   await openFixture(page, gridFixture);
   await clickCell(page, 2, 1);
   expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('grid');
+  await expect(page.getByTestId('grid-shell')).toBeFocused();
 
+  await page.keyboard.press('F6');
+  expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('ribbon');
+  await expect(page.locator('.ribbon')).toBeFocused();
   await page.keyboard.press('F6');
   expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('name-box');
+  await expect(page.getByTestId('name-box')).toBeFocused();
   await page.keyboard.press('F6');
   expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('formula-bar');
+  await expect(page.getByTestId('formula-bar')).toBeFocused();
   await page.keyboard.press('F6');
   expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('grid');
+  await expect(page.getByTestId('grid-shell')).toBeFocused();
 
   await page.keyboard.press('F6');
+  expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('ribbon');
+  await expect(page.locator('.ribbon')).toBeFocused();
   await page.keyboard.press('Escape');
   expect((await page.evaluate(() => window.__calcplus.getState())).focusZone).toBe('grid');
+  await expect(page.getByTestId('grid-shell')).toBeFocused();
 });
 
 test('selects the anchor of a merged range', async ({ page }) => {

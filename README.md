@@ -34,6 +34,14 @@ on the maintainer's PC. The Excel 365 oracle is captured manually as described
 in `scripts/oracle/README.md`; no GitHub runner or scheduled Excel job is used.
 Stored oracle goldens are not committed yet.
 
+The M4A visual baseline is recorded on the maintainer's pinned Chromium runner.
+The test pins its canvas viewport, so chrome height changes do not reshape the
+image. Regenerate the PNG deliberately with:
+
+```powershell
+npx playwright test tests/e2e/formatted-visual.spec.ts --update-snapshots
+```
+
 Start here:
 
 - [Spec package](.scratch/calcplus/spec/README.md) — reading order and all contracts

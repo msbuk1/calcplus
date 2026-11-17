@@ -13,7 +13,9 @@ import { formattedSheetXlsx } from '../helpers/formatted-sheet';
  */
 test.describe('M4A formatted sheet', () => {
   test.use({
-    viewport: { width: 1280, height: 800 },
+    // The extra height leaves room for the test's fixed grid viewport; only the
+    // canvas is captured, so the chrome height can never reshape the baseline.
+    viewport: { width: 1280, height: 920 },
     deviceScaleFactor: 1,
     colorScheme: 'light',
     reducedMotion: 'reduce',
@@ -21,6 +23,11 @@ test.describe('M4A formatted sheet', () => {
 
   test('paints every imported formatting feature', async ({ page }) => {
     await page.goto('/?fsa=0');
+    // Pin the canvas to the recorded 1254x614 baseline independently of the
+    // ribbon and status-bar heights.
+    await page.addStyleTag({
+      content: '.grid-area { flex: 0 0 auto; height: 640px; padding: 12px; }',
+    });
     await page.getByTestId('file-input').setInputFiles({
       name: 'm4a-formatted.xlsx',
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -64,6 +71,10 @@ test.describe('M4A formatted sheet', () => {
     expect(pattern?.fill.backgroundColor?.toLowerCase()).toBe('#ffffff');
     const merged = await page.evaluate(() => window.__calcplus.getCellStyle(0, 1));
     expect(merged?.merge).toEqual({ anchorRow: 0, anchorCol: 0, rowSpan: 1, colSpan: 4 });
+
+    const canvasBox = await page.getByTestId('grid-canvas').boundingBox();
+    expect(canvasBox?.width).toBe(1254);
+    expect(canvasBox?.height).toBe(614);
 
     await expect(page.getByTestId('grid-canvas')).toHaveScreenshot('m4a-formatted-sheet.png', {
       threshold: 2 / 255,

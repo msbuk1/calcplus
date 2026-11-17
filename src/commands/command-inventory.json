@@ -1,0 +1,1430 @@
+[
+  {
+    "id": "selection.navigate",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Rectangular range selection and keyboard navigation (arrows, Tab/Enter, Shift-extend, Ctrl+arrow, Page Up/Down, Ctrl+Home/End)",
+    "label": "Navigate selection",
+    "category": "edit",
+    "enablement": "A sheet is active and the grid owns the keyboard",
+    "implemented": false,
+    "shortcut": [
+      "Arrows",
+      "Ctrl+Arrows",
+      "Home",
+      "Ctrl+Home",
+      "End",
+      "Ctrl+End",
+      "Page Up",
+      "Page Down",
+      "Shift+Arrows",
+      "Ctrl+Shift+Arrows",
+      "Ctrl+A",
+      "Ctrl+Space",
+      "Shift+Space",
+      "Ctrl+Shift+Space"
+    ]
+  },
+  {
+    "id": "cell.edit",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "In-cell editing (F2, double-click, direct typing; Enter/Tab commit, Esc cancel)",
+    "label": "Edit cell",
+    "category": "edit",
+    "enablement": "A sheet is active and a cell is selected",
+    "implemented": false,
+    "shortcut": ["F2", "Double-click", "Enter", "Tab", "Esc"]
+  },
+  {
+    "id": "cell.set",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Formula bar editing",
+    "label": "Commit cell edit",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": ["Enter", "Ctrl+Enter"]
+  },
+  {
+    "id": "formulaBar.cancel",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Formula bar editing",
+    "label": "Cancel formula bar edit",
+    "category": "edit",
+    "enablement": "The formula bar owns focus",
+    "implemented": false,
+    "shortcut": ["Esc"]
+  },
+  {
+    "id": "edit.cut",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Cut/copy/paste (single range; in-app and OS clipboard)",
+    "label": "Cut",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+X"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Clipboard",
+        "kind": "button",
+        "order": 20,
+        "label": "Cut",
+        "title": "Cut (Ctrl+X)"
+      }
+    ],
+    "contextMenu": { "order": 10 },
+    "compact": { "kind": "button", "order": 30, "label": "Cut" }
+  },
+  {
+    "id": "edit.copy",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Cut/copy/paste (single range; in-app and OS clipboard)",
+    "label": "Copy",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+C"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Clipboard",
+        "kind": "button",
+        "order": 30,
+        "label": "Copy",
+        "title": "Copy (Ctrl+C)"
+      }
+    ],
+    "contextMenu": { "order": 20 },
+    "compact": { "kind": "button", "order": 31, "label": "Copy" }
+  },
+  {
+    "id": "edit.paste",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Cut/copy/paste (single range; in-app and OS clipboard)",
+    "label": "Paste",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": ["Ctrl+V"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Clipboard",
+        "kind": "button",
+        "order": 10,
+        "label": "Paste",
+        "title": "Paste (Ctrl+V)",
+        "wide": true
+      }
+    ],
+    "contextMenu": { "order": 30 },
+    "compact": { "kind": "button", "order": 32, "label": "Paste" }
+  },
+  {
+    "id": "fill.handle",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Fill handle: copy, relative-reference adjustment, double-click to adjacent data",
+    "label": "Fill handle",
+    "category": "edit",
+    "enablement": "A sheet is active and the fill handle is visible",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "edit.dragMove",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Drag-and-drop move; Shift-drag insert",
+    "label": "Drag and drop move",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "edit.dragInsert",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Drag-and-drop move; Shift-drag insert",
+    "label": "Shift-drag insert",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.insertRows",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Insert rows",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.insertColumns",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Insert columns",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.insertCells",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Insert cells",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.deleteRows",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Delete rows",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.deleteColumns",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Delete columns",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "structure.deleteCells",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Insert/delete rows, columns and cells (shift right/down options)",
+    "label": "Delete cells",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "dimension.set",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Row/column resize by drag; autofit by double-click and menu",
+    "label": "Row height and column width",
+    "category": "format",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "merge.center",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Merge & Center, Merge Across, Merge Cells, Unmerge",
+    "label": "Merge & Center",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "merge.across",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Merge & Center, Merge Across, Merge Cells, Unmerge",
+    "label": "Merge Across",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "merge.cells",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Merge & Center, Merge Across, Merge Cells, Unmerge",
+    "label": "Merge Cells",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "merge.unmerge",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Merge & Center, Merge Across, Merge Cells, Unmerge",
+    "label": "Unmerge",
+    "category": "format",
+    "enablement": "A sheet is active and a merged cell is selected",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "edit.undo",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Undo/redo for every user mutation",
+    "label": "Undo",
+    "category": "edit",
+    "enablement": "The undo history is not empty",
+    "implemented": true,
+    "shortcut": ["Ctrl+Z"]
+  },
+  {
+    "id": "edit.redo",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Undo/redo for every user mutation",
+    "label": "Redo",
+    "category": "edit",
+    "enablement": "The redo history is not empty",
+    "implemented": true,
+    "shortcut": ["Ctrl+Y", "Ctrl+Shift+Z"]
+  },
+  {
+    "id": "find.open",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
+    "label": "Find",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["Ctrl+F"],
+    "ribbon": [
+      { "tab": "Home", "group": "Editing", "kind": "button", "order": 40, "label": "Find" }
+    ]
+  },
+  {
+    "id": "find.replace",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
+    "label": "Replace",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["Ctrl+H"],
+    "ribbon": [
+      { "tab": "Home", "group": "Editing", "kind": "button", "order": 50, "label": "Replace" }
+    ]
+  },
+  {
+    "id": "goTo.open",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Go To (Ctrl+G and name box)",
+    "label": "Go To",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["Ctrl+G"],
+    "menu": [{ "menu": "Edit", "order": 100 }]
+  },
+  {
+    "id": "edit.clearContents",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Clear contents / formats / all",
+    "label": "Clear contents",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Delete", "Backspace"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 20,
+        "label": "Clear Contents",
+        "menuOnly": true
+      }
+    ],
+    "contextMenu": { "order": 40 },
+    "compact": { "kind": "button", "order": 16, "label": "Clear" }
+  },
+  {
+    "id": "format.clear",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Clear contents / formats / all",
+    "label": "Clear formats",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "split",
+        "order": 30,
+        "label": "Clear Formats",
+        "title": "Clear",
+        "args": {},
+        "menu": [
+          { "label": "Clear Contents", "commandId": "edit.clearContents" },
+          { "label": "Clear Formats", "commandId": "format.clear", "args": {} }
+        ]
+      }
+    ],
+    "contextMenu": { "order": 50 }
+  },
+  {
+    "id": "edit.clearAll",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Clear contents / formats / all",
+    "label": "Clear all",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 30,
+        "label": "Clear All",
+        "menuOnly": true
+      }
+    ],
+    "contextMenu": { "order": 70 }
+  },
+  {
+    "id": "data.sort",
+    "matrixSection": "2. Data",
+    "matrixFeature": "Sort a range (one or more keys; header row; ascending/descending)",
+    "label": "Sort",
+    "category": "data",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [
+      { "tab": "Data", "group": "Sort & Filter", "kind": "button", "order": 10, "label": "Sort" }
+    ]
+  },
+  {
+    "id": "data.filter",
+    "matrixSection": "2. Data",
+    "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
+    "label": "Filter",
+    "category": "data",
+    "enablement": "A sheet is active and a plain range is selected",
+    "implemented": false,
+    "shortcut": ["Ctrl+Shift+L"],
+    "ribbon": [
+      {
+        "tab": "Data",
+        "group": "Sort & Filter",
+        "kind": "toggle",
+        "order": 20,
+        "label": "Filter"
+      }
+    ]
+  },
+  {
+    "id": "data.filterClear",
+    "matrixSection": "2. Data",
+    "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
+    "label": "Clear filter",
+    "category": "data",
+    "enablement": "A sheet is active and an AutoFilter is applied",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Data",
+        "group": "Sort & Filter",
+        "kind": "button",
+        "order": 30,
+        "label": "Clear Filter"
+      }
+    ]
+  },
+  {
+    "id": "format.font",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Font family, size, bold, italic, underline (single/double), strikethrough, colour",
+    "label": "Font",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "select",
+        "order": 1,
+        "controlId": "font-family",
+        "label": "Font",
+        "wide": true,
+        "valueFrom": "fontName",
+        "options": [
+          { "label": "Calibri", "value": "Calibri", "args": { "name": "Calibri" } },
+          { "label": "Arial", "value": "Arial", "args": { "name": "Arial" } },
+          {
+            "label": "Times New Roman",
+            "value": "Times New Roman",
+            "args": { "name": "Times New Roman" }
+          },
+          { "label": "Courier New", "value": "Courier New", "args": { "name": "Courier New" } }
+        ]
+      },
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "select",
+        "order": 2,
+        "controlId": "font-size",
+        "label": "Size",
+        "valueFrom": "fontSize",
+        "options": [
+          { "label": "8", "value": "8", "args": { "size": 8 } },
+          { "label": "9", "value": "9", "args": { "size": 9 } },
+          { "label": "10", "value": "10", "args": { "size": 10 } },
+          { "label": "11", "value": "11", "args": { "size": 11 } },
+          { "label": "12", "value": "12", "args": { "size": 12 } },
+          { "label": "14", "value": "14", "args": { "size": 14 } },
+          { "label": "16", "value": "16", "args": { "size": 16 } },
+          { "label": "18", "value": "18", "args": { "size": 18 } },
+          { "label": "20", "value": "20", "args": { "size": 20 } },
+          { "label": "24", "value": "24", "args": { "size": 24 } },
+          { "label": "28", "value": "28", "args": { "size": 28 } },
+          { "label": "36", "value": "36", "args": { "size": 36 } }
+        ]
+      },
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "split",
+        "order": 60,
+        "controlId": "font-color",
+        "label": "A",
+        "title": "Font Colour",
+        "args": { "color": "#C00000" },
+        "menu": [
+          { "label": "Automatic", "commandId": "format.font", "args": { "color": null } },
+          { "label": "Red", "commandId": "format.font", "args": { "color": "#C00000" } },
+          { "label": "Green", "commandId": "format.font", "args": { "color": "#107C41" } },
+          { "label": "Blue", "commandId": "format.font", "args": { "color": "#1A73E8" } },
+          { "label": "Black", "commandId": "format.font", "args": { "color": "#000000" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "format.bold",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Font family, size, bold, italic, underline (single/double), strikethrough, colour",
+    "label": "Bold",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+B"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "toggle",
+        "order": 20,
+        "label": "B",
+        "title": "Bold (Ctrl+B)"
+      }
+    ],
+    "compact": { "kind": "toggle", "order": 10, "label": "B", "title": "Bold" }
+  },
+  {
+    "id": "format.italic",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Font family, size, bold, italic, underline (single/double), strikethrough, colour",
+    "label": "Italic",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+I"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "toggle",
+        "order": 30,
+        "label": "I",
+        "title": "Italic (Ctrl+I)"
+      }
+    ],
+    "compact": { "kind": "toggle", "order": 11, "label": "I", "title": "Italic" }
+  },
+  {
+    "id": "format.underline",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Font family, size, bold, italic, underline (single/double), strikethrough, colour",
+    "label": "Underline",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+U"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "toggle",
+        "order": 40,
+        "label": "U",
+        "title": "Underline (Ctrl+U)"
+      }
+    ],
+    "compact": { "kind": "toggle", "order": 12, "label": "U", "title": "Underline" }
+  },
+  {
+    "id": "format.strike",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Font family, size, bold, italic, underline (single/double), strikethrough, colour",
+    "label": "Strikethrough",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+5"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "toggle",
+        "order": 50,
+        "label": "S",
+        "title": "Strikethrough (Ctrl+5)"
+      }
+    ]
+  },
+  {
+    "id": "format.fill",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Fill: solid and pattern",
+    "label": "Fill",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "split",
+        "order": 70,
+        "label": "Fill",
+        "title": "Fill Colour",
+        "wide": true,
+        "args": { "pattern": "solid", "color": "#FFF2CC" },
+        "menu": [
+          {
+            "label": "Yellow",
+            "commandId": "format.fill",
+            "args": { "pattern": "solid", "color": "#FFF2CC" }
+          },
+          {
+            "label": "Green",
+            "commandId": "format.fill",
+            "args": { "pattern": "solid", "color": "#C6EFCE" }
+          },
+          {
+            "label": "Blue",
+            "commandId": "format.fill",
+            "args": { "pattern": "solid", "color": "#BDD7EE" }
+          },
+          {
+            "label": "Red",
+            "commandId": "format.fill",
+            "args": { "pattern": "solid", "color": "#FFC7CE" }
+          },
+          {
+            "label": "No Fill",
+            "commandId": "format.fill",
+            "args": { "pattern": "none", "color": null }
+          }
+        ]
+      }
+    ],
+    "compact": {
+      "kind": "button",
+      "order": 13,
+      "label": "Fill",
+      "args": { "pattern": "solid", "color": "#FFF2CC" }
+    }
+  },
+  {
+    "id": "format.border",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Borders: all line styles, weights and colours; outline and inside",
+    "label": "Borders",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Font",
+        "kind": "split",
+        "order": 80,
+        "label": "Borders",
+        "title": "Borders",
+        "wide": true,
+        "args": { "preset": "all", "style": "thin", "color": "#000000" },
+        "menu": [
+          {
+            "label": "All Borders",
+            "commandId": "format.border",
+            "args": { "preset": "all", "style": "thin", "color": "#000000" }
+          },
+          {
+            "label": "Outside Borders",
+            "commandId": "format.border",
+            "args": { "preset": "outline", "style": "thin", "color": "#000000" }
+          },
+          {
+            "label": "Inside Borders",
+            "commandId": "format.border",
+            "args": { "preset": "inside", "style": "thin", "color": "#000000" }
+          },
+          { "label": "No Border", "commandId": "format.border", "args": { "preset": "none" } }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "format.alignment",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Alignment: horizontal/vertical, indent, wrap text",
+    "label": "Alignment",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 10,
+        "label": "L",
+        "title": "Align Left",
+        "args": { "horizontal": "left" }
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 20,
+        "label": "C",
+        "title": "Centre",
+        "args": { "horizontal": "center" }
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 30,
+        "label": "R",
+        "title": "Align Right",
+        "args": { "horizontal": "right" }
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 40,
+        "label": "Top",
+        "title": "Align Top",
+        "args": { "vertical": "top" }
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 50,
+        "label": "Middle",
+        "title": "Align Middle",
+        "args": { "vertical": "center" }
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 60,
+        "label": "Bottom",
+        "title": "Align Bottom",
+        "args": { "vertical": "bottom" }
+      }
+    ]
+  },
+  {
+    "id": "format.importedTextLayout",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Shrink to fit and text rotation",
+    "label": "Imported shrink to fit and text rotation",
+    "category": "format",
+    "enablement": "Imported values render and round-trip; authoring arrives in v2",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "edit.formatPainter",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Format Painter",
+    "label": "Format Painter",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["Esc"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Clipboard",
+        "kind": "button",
+        "order": 40,
+        "label": "Painter",
+        "title": "Format Painter"
+      }
+    ]
+  },
+  {
+    "id": "format.cellsDialog",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Format Cells dialog",
+    "label": "Format Cells",
+    "category": "format",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["Ctrl+1"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 40,
+        "label": "Format…",
+        "title": "Format Cells"
+      }
+    ]
+  },
+  {
+    "id": "format.numberFormat",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Number formats: built-in categories + full custom grammar",
+    "label": "Number format",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "select",
+        "order": 1,
+        "controlId": "number-format",
+        "label": "Number Format",
+        "wide": true,
+        "valueFrom": "numberFormat",
+        "options": [
+          { "label": "General", "value": "General", "args": { "code": null } },
+          { "label": "Number", "value": "#,##0.00", "args": { "code": "#,##0.00" } },
+          { "label": "Currency", "value": "\"$\"#,##0.00", "args": { "code": "\"$\"#,##0.00" } },
+          { "label": "Percent", "value": "0.00%", "args": { "code": "0.00%" } },
+          { "label": "Comma", "value": "#,##0", "args": { "code": "#,##0" } },
+          { "label": "Short Date", "value": "m/d/yyyy", "args": { "code": "m/d/yyyy" } },
+          { "label": "Time", "value": "h:mm AM/PM", "args": { "code": "h:mm AM/PM" } },
+          { "label": "Scientific", "value": "0.00E+00", "args": { "code": "0.00E+00" } },
+          { "label": "Text", "value": "@", "args": { "code": "@" } }
+        ]
+      },
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 10,
+        "label": "$",
+        "title": "Currency",
+        "args": { "code": "\"$\"#,##0.00" }
+      },
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 20,
+        "label": "%",
+        "title": "Percent",
+        "args": { "code": "0.00%" }
+      },
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 30,
+        "label": ",",
+        "title": "Comma",
+        "args": { "code": "#,##0" }
+      }
+    ],
+    "compact": {
+      "kind": "button",
+      "order": 15,
+      "label": "%",
+      "title": "Percent",
+      "args": { "code": "0.00%" }
+    }
+  },
+  {
+    "id": "format.conditionalRender",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules",
+    "label": "Conditional formatting",
+    "category": "format",
+    "enablement": "Imported rules render; authoring arrives in v2",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "formula.recalculate",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Formula bar, in-cell entry, automatic calculation",
+    "label": "Recalculate",
+    "category": "formula",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["F9"]
+  },
+  {
+    "id": "formula.autosum",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "AutoSum (`Alt+=`, command `formula.autosum`)",
+    "label": "AutoSum",
+    "category": "formula",
+    "enablement": "A sheet is active and a cell is selected",
+    "implemented": true,
+    "shortcut": ["Alt+="],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 10,
+        "label": "AutoSum",
+        "title": "AutoSum (Alt+=)",
+        "icon": "Σ"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "button",
+        "order": 10,
+        "label": "AutoSum",
+        "title": "AutoSum (Alt+=)",
+        "icon": "Σ"
+      }
+    ],
+    "compact": { "kind": "button", "order": 17, "label": "Σ", "title": "AutoSum" }
+  },
+  {
+    "id": "formula.autocomplete",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Function autocomplete and signature hints",
+    "label": "Function autocomplete and signature hints",
+    "category": "formula",
+    "enablement": "The formula editor is open",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "name.resolve",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Defined names: evaluate, preserve, use in formulas and Go To",
+    "label": "Use defined names",
+    "category": "formula",
+    "enablement": "A sheet is active and a defined name exists",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "formula.evaluate",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Formula semantics, function coverage, errors, arrays, dates, references",
+    "label": "Evaluate formulas",
+    "category": "formula",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "workbook.dateSystem",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Formula semantics, function coverage, errors, arrays, dates, references",
+    "label": "Use 1904 date system",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "file.new",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "New blank workbook",
+    "label": "New",
+    "category": "file",
+    "enablement": "No file operation is in progress",
+    "implemented": true,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 10 }]
+  },
+  {
+    "id": "file.open",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Open, save, save as, close",
+    "label": "Open",
+    "category": "file",
+    "enablement": "No file operation is in progress",
+    "implemented": true,
+    "shortcut": ["Ctrl+O"],
+    "menu": [{ "menu": "File", "order": 20 }]
+  },
+  {
+    "id": "file.save",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Open, save, save as, close",
+    "label": "Save",
+    "category": "file",
+    "enablement": "A workbook is open and no file operation is in progress",
+    "implemented": true,
+    "shortcut": ["Ctrl+S"],
+    "menu": [{ "menu": "File", "order": 30 }]
+  },
+  {
+    "id": "file.saveAs",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Open, save, save as, close",
+    "label": "Save As",
+    "category": "file",
+    "enablement": "A workbook is open and no file operation is in progress",
+    "implemented": true,
+    "shortcut": ["Ctrl+Shift+S"],
+    "menu": [{ "menu": "File", "order": 40 }]
+  },
+  {
+    "id": "file.close",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Open, save, save as, close",
+    "label": "Close",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": false,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 45 }]
+  },
+  {
+    "id": "sheet.insert",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Multi-sheet: insert, delete, rename",
+    "label": "Insert sheet",
+    "category": "edit",
+    "enablement": "A workbook is open",
+    "implemented": true,
+    "shortcut": ["Shift+F11"],
+    "ribbon": [
+      { "tab": "Home", "group": "Cells", "kind": "button", "order": 10, "label": "Insert Sheet" }
+    ],
+    "contextMenu": { "order": 60 }
+  },
+  {
+    "id": "sheet.delete",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Multi-sheet: insert, delete, rename",
+    "label": "Delete sheet",
+    "category": "edit",
+    "enablement": "A visible sheet is active and more than one visible sheet exists",
+    "implemented": true,
+    "shortcut": [],
+    "menu": [{ "menu": "Sheet tab context menu", "order": 20 }]
+  },
+  {
+    "id": "sheet.rename",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Multi-sheet: insert, delete, rename",
+    "label": "Rename sheet",
+    "category": "edit",
+    "enablement": "A visible sheet is active",
+    "implemented": true,
+    "shortcut": ["F2"],
+    "menu": [{ "menu": "Sheet tab context menu", "order": 10 }]
+  },
+  {
+    "id": "fidelity.protection",
+    "matrixSection": "5. Workbook and sheets",
+    "matrixFeature": "Shell protection / workbook protection",
+    "label": "Preserve workbook protection",
+    "category": "file",
+    "enablement": "Imported protection XML is preserved and not enforced",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "view.freeze",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Freeze panes (rows and columns)",
+    "label": "Freeze Panes",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "View",
+        "group": "Window",
+        "kind": "button",
+        "order": 10,
+        "label": "Freeze Panes"
+      }
+    ]
+  },
+  {
+    "id": "view.zoom",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Zoom 10–400% (menu, slider, Ctrl+wheel)",
+    "label": "Zoom",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [{ "tab": "View", "group": "Zoom", "kind": "button", "order": 20, "label": "Zoom" }]
+  },
+  {
+    "id": "view.zoom100",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Zoom 10–400% (menu, slider, Ctrl+wheel)",
+    "label": "Zoom 100%",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [{ "tab": "View", "group": "Zoom", "kind": "button", "order": 10, "label": "100%" }]
+  },
+  {
+    "id": "view.gridlines",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Gridlines and headings show/hide",
+    "label": "Gridlines",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Sheet Options",
+        "kind": "toggle",
+        "order": 10,
+        "label": "Gridlines"
+      },
+      { "tab": "View", "group": "Show", "kind": "toggle", "order": 10, "label": "Gridlines" }
+    ]
+  },
+  {
+    "id": "view.headings",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Gridlines and headings show/hide",
+    "label": "Headings",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Sheet Options",
+        "kind": "toggle",
+        "order": 20,
+        "label": "Headings"
+      },
+      { "tab": "View", "group": "Show", "kind": "toggle", "order": 20, "label": "Headings" }
+    ]
+  },
+  {
+    "id": "nameBox.navigate",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Formula bar and name box",
+    "label": "Go to address",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": ["Enter"]
+  },
+  {
+    "id": "formulaBar.focus",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Formula bar and name box",
+    "label": "Edit in formula bar",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": ["F2"]
+  },
+  {
+    "id": "status.statistics",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Status bar: sum/average/count for the selection; zoom slider",
+    "label": "Selection statistics",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.openXlsx",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsx` open and save",
+    "label": "Open .xlsx",
+    "category": "file",
+    "enablement": "The file layer can read the package",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.saveXlsx",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsx` open and save",
+    "label": "Save .xlsx",
+    "category": "file",
+    "enablement": "The file layer can write the package",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.openXlsm",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsm` open and save; macro parts preserved, never executed",
+    "label": "Open .xlsm",
+    "category": "file",
+    "enablement": "The file layer can read the package",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.saveXlsm",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsm` open and save; macro parts preserved, never executed",
+    "label": "Save .xlsm",
+    "category": "file",
+    "enablement": "The file layer can write the package",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.importCsv",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "CSV import and export",
+    "label": "Import CSV",
+    "category": "file",
+    "enablement": "A CSV parser is available",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.exportCsv",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "CSV import and export",
+    "label": "Export CSV",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.rejectEncrypted",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Encrypted / password-protected workbooks",
+    "label": "Reject encrypted workbook",
+    "category": "file",
+    "enablement": "The file is encrypted; it is not modified",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.externalLinks",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "External links",
+    "label": "Preserve external links",
+    "category": "file",
+    "enablement": "Imported links are preserved and not refreshed",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.openDropped",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Drag-and-drop a supported file onto the app to open it",
+    "label": "Open dropped file",
+    "category": "file",
+    "enablement": "A supported file is dropped on the app",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "file.print",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Print",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": false,
+    "shortcut": ["Ctrl+P"],
+    "menu": [{ "menu": "File", "order": 50 }]
+  },
+  {
+    "id": "file.exportPdf",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Export PDF",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": false,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 60 }]
+  },
+  {
+    "id": "file.recent",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Recent files, autosave, crash recovery",
+    "label": "Recent files",
+    "category": "file",
+    "enablement": "The recent list has entries",
+    "implemented": false,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 80 }]
+  },
+  {
+    "id": "file.recover",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Recent files, autosave, crash recovery",
+    "label": "Recover unsaved work",
+    "category": "file",
+    "enablement": "A recovery copy exists",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "review.showComments",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Legacy notes and threaded comments",
+    "label": "Show comments",
+    "category": "view",
+    "enablement": "The sheet has imported comments",
+    "implemented": false,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Review",
+        "group": "Comments",
+        "kind": "button",
+        "order": 10,
+        "label": "Show Comments"
+      }
+    ]
+  },
+  {
+    "id": "cell.followHyperlink",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Hyperlinks",
+    "label": "Follow hyperlink",
+    "category": "view",
+    "enablement": "The active cell has a hyperlink",
+    "implemented": false,
+    "shortcut": ["Ctrl+Click"]
+  },
+  {
+    "id": "fidelity.readOnlyProtection",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Sheet and workbook protection",
+    "label": "Preserve sheet and workbook protection",
+    "category": "file",
+    "enablement": "Imported protection is preserved and not enforced",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.hiddenState",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Hidden rows, columns and sheets",
+    "label": "Preserve hidden state",
+    "category": "view",
+    "enablement": "Imported hidden state is respected and preserved",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "format.conditionalPreserve",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Conditional formatting",
+    "label": "Preserve conditional formatting",
+    "category": "format",
+    "enablement": "Imported rules render and are preserved",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.theme",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Theme colours and named styles",
+    "label": "Preserve theme colours and named styles",
+    "category": "format",
+    "enablement": "Imported theme colours and named styles resolve and are preserved",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "name.preserve",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Defined names",
+    "label": "Preserve defined names",
+    "category": "formula",
+    "enablement": "Imported names evaluate and round-trip",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.validation",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Data validation",
+    "label": "Preserve data validation",
+    "category": "data",
+    "enablement": "Imported validation is preserved; enforcement arrives in v2",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.tables",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Tables",
+    "label": "Preserve tables",
+    "category": "data",
+    "enablement": "Imported table parts are preserved",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "fidelity.pivotCaches",
+    "matrixSection": "8. Read-only fidelity (render/preserve, no authoring)",
+    "matrixFeature": "Pivot caches / PivotTables",
+    "label": "Preserve pivot caches",
+    "category": "data",
+    "enablement": "Imported pivot parts are preserved and not displayed",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
+    "id": "help.about",
+    "matrixSection": "UI chrome",
+    "matrixFeature": "About dialog (ui-chrome §4.1)",
+    "label": "About calcplus",
+    "category": "help",
+    "enablement": "Always",
+    "implemented": true,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 100, "dividerBefore": true }]
+  }
+]

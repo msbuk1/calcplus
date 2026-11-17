@@ -72,6 +72,7 @@ export function SheetTabs({
 
   useEffect(() => {
     if (menu === null) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
     const closeOnPointer = (event: PointerEvent): void => {
       const element = menuRef.current;
       if (element !== null && event.target instanceof Node && element.contains(event.target)) {
@@ -80,9 +81,33 @@ export function SheetTabs({
       setMenu(null);
     };
     const closeOnKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      const element = menuRef.current;
+      const items =
+        element === null
+          ? []
+          : [...element.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        setMenu(null);
+        const strip = stripRef.current;
+        const tab = [...(strip?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])].find(
+          (candidate) => candidate.dataset.sheetId === menu.sheetId,
+        );
+        tab?.focus();
+        return;
+      }
+      if (event.key === 'Tab') {
+        setMenu(null);
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      if (items.length === 0) return;
       event.preventDefault();
-      setMenu(null);
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      const next = (current + offset + items.length) % items.length;
+      items[next]?.focus();
     };
     window.addEventListener('pointerdown', closeOnPointer);
     window.addEventListener('keydown', closeOnKey);

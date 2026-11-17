@@ -29,6 +29,7 @@
     "bench": "npm run bench:browser",
     "licence:check": "node scripts/licence-gate.mjs",
     "fixtures": "node scripts/generate-fixtures.mjs",
+    "inventory": "node scripts/generate-command-inventory.mjs",
     "check": "npm run typecheck && npm run lint && npm run test && npm run licence:check"
   },
   "dependencies": {
