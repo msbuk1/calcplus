@@ -102,6 +102,8 @@ describe('number formats', () => {
     // A single section keeps the minus sign.
     expect(formatValue({ type: 'number', value: -42 }, '0.00')).toBe('-42.00');
     expect(formatValue({ type: 'number', value: -0.25 }, '0%')).toBe('-25%');
-    expect(formatValue({ type: 'number', value: 42 }, '$#,##0_);($#,##0)')).toBe('$42');
+    // `_)` leaves Excel's display gap: one space in display text, while
+    // `formatForLayout` expands it to the measured width of `)`.
+    expect(formatValue({ type: 'number', value: 42 }, '$#,##0_);($#,##0)')).toBe('$42\u0020');
   });
 });
