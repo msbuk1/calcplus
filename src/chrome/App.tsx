@@ -1757,21 +1757,15 @@ export function App(): JSX.Element {
             selection={selection}
             onSelectionChange={setSelection}
             onCommit={runCellSet}
-            onClear={(address) => {
-              const result = dispatchSheetCommand('edit.clearContents', {
-                range: {
-                  startRow: address.row,
-                  startCol: address.col,
-                  endRow: address.row,
-                  endCol: address.col,
-                },
-              });
+            onClear={(range) => {
+              const result = dispatchSheetCommand('edit.clearContents', { range });
               if (result === null) return;
-              setStatus(
-                result.changes.length === 0
-                  ? `${formatCellRef(address.row, address.col)} was already empty.`
-                  : `Cleared ${formatCellRef(address.row, address.col)}.`,
-              );
+              if (result.ui?.message === undefined) {
+                const label = formatRangeAddress(range, false, false);
+                setStatus(
+                  result.changes.length === 0 ? `${label} was already empty.` : `Cleared ${label}.`,
+                );
+              }
               if (result.ui?.type !== 'dialog') focusGrid();
             }}
             onCopy={() => copySelection('copy')}

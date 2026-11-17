@@ -45,14 +45,14 @@ import {
   type PaneLayout,
 } from './panes';
 import { resizeDimension, type DimensionAxis, type DimensionResize } from './resize';
-import { collapseSelection, extendSelection, selectionForRange } from './selection';
+import { collapseSelection, extendSelection, selectionForRange, selectionRange } from './selection';
 
 export interface CanvasGridProps {
   readonly projection: SheetProjection;
   readonly selection: GridSelection;
   readonly onSelectionChange: (selection: GridSelection) => void;
   readonly onCommit: (address: GridCellAddress, text: string) => void;
-  readonly onClear: (address: GridCellAddress) => void;
+  readonly onClear: (range: GridRange) => void;
   /** In-app clipboard commands; the application owns the snapshot. */
   readonly onCopy?: () => void;
   readonly onCut?: () => void;
@@ -1012,7 +1012,7 @@ export function CanvasGrid({
     }
     if (key === 'Delete' || key === 'Backspace') {
       event.preventDefault();
-      onClear(current.selection.focus);
+      onClear(selectionRange(current.selection));
       return;
     }
     if (key.length === 1 && !ctrlKey && !altKey && !metaKey && /\S/.test(key)) {
