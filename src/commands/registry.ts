@@ -5,7 +5,9 @@ import { chromeCommands } from './chrome';
 import { clearContentsCommand } from './clear';
 import { clipboardCommands } from './clipboard';
 import { dimensionSetCommand } from './dimension';
+import { findReplaceAllCommand, findReplaceOneCommand, findSearchCommand } from './find';
 import { formatCommands } from './format';
+import { goToCommand } from './goto';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { workbookDateSystemCommand } from './workbook';
 
@@ -70,6 +72,10 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(sheetRenameCommand);
   registry.register(clearContentsCommand);
   registry.register(autoSumCommand);
+  registry.register(findSearchCommand);
+  registry.register(findReplaceOneCommand);
+  registry.register(findReplaceAllCommand);
+  registry.register(goToCommand);
   for (const command of clipboardCommands()) registry.register(command);
   for (const command of formatCommands()) registry.register(command);
   for (const command of chromeCommands()) registry.register(command);

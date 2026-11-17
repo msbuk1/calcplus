@@ -424,6 +424,35 @@ describe('P0 XML validity', () => {
     expect(result.changes).toHaveLength(0);
     expect(saveOpened(opened, session).noOp).toBe(true);
   });
+
+  it('refuses a find replace that would introduce a control character', () => {
+    const opened = openWorkbook(
+      buildXlsx(
+        ws('<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><f>SUM(A2:A3)</f><v>0</v></c></row>'),
+        { sharedStrings: ['SUM'] },
+      ),
+    );
+    const session = new DocumentSession(opened.workbook);
+    const sheet = opened.workbook.sheets[0]!;
+    const version = session.version;
+
+    const result = session.dispatch('find.replaceAll', {
+      query: 'SUM',
+      replacement: 'x\u0001y',
+      scope: 'sheet',
+    });
+
+    expect(result.changes).toHaveLength(0);
+    expect(result.replaced).toBeUndefined();
+    expect(result.ui?.message).toMatch(/XML cannot store/i);
+    expect(sheet.cells.get('0:0')?.value).toEqual(textValue('SUM'));
+    expect(sheet.cells.get('0:1')?.formula).toBe('SUM(A2:A3)');
+    expect(session.transactionCount).toBe(0);
+    expect(session.hasUnsavedChanges).toBe(false);
+    expect(session.version).toBe(version);
+    expect(() => saveOpened(opened, session)).not.toThrow();
+    expect(saveOpened(opened, session).noOp).toBe(true);
+  });
 });
 
 describe('P1 calcChain, recalc flag and stale cached results', () => {

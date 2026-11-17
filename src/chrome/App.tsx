@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { RibbonTabId } from '@commands/inventory';
 import { DocumentSession } from '@commands/session';
-import type { CommandResult } from '@commands/types';
+import type { CommandResult, FindResultPayload } from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
 import type { EngineCellRef } from '@engine/port';
 import type { ClipboardMode, ClipboardSnapshot } from '@model/clipboard';
-import type { SheetId } from '@model/types';
+import type { FindMatch } from '@model/find';
+import type { GridRange, SheetId, Workbook } from '@model/types';
 import { formatCellRef, cellKey, columnToLetters, createCell } from '@model/types';
 import { resolveReferenceText } from '@model/references';
 import type { StructuralEdit } from '@model/range-transform';
@@ -45,8 +46,13 @@ import { AboutDialog } from '@chrome/AboutDialog';
 import { AppHeader } from '@chrome/AppHeader';
 import { CompactBar } from '@chrome/CompactBar';
 import { ContextMenu } from '@chrome/ContextMenu';
+import type { DialogCloseReason } from '@chrome/Dialog';
+import { FindDialog } from '@chrome/FindDialog';
+import type { FindMatchView, FindOutcome, FindQuery, FindReplaceQuery } from '@chrome/FindDialog';
 import { FormulaBar } from '@chrome/FormulaBar';
 import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
+import { GoToDialog } from '@chrome/GoToDialog';
+import type { GoToOutcome } from '@chrome/GoToDialog';
 import { NameBox } from '@chrome/NameBox';
 import { Ribbon } from '@chrome/Ribbon';
 import { SheetTabs } from '@chrome/SheetTabs';
@@ -73,6 +79,8 @@ interface LoadedDocument {
   readonly compatibility: CompatibilityInfo;
   readonly calculation: CalculationController;
 }
+
+type AppDialog = 'about' | 'find' | 'replace' | 'goto';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -110,7 +118,7 @@ export function App(): JSX.Element {
   const [contextMenu, setContextMenu] = useState<{ readonly x: number; readonly y: number } | null>(
     null,
   );
-  const [dialog, setDialog] = useState<'about' | null>(null);
+  const [dialog, setDialog] = useState<AppDialog | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
   const ribbonRef = useRef<HTMLElement | null>(null);
   const compactRef = useRef<HTMLElement | null>(null);
@@ -128,6 +136,7 @@ export function App(): JSX.Element {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
   const clipboardRef = useRef<ClipboardSnapshot | null>(null);
+  const focusGridAfterDialogRef = useRef(false);
 
   const active = selection.focus;
   const activeView =
@@ -360,6 +369,31 @@ export function App(): JSX.Element {
     shellRef.current?.focus();
   };
 
+  // A completed dialog command (Go To) returns the keyboard to the grid after
+  // the dialog shell has unmounted and restored its invoker.
+  useEffect(() => {
+    if (dialog !== null || !focusGridAfterDialogRef.current) return;
+    focusGridAfterDialogRef.current = false;
+    focusGrid();
+  }, [dialog]);
+
+  /**
+   * Esc is owned by the dialog shell and returns to the grid; a dismissal
+   * returns to the invoking control through the shell. When that control was
+   * a context-menu item that has unmounted, fall back to the grid so focus
+   * never disappears into the body.
+   */
+  const closeDialog = (reason: DialogCloseReason): void => {
+    setDialog(null);
+    if (reason === 'escape') {
+      focusGrid();
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (window.document.activeElement === window.document.body) focusGrid();
+    });
+  };
+
   /** A file command must not steal an in-progress cell or formula-bar edit. */
   const focusGridUnlessEditing = (): void => {
     const active = window.document.activeElement;
@@ -370,9 +404,13 @@ export function App(): JSX.Element {
   /**
    * Apply a command's active-sheet hint. It is view state: undo of an insert
    * returns to the fallback tab, while a terminal sheet delete names the
-   * neighbouring tab the chrome should activate.
+   * neighbouring tab the chrome should activate. A dialog command keeps its
+   * keyboard focus inside the dialog, so it can suppress the grid focus.
    */
-  const applyActiveSheetHint = (result: CommandResult): void => {
+  const applyActiveSheetHint = (
+    result: CommandResult,
+    options: { readonly focus?: boolean } = {},
+  ): void => {
     if (document === null) return;
     const workbook = document.session.workbook;
     const sheetId = result.activeSheetId;
@@ -396,7 +434,7 @@ export function App(): JSX.Element {
     setBarCaretRequest(null);
     barEditAddressRef.current = null;
     barPointingRef.current = null;
-    focusGrid();
+    if (options.focus !== false) focusGrid();
   };
 
   const undo = (): void => {
@@ -560,8 +598,23 @@ export function App(): JSX.Element {
   useEffect(() => {
     const listener = (event: KeyboardEvent): void => {
       // The dialog owns Esc and Tab; do not let global shortcuts move a zone
-      // behind the modal while it is open.
-      if (dialog !== null) return;
+      // behind the modal while it is open. Keep the browser's own Find/History
+      // shortcuts from opening over an in-app dialog.
+      if (dialog !== null) {
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.shiftKey &&
+          (event.key === 'f' ||
+            event.key === 'F' ||
+            event.key === 'h' ||
+            event.key === 'H' ||
+            event.key === 'g' ||
+            event.key === 'G')
+        ) {
+          event.preventDefault();
+        }
+        return;
+      }
       if (event.key === 'F6') {
         event.preventDefault();
         setFocusZone((zone) => nextFocusZone(zone, event.shiftKey));
@@ -586,7 +639,19 @@ export function App(): JSX.Element {
       const target = event.target as HTMLElement | null;
       const inTextInput =
         target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
-      if (event.key === 's' || event.key === 'S') {
+      if (!event.shiftKey && (event.key === 'f' || event.key === 'F')) {
+        if (document === null) return;
+        event.preventDefault();
+        runCommandRef.current?.('find.search');
+      } else if (!event.shiftKey && (event.key === 'h' || event.key === 'H')) {
+        if (document === null) return;
+        event.preventDefault();
+        runCommandRef.current?.('find.replaceOne');
+      } else if (!event.shiftKey && (event.key === 'g' || event.key === 'G')) {
+        if (document === null) return;
+        event.preventDefault();
+        runCommandRef.current?.('goto.goto');
+      } else if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
         runCommandRef.current?.(event.shiftKey ? 'file.saveAs' : 'file.save');
       } else if (event.key === 'o' || event.key === 'O') {
@@ -634,25 +699,44 @@ export function App(): JSX.Element {
     if (target !== null && !target.contains(window.document.activeElement)) target.focus();
   }, [focusZone, narrow, ribbonExpanded]);
 
-  const navigateToAddress = useCallback(
-    (text: string): string | null => {
+  interface NavigationTarget {
+    readonly sheetId: string;
+    readonly sheetName: string;
+    readonly range: GridRange;
+    readonly wholeColumn: boolean;
+    readonly wholeRow: boolean;
+    readonly label: string;
+  }
+
+  type NavigationResolution =
+    | { readonly kind: 'ok'; readonly target: NavigationTarget }
+    | { readonly kind: 'invalid'; readonly message: string };
+
+  /** Resolve A1 addresses, ranges and defined names for the name box and Go To. */
+  const resolveNavigationTarget = useCallback(
+    (text: string): NavigationResolution => {
       const trimmed = text.trim();
-      if (trimmed === '' || document === null) return null;
+      if (trimmed === '' || document === null) {
+        return { kind: 'invalid', message: 'Enter a cell reference or defined name.' };
+      }
       const resolved = resolveReferenceText(document.session.workbook, trimmed, document.sheetId);
       if (resolved.kind === 'invalid') {
-        setStatus(resolved.message);
-        return null;
+        return { kind: 'invalid', message: resolved.message };
       }
       const sheet = document.session.workbook.sheets.find(
         (candidate) => candidate.id === resolved.sheetId,
       );
       if (sheet === undefined) {
-        setStatus(`"${trimmed}" points at a sheet that is no longer open.`);
-        return null;
+        return {
+          kind: 'invalid',
+          message: `"${trimmed}" points at a sheet that is no longer open.`,
+        };
       }
       if (!isSheetVisible(document.session.workbook, sheet.id)) {
-        setStatus(`Sheet "${sheet.name}" is hidden and cannot be activated in this milestone.`);
-        return null;
+        return {
+          kind: 'invalid',
+          message: `Sheet "${sheet.name}" is hidden and cannot be activated in this milestone.`,
+        };
       }
       const { range } = resolved;
       if (
@@ -661,25 +745,58 @@ export function App(): JSX.Element {
         range.endRow >= 1_048_576 ||
         range.endCol >= 16_384
       ) {
-        setStatus(`"${trimmed}" is outside the sheet.`);
-        return null;
+        return { kind: 'invalid', message: `"${trimmed}" is outside the sheet.` };
       }
-      const single = range.startRow === range.endRow && range.startCol === range.endCol;
-      if (sheet.id !== document.sheetId) {
-        setDocument({ ...document, sheetId: sheet.id });
-      }
-      setSelection(
-        single
-          ? collapseSelection({ row: range.startRow, col: range.startCol })
-          : selectionForRange(range, { row: range.startRow, col: range.startCol }),
-      );
-      // The name box hands the focus back to the grid (command-system §7).
-      setFocusZone('grid');
-      const label = formatRangeAddress(range, resolved.wholeColumn, resolved.wholeRow);
-      setStatus(`Selected ${sheet.name}!${label}.`);
-      return label;
+      return {
+        kind: 'ok',
+        target: {
+          sheetId: sheet.id,
+          sheetName: sheet.name,
+          range,
+          wholeColumn: resolved.wholeColumn,
+          wholeRow: resolved.wholeRow,
+          label: formatRangeAddress(range, resolved.wholeColumn, resolved.wholeRow),
+        },
+      };
     },
     [document],
+  );
+
+  const selectNavigationTarget = useCallback(
+    (target: NavigationTarget): void => {
+      if (document !== null && target.sheetId !== document.sheetId) {
+        setDocument({ ...document, sheetId: target.sheetId });
+      }
+      const single =
+        target.range.startRow === target.range.endRow &&
+        target.range.startCol === target.range.endCol;
+      setSelection(
+        single
+          ? collapseSelection({ row: target.range.startRow, col: target.range.startCol })
+          : selectionForRange(target.range, {
+              row: target.range.startRow,
+              col: target.range.startCol,
+            }),
+      );
+    },
+    [document],
+  );
+
+  const navigateToAddress = useCallback(
+    (text: string): string | null => {
+      const resolution = resolveNavigationTarget(text);
+      if (resolution.kind === 'invalid') {
+        setStatus(resolution.message);
+        return null;
+      }
+      const { target } = resolution;
+      selectNavigationTarget(target);
+      // The name box hands the focus back to the grid (command-system §7).
+      setFocusZone('grid');
+      setStatus(`Selected ${target.sheetName}!${target.label}.`);
+      return target.label;
+    },
+    [resolveNavigationTarget, selectNavigationTarget],
   );
 
   /** Dispatch a sheet command through the session; the sheet track owns the model. */
@@ -707,6 +824,154 @@ export function App(): JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
       return null;
+    }
+  };
+
+  /**
+   * Submit one find/replace command through the session. The dialog owns the
+   * form and the view list; the command owns matching and the cell changes.
+   * Find Next advances the view selection from the returned match list without
+   * touching the document.
+   */
+  const runFindCommand = (
+    commandId: 'find.search' | 'find.replaceOne' | 'find.replaceAll',
+    query: FindQuery | FindReplaceQuery,
+    options: { readonly selectNext?: boolean } = {},
+  ): FindOutcome => {
+    if (document === null) return findErrorOutcome('Open a workbook first.');
+    try {
+      const result = document.session.dispatch(commandId, query, {
+        activeSheetId: document.sheetId,
+        selection: selectionRange(selection),
+        activeCell: selection.focus,
+      });
+      applyActiveSheetHint(result, { focus: false });
+      if (result.changes.length > 0) setVersion((value) => value + 1);
+      if (result.selectionAfter !== undefined) {
+        setSelection(
+          selectionForRange(result.selectionAfter, {
+            row: result.selectionAfter.startRow,
+            col: result.selectionAfter.startCol,
+          }),
+        );
+      }
+      const outcome = findOutcomeFromResult(result, document.session.workbook);
+      if (options.selectNext === true) {
+        if (outcome.matches.length === 0) {
+          setStatus(outcome.message ?? 'No matches found.');
+        } else {
+          const next = nextFindMatch(
+            outcome.matches,
+            document.sheetId,
+            selection.focus,
+            document.session.workbook,
+          );
+          if (next !== null) selectFindMatch(next);
+        }
+      } else if (result.ui?.message !== undefined) {
+        setStatus(result.ui.message);
+      } else if (outcome.replaced > 0) {
+        setStatus(`Replaced ${outcome.replaced} cell${outcome.replaced === 1 ? '' : 's'}.`);
+      }
+      return outcome;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+      return findErrorOutcome(message);
+    }
+  };
+
+  /** Move the view selection to one match, keeping the dialog's focus. */
+  const selectFindMatch = (match: FindMatchView): void => {
+    if (document === null) return;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === match.sheetId,
+    );
+    if (sheet === undefined) {
+      setStatus('That match is no longer in the workbook.');
+      return;
+    }
+    if (!isSheetVisible(document.session.workbook, sheet.id)) {
+      setStatus(`Sheet "${sheet.name}" is hidden and cannot be activated in this milestone.`);
+      return;
+    }
+    if (sheet.id !== document.sheetId) {
+      setDocument({ ...document, sheetId: sheet.id });
+      setLiveEditText(null);
+      setBarDraft(null);
+      setBarCaretRequest(null);
+      barEditAddressRef.current = null;
+      barPointingRef.current = null;
+    }
+    setSelection(collapseSelection({ row: match.row, col: match.col }));
+    setStatus(`Selected ${sheet.name}!${match.address}.`);
+  };
+
+  /** Select a Find All row without closing the dialog or moving its focus. */
+  const activateFindMatch = (match: FindMatchView): void => {
+    selectFindMatch(match);
+  };
+
+  /**
+   * Go To validates the target first, then submits `goto.goto`. A rejection
+   * leaves the selection and the active sheet exactly where they were.
+   */
+  const submitGoTo = (text: string): GoToOutcome => {
+    if (document === null) return { ok: false, message: 'Open a workbook first.' };
+    const resolution = resolveNavigationTarget(text);
+    if (resolution.kind === 'invalid') {
+      setStatus(resolution.message);
+      return { ok: false, message: resolution.message };
+    }
+    const target = resolution.target;
+    try {
+      const result = document.session.dispatch(
+        'goto.goto',
+        { target: text.trim() },
+        {
+          activeSheetId: document.sheetId,
+          selection: selectionRange(selection),
+          activeCell: selection.focus,
+        },
+      );
+      // A toast with no selection is a rejected target, not a completed jump.
+      if (result.ui?.type === 'toast' && result.selectionAfter === undefined) {
+        const message = result.ui.message ?? 'That reference cannot be selected.';
+        setStatus(message);
+        return { ok: false, message };
+      }
+      if (result.changes.length > 0) setVersion((value) => value + 1);
+      applyActiveSheetHint(result, { focus: false });
+      if (result.selectionAfter !== undefined) {
+        setSelection(
+          selectionForRange(result.selectionAfter, {
+            row: result.selectionAfter.startRow,
+            col: result.selectionAfter.startCol,
+          }),
+        );
+      } else if (
+        result.activeSheetId === undefined ||
+        result.activeSheetId === null ||
+        result.activeSheetId === target.sheetId
+      ) {
+        // The command may only report the target; keep the local resolution as
+        // the view selection, never as a model edit.
+        selectNavigationTarget(target);
+      }
+      setStatus(result.ui?.message ?? `Selected ${target.sheetName}!${target.label}.`);
+      // A successful jump is a command: hand the keyboard to the grid after
+      // the dialog shell has unmounted. A direct dispatch focuses at once.
+      if (dialog !== null) {
+        focusGridAfterDialogRef.current = true;
+        setDialog(null);
+      } else {
+        focusGrid();
+      }
+      return { ok: true, message: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+      return { ok: false, message };
     }
   };
 
@@ -1327,6 +1592,46 @@ export function App(): JSX.Element {
         changeZoom(100);
         focusGrid();
         return null;
+      case 'find.search': {
+        if (document === null) return null;
+        const query = findQueryArgument(args);
+        if (query === null) {
+          setDialog('find');
+          return null;
+        }
+        runFindCommand('find.search', query);
+        return null;
+      }
+      case 'find.replaceOne': {
+        if (document === null) return null;
+        const query = findQueryArgument(args);
+        if (query === null) {
+          setDialog('replace');
+          return null;
+        }
+        runFindCommand('find.replaceOne', query);
+        return null;
+      }
+      case 'find.replaceAll': {
+        if (document === null) return null;
+        const query = findReplaceQueryArgument(args);
+        if (query === null) {
+          setDialog('replace');
+          return null;
+        }
+        runFindCommand('find.replaceAll', query);
+        return null;
+      }
+      case 'goto.goto': {
+        if (document === null) return null;
+        const target = goToTargetArgument(args);
+        if (target === null) {
+          setDialog('goto');
+          return null;
+        }
+        submitGoTo(target);
+        return null;
+      }
       case 'help.about':
         setDialog('about');
         return null;
@@ -1544,14 +1849,23 @@ export function App(): JSX.Element {
         />
       ) : null}
 
-      {dialog === 'about' ? (
-        <AboutDialog
-          onClose={(reason) => {
-            setDialog(null);
-            if (reason === 'escape') focusGrid();
-          }}
+      {dialog === 'find' || dialog === 'replace' ? (
+        <FindDialog
+          title={dialog === 'replace' ? 'Find and Replace' : 'Find'}
+          onClose={closeDialog}
+          onSearch={(query, all) => runFindCommand('find.search', query, { selectNext: !all })}
+          onReplace={(query, all) =>
+            runFindCommand(all ? 'find.replaceAll' : 'find.replaceOne', query)
+          }
+          onActivateMatch={activateFindMatch}
         />
       ) : null}
+
+      {dialog === 'goto' ? (
+        <GoToDialog initialValue={nameBoxValue} onClose={closeDialog} onSubmit={submitGoTo} />
+      ) : null}
+
+      {dialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
     </div>
   );
 }
@@ -1560,6 +1874,95 @@ function commandTextArgument(args: unknown): string | null {
   if (typeof args !== 'object' || args === null || !('text' in args)) return null;
   const text = (args as { readonly text?: unknown }).text;
   return typeof text === 'string' ? text : null;
+}
+
+function findQueryArgument(args: unknown): FindQuery | null {
+  if (typeof args !== 'object' || args === null) return null;
+  const value = args as Record<string, unknown>;
+  if (typeof value.query !== 'string') return null;
+  return {
+    query: value.query,
+    scope: value.scope === 'workbook' ? 'workbook' : 'sheet',
+    matchCase: value.matchCase === true,
+    wholeCell: value.wholeCell === true,
+    inFormulas: value.inFormulas !== false,
+    inValues: value.inValues !== false,
+  };
+}
+
+function findReplaceQueryArgument(args: unknown): FindReplaceQuery | null {
+  const query = findQueryArgument(args);
+  if (query === null) return null;
+  const replacement = (args as { readonly replacement?: unknown }).replacement;
+  return typeof replacement === 'string' ? { ...query, replacement } : null;
+}
+
+function goToTargetArgument(args: unknown): string | null {
+  if (typeof args !== 'object' || args === null) return null;
+  const target = (args as { readonly target?: unknown }).target;
+  return typeof target === 'string' && target.trim() !== '' ? target : null;
+}
+
+function findErrorOutcome(message: string): FindOutcome {
+  return { error: message, message: null, matches: [], total: 0, replaced: 0 };
+}
+
+/**
+ * The find commands attach their match list as `result.find` and `result.matches`.
+ * The view only reads that payload, the selection and the cell changes; it
+ * never inspects workbook cells to search.
+ */
+function findOutcomeFromResult(result: CommandResult, workbook: Workbook): FindOutcome {
+  const payload: FindResultPayload | undefined = result.find;
+  const matches = findMatches(payload?.matches ?? result.matches, workbook);
+  const total =
+    payload?.total !== undefined && Number.isFinite(payload.total) ? payload.total : matches.length;
+  const replaced = result.replaced ?? payload?.replaced ?? 0;
+  return {
+    error: null,
+    message: result.ui?.message ?? null,
+    matches,
+    total,
+    replaced,
+  };
+}
+
+function findMatches(value: readonly FindMatch[] | undefined, workbook: Workbook): FindMatchView[] {
+  const matches: FindMatchView[] = [];
+  for (const match of value ?? []) {
+    const sheet = workbook.sheets.find((candidate) => candidate.id === match.sheetId);
+    matches.push({
+      key: `${match.sheetId}:${match.row}:${match.col}`,
+      sheetId: match.sheetId,
+      sheetName: sheet?.name ?? 'Sheet',
+      row: match.row,
+      col: match.col,
+      address: formatCellRef(match.row, match.col),
+      preview: match.preview,
+    });
+  }
+  return matches;
+}
+
+/** The first match after the active cell in document order, wrapping at the end. */
+function nextFindMatch(
+  matches: readonly FindMatchView[],
+  activeSheetId: string,
+  active: { readonly row: number; readonly col: number },
+  workbook: Workbook,
+): FindMatchView | null {
+  if (matches.length === 0) return null;
+  const sheetIndex = (sheetId: string): number =>
+    workbook.sheets.findIndex((sheet) => sheet.id === sheetId);
+  const activeSheetIndex = sheetIndex(activeSheetId);
+  // The command returns matches in document order: sheet order, then row,
+  // then column.
+  const next = matches.find((match) => {
+    const index = sheetIndex(match.sheetId);
+    if (index !== activeSheetIndex) return index > activeSheetIndex;
+    return match.row > active.row || (match.row === active.row && match.col > active.col);
+  });
+  return next ?? matches[0] ?? null;
 }
 
 function formatSelectionAddress(selection: GridSelection, projection: SheetProjection): string {

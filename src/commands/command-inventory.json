@@ -282,41 +282,81 @@
     "shortcut": ["Ctrl+Y", "Ctrl+Shift+Z"]
   },
   {
-    "id": "find.open",
+    "id": "find.search",
     "matrixSection": "1. Grid and editing",
     "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
     "label": "Find",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+F"],
     "ribbon": [
-      { "tab": "Home", "group": "Editing", "kind": "button", "order": 40, "label": "Find" }
-    ]
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 40,
+        "label": "Find",
+        "title": "Find (Ctrl+F)"
+      }
+    ],
+    "contextMenu": { "order": 80 },
+    "compact": { "kind": "button", "order": 40, "label": "Find" }
   },
   {
-    "id": "find.replace",
+    "id": "find.replaceOne",
     "matrixSection": "1. Grid and editing",
     "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
     "label": "Replace",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+H"],
     "ribbon": [
-      { "tab": "Home", "group": "Editing", "kind": "button", "order": 50, "label": "Replace" }
-    ]
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 50,
+        "label": "Replace",
+        "title": "Replace (Ctrl+H)"
+      }
+    ],
+    "contextMenu": { "order": 90 },
+    "compact": { "kind": "button", "order": 41, "label": "Replace" }
   },
   {
-    "id": "goTo.open",
+    "id": "find.replaceAll",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
+    "label": "Replace All",
+    "category": "edit",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "goto.goto",
     "matrixSection": "1. Grid and editing",
     "matrixFeature": "Go To (Ctrl+G and name box)",
     "label": "Go To",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+G"],
-    "menu": [{ "menu": "Edit", "order": 100 }]
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 60,
+        "label": "Go To",
+        "title": "Go To (Ctrl+G)"
+      }
+    ],
+    "menu": [{ "menu": "Edit", "order": 100 }],
+    "contextMenu": { "order": 100 },
+    "compact": { "kind": "button", "order": 42, "label": "Go To" }
   },
   {
     "id": "edit.clearContents",

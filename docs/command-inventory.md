@@ -10,9 +10,9 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 56
-- Inventory commands: 92
-- Implemented in this build: 32
-- Planned for a later slice: 60
+- Inventory commands: 93
+- Implemented in this build: 36
+- Planned for a later slice: 57
 - Out-of-scope rows (V2 or NEVER): 29
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -45,9 +45,10 @@ that the command exists.
 | `merge.unmerge` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Unmerge | — | — | — | A sheet is active and a merged cell is selected | Planned |
 | `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
 | `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | — | — | Ctrl+Z | The undo history is not empty | Implemented |
-| `find.open` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Find | Home → Editing | — | Ctrl+F | A sheet is active | Planned |
-| `find.replace` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Replace | Home → Editing | — | Ctrl+H | A sheet is active | Planned |
-| `goTo.open` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go To | — | Edit | Ctrl+G | A sheet is active | Planned |
+| `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Replace All | — | — | — | A sheet is active | Implemented |
+| `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Replace | Home → Editing | Context menu | Ctrl+H | A sheet is active | Implemented |
+| `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Find | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
+| `goto.goto` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go To | Home → Editing | Edit<br>Context menu | Ctrl+G | A sheet is active | Implemented |
 | `edit.clearAll` | 1. Grid and editing — Clear contents / formats / all | Clear all | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Planned |
 | `edit.clearContents` | 1. Grid and editing — Clear contents / formats / all | Clear contents | Home → Editing (menu) | Context menu | Delete, Backspace | A sheet is active and a range is selected | Implemented |
 | `format.clear` | 1. Grid and editing — Clear contents / formats / all | Clear formats | Home → Editing | Context menu | — | A sheet is active and a range is selected | Implemented |

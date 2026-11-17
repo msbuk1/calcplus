@@ -1153,6 +1153,155 @@ a:focus-visible,
   color: var(--accent);
 }
 
+/* ---------- Find & Replace and Go To ---------- */
+
+.find-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.goto-dialog {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.find-form,
+.goto-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.find-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.find-label {
+  color: var(--text);
+}
+
+.find-input,
+.find-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--command-surface);
+  color: var(--text);
+}
+
+.find-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 2px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.find-options legend {
+  padding: 0 4px;
+  color: var(--disabled);
+  font-size: 12px;
+}
+
+.find-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.find-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.find-actions button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--command-surface);
+  color: var(--text);
+}
+
+.find-actions button:hover {
+  background: var(--button-hover);
+}
+
+.find-results {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.find-results-count {
+  margin: 0 0 6px;
+  color: var(--disabled);
+  font-size: 12px;
+}
+
+.find-result-list {
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.find-result-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.find-result {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.find-result:hover {
+  background: var(--button-hover);
+}
+
+.find-result-address {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.find-result-preview {
+  overflow: hidden;
+  color: var(--disabled);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialog-message,
+.dialog-hint {
+  margin: 0;
+  color: var(--disabled);
+  font-size: 12px;
+}
+
+.dialog-error {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--danger-border);
+  border-radius: 3px;
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
 /* ---------- Responsive chrome ---------- */
 
 @media (max-width: 1099px) {

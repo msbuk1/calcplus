@@ -13,7 +13,7 @@ export interface NameBoxProps {
 
 /**
  * The name box. It shows the address of the selection and accepts an address
- * to jump to. The Go To dialog itself is a chrome-milestone feature.
+ * to jump to. Ctrl+G opens the Go To dialog from the app shell.
  */
 export function NameBox({
   value,

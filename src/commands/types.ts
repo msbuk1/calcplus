@@ -1,4 +1,5 @@
 import type { ClipboardSnapshot } from '@model/clipboard';
+import type { FindMatch } from '@model/find';
 import type {
   Cell,
   CellAddress,
@@ -40,6 +41,17 @@ export interface CommandUiRequest {
   readonly message?: string;
 }
 
+/**
+ * The payload `find.search`, `find.replaceOne` and `find.replaceAll` report to
+ * the Find & Replace dialog. `matches` is present for a search; `replaced`
+ * counts cells changed by a replace command.
+ */
+export interface FindResultPayload {
+  readonly matches?: readonly FindMatch[];
+  readonly total?: number;
+  readonly replaced?: number;
+}
+
 export interface CommandResult {
   readonly changes: readonly CommandChange[];
   readonly selectionAfter?: GridRange;
@@ -55,6 +67,12 @@ export interface CommandResult {
    * enters the undo log.
    */
   readonly clipboard?: ClipboardSnapshot;
+  /** The matches `find.search` found, in document order. */
+  readonly matches?: readonly FindMatch[];
+  /** Cells changed by `find.replaceOne` or `find.replaceAll`. */
+  readonly replaced?: number;
+  /** The dialog payload for the find and replace commands. */
+  readonly find?: FindResultPayload;
   readonly ui?: CommandUiRequest;
 }
 
