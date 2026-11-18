@@ -10,9 +10,9 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 57
-- Inventory commands: 101
-- Implemented in this build: 55
-- Planned for a later slice: 46
+- Inventory commands: 103
+- Implemented in this build: 58
+- Planned for a later slice: 45
 - Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -33,7 +33,9 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `edit.copy` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Copy | Home → Clipboard | Context menu | Ctrl+C | A sheet is active and a range is selected | Implemented |
 | `edit.cut` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Cut | Home → Clipboard | Context menu | Ctrl+X | A sheet is active and a range is selected | Implemented |
 | `edit.paste` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Paste | Home → Clipboard | Context menu | Ctrl+V | A sheet is active | Implemented |
-| `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | A sheet is active and the fill handle is visible | Planned |
+| `edit.fillDown` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill down | — | — | Ctrl+D | A sheet is active and a range is selected | Implemented |
+| `edit.fillRight` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill right | — | — | Ctrl+R | A sheet is active and a range is selected | Implemented |
+| `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | A sheet is active and the fill handle is visible | Implemented |
 | `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | A sheet is active and a range is selected | Planned |
 | `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | A sheet is active and a range is selected | Planned |
 | `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | Home → Cells | — | Ctrl+- | A sheet is active and a range is selected | Implemented |

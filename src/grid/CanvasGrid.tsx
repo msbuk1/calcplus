@@ -113,6 +113,12 @@ export interface CanvasGridProps {
   readonly painterActive?: boolean;
   readonly onPainterApply?: (range: GridRange) => void;
   /**
+   * The fill handle was released over a larger rectangle, or double-clicked.
+   * The grid supplies the source block and the whole destination rectangle
+   * (source included); the application dispatches one `fill.handle` command.
+   */
+  readonly onFill?: (source: GridRange, destination: GridRange) => void;
+  /**
    * The focus owner hands the grid shell to the focus manager.
    */
   readonly shellRef?: RefObject<HTMLDivElement | null>;
@@ -146,6 +152,7 @@ export function CanvasGrid({
   onZoomChange,
   painterActive,
   onPainterApply,
+  onFill,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -179,6 +186,14 @@ export function CanvasGrid({
     readonly anchor: GridCellAddress;
     focus: GridCellAddress;
   } | null>(null);
+  const fillDragRef = useRef<{
+    readonly pointerId: number;
+    readonly source: GridRange;
+    focus: GridCellAddress;
+  } | null>(null);
+  const fillCleanupRef = useRef<(() => void) | null>(null);
+  /** Time of the last fill-handle press, for Excel's double-click fill. */
+  const fillPressRef = useRef(0);
   const formulaDragRef = useRef<{
     readonly pointerId: number;
     readonly anchor: GridCellAddress;
@@ -187,6 +202,8 @@ export function CanvasGrid({
   const pendingCaretRef = useRef<number | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ width: 800, height: 480 });
   const [editor, setEditor] = useState<EditorSession | null>(null);
+  /** The live destination outline while the fill handle is dragged. */
+  const [fillPreview, setFillPreview] = useState<GridRange | null>(null);
 
   const paint = useCallback((): void => {
     const frame = frameRef.current;
@@ -286,6 +303,8 @@ export function CanvasGrid({
     return () => {
       painterCleanupRef.current?.();
       painterCleanupRef.current = null;
+      fillCleanupRef.current?.();
+      fillCleanupRef.current = null;
     };
   }, []);
 
@@ -521,7 +540,7 @@ export function CanvasGrid({
     endCol: Math.max(anchor.col, focus.col),
   });
 
-  const samePainterRange = (left: GridRange | null, right: GridRange | null): boolean =>
+  const sameGridRange = (left: GridRange | null, right: GridRange | null): boolean =>
     left === right ||
     (left !== null &&
       right !== null &&
@@ -529,6 +548,88 @@ export function CanvasGrid({
       left.startCol === right.startCol &&
       left.endRow === right.endRow &&
       left.endCol === right.endCol);
+
+  /** `true` when the press landed on the painted fill handle. */
+  const fillHandleAt = (pointX: number, pointY: number): boolean => {
+    const handle = gridDebugState.fillHandle;
+    if (handle === null) return false;
+    return (
+      pointX >= handle.x - FILL_HANDLE_HIT_MARGIN_PIXELS &&
+      pointX <= handle.x + handle.width + FILL_HANDLE_HIT_MARGIN_PIXELS &&
+      pointY >= handle.y - FILL_HANDLE_HIT_MARGIN_PIXELS &&
+      pointY <= handle.y + handle.height + FILL_HANDLE_HIT_MARGIN_PIXELS
+    );
+  };
+
+  /** The rectangle a fill drag covers: the source extended to the hovered cell. */
+  const fillTarget = (source: GridRange, focus: GridCellAddress): GridRange => ({
+    startRow: Math.min(source.startRow, focus.row),
+    startCol: Math.min(source.startCol, focus.col),
+    endRow: Math.max(source.endRow, focus.row),
+    endCol: Math.max(source.endCol, focus.col),
+  });
+
+  /**
+   * Pressing the fill handle starts one fill gesture. The destination outline
+   * grows with the pointer and the release submits `fill.handle` once, over the
+   * whole rectangle. A press and release without movement is not a fill (the
+   * source is its own destination), so it leaves the selection and the document
+   * untouched, exactly like Excel.
+   */
+  const beginFillDrag = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
+    if (event.button !== 0) return;
+    const source = selectionRange(stateRef.current.selection);
+    const drag = {
+      pointerId: event.pointerId,
+      source,
+      focus: { row: source.endRow, col: source.endCol },
+    };
+    fillDragRef.current = drag;
+    setFillPreview(source);
+
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+      if (address === null) return;
+      const focus = mergeAnchor(stateRef.current.projection, address);
+      if (focus.row === drag.focus.row && focus.col === drag.focus.col) return;
+      drag.focus = focus;
+      setFillPreview(fillTarget(drag.source, focus));
+    };
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      stopTracking();
+      fillDragRef.current = null;
+      setFillPreview(null);
+      const destination = fillTarget(drag.source, drag.focus);
+      if (sameGridRange(destination, drag.source)) return;
+      onFill?.(drag.source, destination);
+    };
+    const cancel = (cancelEvent: PointerEvent): void => {
+      if (cancelEvent.pointerId !== drag.pointerId) return;
+      abandon();
+    };
+    function abandon(): void {
+      stopTracking();
+      fillDragRef.current = null;
+      fillCleanupRef.current = null;
+      setFillPreview(null);
+    }
+    function onWindowBlur(): void {
+      abandon();
+    }
+    function stopTracking(): void {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('blur', onWindowBlur);
+    }
+    fillCleanupRef.current = stopTracking;
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('blur', onWindowBlur);
+  };
 
   /** Extend the ordinary selection from the press cell as the pointer moves. */
   const beginSelectionDrag = (
@@ -830,7 +931,7 @@ export function CanvasGrid({
               const target = mergeAnchor(stateRef.current.projection, address);
               return painterRange(target, target);
             })();
-      if (samePainterRange(painterTargetRef.current, next)) return;
+      if (sameGridRange(painterTargetRef.current, next)) return;
       painterTargetRef.current = next;
       schedulePaint();
       return;
@@ -979,6 +1080,29 @@ export function CanvasGrid({
 
     containerRef.current?.focus();
 
+    // The fill handle owns its press: it never moves the selection or opens
+    // the editor. A second press inside the double-click window is Excel's
+    // double-click fill down to the adjacent data edge; a drag fills the
+    // rectangle the pointer covers. Either way, one command and one
+    // transaction. The browser's own `dblclick` is ignored by the double-click
+    // handler while the pointer is on the handle.
+    if (event.button === 0 && fillHandleAt(pointX, pointY) && onFill !== undefined) {
+      event.preventDefault();
+      const now = Date.now();
+      const doubleClick = now - fillPressRef.current <= FILL_HANDLE_DOUBLE_CLICK_MS;
+      fillPressRef.current = doubleClick ? 0 : now;
+      if (doubleClick) {
+        const source = selectionRange(stateRef.current.selection);
+        const last = adjacentFillRow(current, source);
+        if (last !== null && last > source.endRow) {
+          onFill(source, { ...source, endRow: last });
+        }
+        return;
+      }
+      beginFillDrag(event);
+      return;
+    }
+
     if (event.button === 0) {
       const resize = headerResizeTarget(current, layout, pointX, pointY, scroll.x, scroll.y);
       if (resize !== null) {
@@ -1075,6 +1199,10 @@ export function CanvasGrid({
     const pointX = event.clientX - rect.left;
     const pointY = event.clientY - rect.top;
     const current = stateRef.current.projection;
+
+    // The double-click fill already ran on the second press of the handle; the
+    // browser's `dblclick` must not also open the in-cell editor.
+    if (fillHandleAt(pointX, pointY) && onFill !== undefined) return;
 
     // A header double-click autofits every selected visible row or column to
     // its own content. One transaction stores the whole selection.
@@ -1381,6 +1509,13 @@ export function CanvasGrid({
           padding: `0 ${Math.max(2, 4 * projection.zoom)}px`,
         };
 
+  // The fill destination outline follows the pointer; it is view state and
+  // never enters the model or the undo log.
+  const fillPreviewRect =
+    fillPreview === null
+      ? null
+      : rangeOverlayRect(projection, layout, scrollRef.current.x, scrollRef.current.y, fillPreview);
+
   return (
     <div
       ref={setShellRef}
@@ -1451,6 +1586,22 @@ export function CanvasGrid({
           data-testid="grid-hscroll-thumb"
         />
       </div>
+      {fillPreviewRect !== null ? (
+        <div
+          data-testid="fill-preview"
+          style={{
+            position: 'absolute',
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+            border: '1px dashed var(--accent)',
+            background: 'rgba(26, 115, 232, 0.08)',
+            left: `${fillPreviewRect.x}px`,
+            top: `${fillPreviewRect.y}px`,
+            width: `${fillPreviewRect.width}px`,
+            height: `${fillPreviewRect.height}px`,
+          }}
+        />
+      ) : null}
       {editor !== null ? (
         <textarea
           ref={editorRef}
@@ -1482,6 +1633,64 @@ export function CanvasGrid({
 
 /** Movement below this is a click, so a header double-click can autofit. */
 const RESIZE_DRAG_THRESHOLD_PIXELS = 3;
+
+/** The fill handle is six pixels wide; a couple of pixels of slack help the press. */
+const FILL_HANDLE_HIT_MARGIN_PIXELS = 2;
+
+/** Two presses on the handle inside this window are a double-click fill. */
+const FILL_HANDLE_DOUBLE_CLICK_MS = 500;
+
+/**
+ * The last row a double-click on the fill handle fills to. Excel measures the
+ * contiguous run of data immediately below the selection in the **adjacent**
+ * column — the column to the left of the selection, or the column to its right
+ * when the selection starts in column A — because that column holds the length
+ * the fill should match. The source's own leftmost column is the fallback when
+ * neither neighbour has a run. `null` when there is no run below the source, in
+ * which case Excel does nothing.
+ */
+function adjacentFillRow(projection: SheetProjection, source: GridRange): number | null {
+  for (const col of [source.startCol - 1, source.endCol + 1, source.startCol]) {
+    if (col < 0 || col >= projection.columnCount) continue;
+    const last = contiguousRunEnd(projection, col, source.endRow + 1);
+    if (last !== null) return last;
+  }
+  return null;
+}
+
+/** The last row of the unbroken run of data starting at `startRow`. */
+function contiguousRunEnd(
+  projection: SheetProjection,
+  col: number,
+  startRow: number,
+): number | null {
+  let last: number | null = null;
+  for (let row = startRow; row < projection.rowCount; row += 1) {
+    const cell = projection.cellAt(row, col);
+    const holdsData = cell !== null && (cell.formula !== null || cell.value.type !== 'blank');
+    if (!holdsData) break;
+    last = row;
+  }
+  return last;
+}
+
+/** A range's rectangle in canvas coordinates, for the live fill outline. */
+function rangeOverlayRect(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  scrollX: number,
+  scrollY: number,
+  range: GridRange,
+): { readonly x: number; readonly y: number; readonly width: number; readonly height: number } {
+  const topLeft = cellRect(projection, layout, scrollX, scrollY, range.startRow, range.startCol);
+  const bottomRight = cellRect(projection, layout, scrollX, scrollY, range.endRow, range.endCol);
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: bottomRight.x + bottomRight.width - topLeft.x,
+    height: bottomRight.y + bottomRight.height - topLeft.y,
+  };
+}
 
 const POINTING_KEYS: ReadonlySet<string> = new Set([
   'ArrowUp',

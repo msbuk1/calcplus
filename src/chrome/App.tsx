@@ -843,6 +843,14 @@ export function App(): JSX.Element {
       } else if (!inTextInput && !event.shiftKey && (event.key === 'b' || event.key === 'B')) {
         event.preventDefault();
         runCommandRef.current?.('format.bold');
+      } else if (!inTextInput && !event.shiftKey && (event.key === 'd' || event.key === 'D')) {
+        // Ctrl+D fills the selection down from its first row (keyboard map §6).
+        event.preventDefault();
+        runCommandRef.current?.('edit.fillDown');
+      } else if (!inTextInput && !event.shiftKey && (event.key === 'r' || event.key === 'R')) {
+        // Ctrl+R fills the selection right from its first column.
+        event.preventDefault();
+        runCommandRef.current?.('edit.fillRight');
       } else if (!inTextInput && !event.shiftKey && (event.key === 'i' || event.key === 'I')) {
         event.preventDefault();
         runCommandRef.current?.('format.italic');
@@ -1003,6 +1011,24 @@ export function App(): JSX.Element {
       setStatus(error instanceof Error ? error.message : String(error));
       return null;
     }
+  };
+
+  /**
+   * A completed fill gesture is one `fill.handle` command: the grid supplies
+   * the source block and the whole destination rectangle, the command owns the
+   * copy/adjust logic, and the whole gesture is one undo transaction.
+   */
+  const handleFill = (source: GridRange, destination: GridRange): void => {
+    const result = dispatchSheetCommand('fill.handle', { source, destination });
+    if (result === null) return;
+    if (result.ui?.message !== undefined) {
+      setStatus(result.ui.message);
+    } else if (result.changes.length === 0) {
+      setStatus('The fill made no change.');
+    } else {
+      setStatus(`Filled ${formatRangeAddress(destination, false, false)}.`);
+    }
+    if (result.ui?.type !== 'dialog') focusGrid();
   };
 
   /**
@@ -2345,6 +2371,7 @@ export function App(): JSX.Element {
             onZoomChange={changeZoom}
             painterActive={painter !== null}
             onPainterApply={applyPainter}
+            onFill={handleFill}
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />

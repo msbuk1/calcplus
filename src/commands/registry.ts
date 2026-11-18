@@ -5,6 +5,7 @@ import { chromeCommands } from './chrome';
 import { clearContentsCommand } from './clear';
 import { clipboardCommands } from './clipboard';
 import { dimensionSetCommand } from './dimension';
+import { fillCommands } from './fill';
 import { findReplaceAllCommand, findReplaceOneCommand, findSearchCommand } from './find';
 import {
   filterClearColumnCommand,
@@ -84,6 +85,7 @@ export function createCommandRegistry(): CommandRegistry {
   for (const command of structureCommands()) registry.register(command);
   registry.register(clearContentsCommand);
   registry.register(autoSumCommand);
+  for (const command of fillCommands()) registry.register(command);
   registry.register(sortCommand);
   registry.register(filterToggleCommand);
   registry.register(filterColumnCommand);

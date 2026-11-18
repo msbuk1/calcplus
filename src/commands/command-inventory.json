@@ -131,8 +131,28 @@
     "label": "Fill handle",
     "category": "edit",
     "enablement": "A sheet is active and the fill handle is visible",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
+  },
+  {
+    "id": "edit.fillDown",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Fill handle: copy, relative-reference adjustment, double-click to adjacent data",
+    "label": "Fill down",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+D"]
+  },
+  {
+    "id": "edit.fillRight",
+    "matrixSection": "1. Grid and editing",
+    "matrixFeature": "Fill handle: copy, relative-reference adjustment, double-click to adjacent data",
+    "label": "Fill right",
+    "category": "edit",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": ["Ctrl+R"]
   },
   {
     "id": "edit.dragMove",

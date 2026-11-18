@@ -1,4 +1,5 @@
 import type { ClipboardSnapshot } from '@model/clipboard';
+import type { FillBlockCode, FillStopReason } from '@model/fill';
 import type { FindMatch } from '@model/find';
 import type { StructuralEdit } from '@model/range-transform';
 import type { SortBlockCode, SortStopReason, SortWarning } from '@model/sort';
@@ -134,11 +135,35 @@ export interface StructurePayload {
   readonly filterCleared: boolean;
 }
 
+/**
+ * What a `fill.*` command reports back to its surface (feature matrix §1 "Fill
+ * handle"). A blocked fill creates no transaction; a fill that changes nothing
+ * creates none either. `cellCount` and `formulaCount` describe the transaction
+ * the command requested.
+ */
+export interface FillPayload {
+  readonly state: 'filled' | 'unchanged' | 'blocked';
+  readonly sheetId: SheetId;
+  readonly source: GridRange;
+  /** The whole target rectangle, source included. */
+  readonly destination: GridRange;
+  /** Why a fill was a no-op: the target held only the source, or nothing changed. */
+  readonly reason?: FillStopReason;
+  /** The blocking code and the message the surface shows. */
+  readonly code?: FillBlockCode;
+  readonly message?: string;
+  /** Destination cells written, not counting the source rectangle. */
+  readonly cellCount: number;
+  /** Written cells whose formula text changed. */
+  readonly formulaCount: number;
+}
+
 export interface CommandResult {
   readonly changes: readonly CommandChange[];
   readonly selectionAfter?: GridRange;
   /** The structural-edit outcome: the applied edit or Excel's block message. */
-  readonly structure?: StructurePayload; /**
+  readonly structure?: StructurePayload;
+  /**
    * A view-state hint, never a document change: the sheet the caller should
    * activate after this command or undo. Undo of an insert names the fallback
    * tab; a sheet delete is terminal, so it names the neighbouring tab.
@@ -163,6 +188,8 @@ export interface CommandResult {
   readonly find?: FindResultPayload;
   /** The sort outcome: dialog prefill, the applied plan, or Excel's block message. */
   readonly sort?: SortPayload;
+  /** The fill outcome: the applied bands, a no-op reason, or the block message. */
+  readonly fill?: FillPayload;
   /** The AutoFilter outcome: criteria, hidden-row changes and the record count. */
   readonly filter?: FilterPayload;
   readonly ui?: CommandUiRequest;
