@@ -74,6 +74,13 @@ Ruled 2026-11-18 (maintainer): quick fix now, dimension styles next.
    Needs style resolution in the renderer (dimension style with cell override),
    round-trip in the patch writer, and its own tests. Lands as a dedicated lane.
 
+Both quick-fix items are done (commit 98b25e0). A second concrete instance —
+right clicking a selected range collapsing it before the context menu opened —
+was fixed the same day in `src/grid/CanvasGrid.tsx`: a right click inside the
+selection keeps it (the menu acts on the whole range), a right click outside
+moves it, and header right clicks keep a header selection that covers the
+clicked axis. Proven by `tests/e2e/context-menu.spec.ts`.
+
 ## Answer
 
 Pending.

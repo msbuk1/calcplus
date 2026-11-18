@@ -45,7 +45,13 @@ import {
   type PaneLayout,
 } from './panes';
 import { resizeDimension, type DimensionAxis, type DimensionResize } from './resize';
-import { collapseSelection, extendSelection, selectionForRange, selectionRange } from './selection';
+import {
+  collapseSelection,
+  extendSelection,
+  selectionContains,
+  selectionForRange,
+  selectionRange,
+} from './selection';
 
 export interface CanvasGridProps {
   readonly projection: SheetProjection;
@@ -984,6 +990,15 @@ export function CanvasGrid({
     if (pointY < layout.headerHeight && pointX >= layout.headerWidth) {
       const col = columnAtHeader(current, layout, pointX, scroll.x);
       if (col === null) return;
+      if (event.button === 2) {
+        if (!rightClickKeepsHeaderSelection(current, stateRef.current.selection, 'column', col)) {
+          onSelectionChange(
+            columnHeaderSelection(current, col, stateRef.current.selection, scroll, false),
+          );
+        }
+        return;
+      }
+      if (event.button !== 0) return;
       const next = columnHeaderSelection(
         current,
         col,
@@ -1000,6 +1015,15 @@ export function CanvasGrid({
     if (pointX < layout.headerWidth && pointY >= layout.headerHeight) {
       const row = rowAtHeader(current, layout, pointY, scroll.y);
       if (row === null) return;
+      if (event.button === 2) {
+        if (!rightClickKeepsHeaderSelection(current, stateRef.current.selection, 'row', row)) {
+          onSelectionChange(
+            rowHeaderSelection(current, row, stateRef.current.selection, scroll, false),
+          );
+        }
+        return;
+      }
+      if (event.button !== 0) return;
       const next = rowHeaderSelection(
         current,
         row,
@@ -1018,6 +1042,16 @@ export function CanvasGrid({
     if (address === null) return;
     const merge = current.mergeAt(address.row, address.col);
     const target = merge === null ? address : { row: merge.anchorRow, col: merge.anchorCol };
+    // Excel: a right click inside the selection keeps it for the context
+    // menu; a right click outside moves the selection to the clicked cell.
+    // Only a left press starts or extends a selection drag.
+    if (event.button === 2) {
+      if (!selectionContains(stateRef.current.selection, target.row, target.col)) {
+        onSelectionChange(collapseSelection(target));
+      }
+      return;
+    }
+    if (event.button !== 0) return;
     if (event.shiftKey) {
       const base = stateRef.current.selection;
       onSelectionChange(extendSelection(base, target));
@@ -1522,6 +1556,24 @@ function positionEditor(
   element.style.top = `${rect.y}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
+}
+
+/**
+ * A right click on a header keeps a header selection that already covers the
+ * clicked axis, so the context menu acts on the whole selection (Excel's
+ * context-menu behaviour; ticket 29).
+ */
+function rightClickKeepsHeaderSelection(
+  projection: SheetProjection,
+  selection: GridSelection,
+  axis: 'row' | 'column',
+  index: number,
+): boolean {
+  const current = headerSelectionRange(projection, selection, axis);
+  if (current === null) return false;
+  return axis === 'column'
+    ? index >= current.startCol && index <= current.endCol
+    : index >= current.startRow && index <= current.endRow;
 }
 
 /**

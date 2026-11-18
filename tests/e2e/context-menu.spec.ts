@@ -32,3 +32,42 @@ test('context menu stays inside the viewport near the bottom edge', async ({ pag
   await page.getByRole('menuitem', { name: 'Go to' }).click();
   await expect(page.getByRole('dialog', { name: 'Go to' })).toBeVisible();
 });
+
+test('right click inside a selected range keeps it for the context menu', async ({ page }) => {
+  await openFixture(page, fixture);
+
+  // Select a range the ticket-29 way: through the name box.
+  const nameBox = page.getByTestId('name-box');
+  await nameBox.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('A1:E10');
+  await page.keyboard.press('Enter');
+  await expect(nameBox).toHaveValue('A1:E10');
+
+  // Right click well inside the range: the selection must survive.
+  const canvas = page.getByTestId('grid-canvas');
+  await canvas.click({ button: 'right', position: { x: 100, y: 60 } });
+  await expect(nameBox).toHaveValue('A1:E10');
+
+  // The menu command must see the whole range: the status message names it.
+  await page.getByRole('menuitem', { name: 'Clear contents' }).click();
+  await expect(page.getByRole('contentinfo').getByText(/A1:E10/)).toBeVisible();
+  await expect(nameBox).toHaveValue('A1:E10');
+});
+
+test('right click outside the selection moves it', async ({ page }) => {
+  await openFixture(page, fixture);
+
+  const nameBox = page.getByTestId('name-box');
+  await nameBox.click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('A1:E10');
+  await page.keyboard.press('Enter');
+  await expect(nameBox).toHaveValue('A1:E10');
+
+  const canvas = page.getByTestId('grid-canvas');
+  await canvas.click({ button: 'right', position: { x: 900, y: 400 } });
+  // A single cell far from the old range replaces it.
+  await expect(nameBox).toHaveValue(/^[A-Z]+[0-9]+$/);
+  await expect(nameBox).not.toHaveValue('A1:E10');
+});
