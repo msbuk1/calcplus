@@ -135,8 +135,9 @@ Table, Cell Styles) and the Conditional Formatting menu in full: bold heading
 **Conditional Formatting**, then **Highlight Cell Rules ›**, **Top/Bottom
 Rules ›**, **Data Bars ›**, **Colour Scales ›**, **Icon Sets ›**, **New
 Rule…**, **Clear Rules ›**, **Manage Rules…**. Every entry is rule AUTHORING,
-which is matrix V2. Whatever ticket 27 rules for the button, none of this menu
-ships in v1; the capture is stored as the v2 reference.
+which is matrix V2. Ticket 27 ruled A: the button ships in v1 as
+present-but-disabled (tooltip: authoring arrives in v2) and this menu does not
+ship; the capture is stored as the v2 reference.
 
 
 ## 9. Deltas awaiting a ruling
