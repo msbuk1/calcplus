@@ -10,6 +10,8 @@ import {
 } from '@model/value';
 import { createSheet, createSheetId } from '@model/workbook';
 import { applyAutoFilterHiddenLayers, parseAutoFilterElement } from './autofilter-xml';
+import { applyConditionalFormats } from './conditional-format-xml';
+import type { ConditionalFormatRule } from '@model/conditional-format';
 import { WorkbookOpenError, WorkbookSaveError } from './errors';
 import type { SharedStringEntry, SharedStringsTable } from './types';
 import { SPREADSHEET_NS, STRICT_SPREADSHEET_NS, decodeXml, openTagStart, parseXml } from './xml';
@@ -91,6 +93,8 @@ export interface ParsedWorksheet {
   readonly rootChildren: readonly WorksheetElementPosition[];
   readonly unsafeReasons: readonly string[];
   readonly rootPrefix: string;
+  /** The sheet's conditional-format rules, base and x14 merged (§7). */
+  readonly conditionalFormatRules: readonly ConditionalFormatRule[];
 }
 
 interface OpenElement {
@@ -131,6 +135,8 @@ export interface ParseWorksheetOptions {
   readonly partPath: string;
   readonly name: string;
   readonly knownSheetNames?: ReadonlySet<string>;
+  /** The workbook's indexed colour palette, for authored conditional formats. */
+  readonly indexedPalette?: readonly string[] | null;
 }
 
 export function parseWorksheetXml(
@@ -613,6 +619,13 @@ export function parseWorksheetXml(
     }
   }
 
+  // Conditional formatting is document state with no cell effect: the base
+  // records stay verbatim for a byte-identical save, and the merged rules feed
+  // rendering and the compatibility report (§7).
+  const conditionalFormatRules = applyConditionalFormats(sheet, xml, rootChildren, {
+    indexedPalette: options.indexedPalette ?? null,
+  });
+
   return {
     sheet,
     xml,
@@ -623,6 +636,7 @@ export function parseWorksheetXml(
     rootChildren,
     unsafeReasons,
     rootPrefix: root.prefix,
+    conditionalFormatRules,
   };
 }
 

@@ -43,6 +43,10 @@ import {
   withFilterHiddenRows,
   type AutoFilterSavePlan,
 } from './autofilter-xml';
+import {
+  planConditionalFormatsSave,
+  type ConditionalFormatSavePlan,
+} from './conditional-format-xml';
 import { WorkbookSaveError } from './errors';
 import { validatePatchedPart } from './xml';
 import { writePackage } from './zip';
@@ -162,12 +166,22 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     const autoFilterPlan = planAutoFilterSave(sheet.autoFilter, sourceBytes);
     if (autoFilterPlan.changed) autoFilterPlans.set(sheet.id, autoFilterPlan);
   }
+  // Conditional formatting is document state too: an untouched record set is
+  // not a change, and a changed one rewrites only its own elements (§7).
+  const conditionalFormatPlans = new Map<SheetId, ConditionalFormatSavePlan>();
+  for (const sheet of input.workbook.sheets) {
+    if (newSheetIds.has(sheet.id)) continue;
+    const sourceBytes = input.workbook.sourceParts.get(sheet.partPath) ?? null;
+    const plan = planConditionalFormatsSave(sheet, sourceBytes);
+    if (plan.changed) conditionalFormatPlans.set(sheet.id, plan);
+  }
   const dirtySheetIds = [
     ...new Set([
       ...dirtyCellSheetIds,
       ...dirtyDimensionSheetIds,
       ...dirtyMergeSheetIds,
       ...autoFilterPlans.keys(),
+      ...conditionalFormatPlans.keys(),
     ]),
   ].filter(
     (sheetId) =>
@@ -284,6 +298,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       dirtyDimensions,
       syncMerges,
       syncAutoFilter,
+      syncConditionalFormats: conditionalFormatPlans.get(sheetId),
       sharedStringsTable: input.package.sharedStrings,
       sharedStrings: appender,
       options: input.options?.worksheet,

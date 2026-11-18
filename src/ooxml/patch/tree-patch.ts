@@ -4,6 +4,7 @@ import type { SharedStringsTable } from '../types';
 import type { SharedStringsAppender } from './shared-strings-patch';
 import { cellToXml } from './cell-xml';
 import { AFTER_AUTO_FILTER, type AutoFilterSavePlan } from '../autofilter-xml';
+import type { ConditionalFormatSavePlan } from '../conditional-format-xml';
 import {
   findElement,
   findElements,
@@ -30,6 +31,7 @@ export interface TreePatchInput {
   readonly dirtyDimensions?: DirtyDimensions;
   readonly syncMerges?: boolean;
   readonly syncAutoFilter?: AutoFilterSavePlan;
+  readonly syncConditionalFormats?: ConditionalFormatSavePlan;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
 }
@@ -38,6 +40,31 @@ const AFTER_SHEET_DATA = new Set([
   'mergeCells',
   'phoneticPr',
   'conditionalFormatting',
+  'dataValidations',
+  'hyperlinks',
+  'printOptions',
+  'pageMargins',
+  'pageSetup',
+  'headerFooter',
+  'rowBreaks',
+  'colBreaks',
+  'customProperties',
+  'cellWatches',
+  'ignoredErrors',
+  'smartTags',
+  'drawing',
+  'legacyDrawing',
+  'legacyDrawingHF',
+  'picture',
+  'oleObjects',
+  'controls',
+  'webPublishItems',
+  'tableParts',
+  'extLst',
+]);
+
+/** Direct children of `<worksheet>` that follow `conditionalFormatting` (CT_Worksheet). */
+const AFTER_CONDITIONAL_FORMATTING: ReadonlySet<string> = new Set([
   'dataValidations',
   'hyperlinks',
   'printOptions',
@@ -105,6 +132,7 @@ export function patchWorksheetAsTree(input: TreePatchInput): Uint8Array {
   applyDimensions(document.root, sheetData, input.dirtyDimensions);
   applyMerges(document.root, sheetData, input);
   applyAutoFilter(document.root, input.syncAutoFilter);
+  applyConditionalFormats(document.root, input.syncConditionalFormats);
 
   return new TextEncoder().encode(serializeXmlDocument(document));
 }
@@ -134,6 +162,38 @@ function applyAutoFilter(root: XmlElement, plan: AutoFilterSavePlan | undefined)
   );
   if (insertion < 0) root.children.push(element);
   else root.children.splice(insertion, 0, element);
+}
+
+/**
+ * Rewrite the base `conditionalFormatting` elements from the model's records.
+ * The x14 extension block is never touched: an x14 rule's ranges come from the
+ * base rule it duplicates, and this milestone does not author rules.
+ */
+function applyConditionalFormats(
+  root: XmlElement,
+  plan: ConditionalFormatSavePlan | undefined,
+): void {
+  if (plan === undefined || !plan.changed) return;
+  const existing = findElements(root, 'conditionalFormatting');
+  const shared = Math.min(existing.length, plan.elements.length);
+  for (let index = 0; index < shared; index += 1) {
+    const element = parseXmlTree(plan.elements[index]!, 'conditionalFormatting element').root;
+    root.children[root.children.indexOf(existing[index]!)] = element;
+  }
+  for (let index = plan.elements.length; index < existing.length; index += 1) {
+    const target = existing[index]!;
+    const position = root.children.indexOf(target);
+    if (position >= 0) root.children.splice(position, 1);
+  }
+  if (plan.elements.length <= existing.length) return;
+  const additions = plan.elements.slice(existing.length).map((xml) => {
+    return parseXmlTree(xml, 'conditionalFormatting element').root;
+  });
+  const insertion = root.children.findIndex(
+    (child) => child.type === 'element' && AFTER_CONDITIONAL_FORMATTING.has(localName(child)),
+  );
+  if (insertion < 0) root.children.push(...additions);
+  else root.children.splice(insertion, 0, ...additions);
 }
 
 function applyMerges(root: XmlElement, sheetData: XmlElement, input: TreePatchInput): void {

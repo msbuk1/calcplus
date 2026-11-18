@@ -10,6 +10,7 @@ import type {
 } from '../worksheet-xml';
 import { parseWorksheetXml } from '../worksheet-xml';
 import { AFTER_AUTO_FILTER, type AutoFilterSavePlan } from '../autofilter-xml';
+import type { ConditionalFormatSavePlan } from '../conditional-format-xml';
 import { WorkbookSaveError } from '../errors';
 import { escapeXmlAttribute, isWellFormedXml } from '../xml';
 import { patchWorksheetAsTree } from './tree-patch';
@@ -37,6 +38,8 @@ export interface WorksheetSaveInput {
   readonly syncMerges?: boolean;
   /** Write or remove the sheet's `autoFilter` element, when it changed. */
   readonly syncAutoFilter?: AutoFilterSavePlan;
+  /** Rewrite the sheet's conditional-format elements, when they changed. */
+  readonly syncConditionalFormats?: ConditionalFormatSavePlan;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
   readonly options?: WorksheetSaveOptions;
@@ -67,7 +70,8 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     input.dirtyCells.length === 0 &&
     !hasDirtyDimensions(input.dirtyDimensions) &&
     input.syncMerges !== true &&
-    input.syncAutoFilter?.changed !== true
+    input.syncAutoFilter?.changed !== true &&
+    input.syncConditionalFormats?.changed !== true
   ) {
     return { bytes: input.sourceBytes, mode: 'none' };
   }
@@ -111,6 +115,7 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     dirtyDimensions: input.dirtyDimensions,
     syncMerges: input.syncMerges,
     syncAutoFilter: input.syncAutoFilter,
+    syncConditionalFormats: input.syncConditionalFormats,
     sharedStringsTable: input.sharedStringsTable,
     sharedStrings: input.sharedStrings,
   });
@@ -296,6 +301,14 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
   edits.push(...columnDimensionEdits(parsed, dirtyColumns));
   const autoFilterEdit = autoFilterPositionEdit(parsed, input.syncAutoFilter);
   if (autoFilterEdit !== null) edits.push(autoFilterEdit);
+  if (input.syncConditionalFormats?.changed === true) {
+    for (const edit of input.syncConditionalFormats.edits) {
+      if (edit.start < 0 || edit.end < edit.start || edit.end > parsed.xml.length) {
+        throw new PositionPatchUnsafe('conditional-format edit outside the part');
+      }
+      edits.push({ ...edit, kind: 'replace' });
+    }
+  }
 
   return applyEdits(xml, groupInsertions(edits));
 }

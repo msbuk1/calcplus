@@ -1,4 +1,5 @@
-import type { DefinedName, Sheet, Workbook } from '@model/types';
+import type { DefinedName, Sheet, SheetId, Workbook } from '@model/types';
+import type { ConditionalFormatRule } from '@model/conditional-format';
 import { createDefaultStyle, createWorkbookId } from '@model/workbook';
 import { isLocaleBuiltinNumberFormat } from '@model/style';
 import { WorkbookOpenError } from './errors';
@@ -23,6 +24,12 @@ export interface OpenedWorkbook {
   readonly package: WorkbookPackage;
   readonly initialSheetId: string;
   readonly compatibility: CompatibilityInfo;
+  /**
+   * Each sheet's parsed conditional-format rules, base and x14 merged (§7).
+   * `Sheet.conditionalFormats` holds the base records for byte preservation;
+   * this map holds the rules the grid evaluates and the report lists.
+   */
+  readonly conditionalFormatRules: ReadonlyMap<SheetId, readonly ConditionalFormatRule[]>;
 }
 
 export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbook {
@@ -91,6 +98,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
   const sheetPartPaths = new Map<string, string>();
   const sheetRelationshipIds = new Map<string, string>();
   const sheetIdByWorkbookIndex: string[] = [];
+  const conditionalFormatRules = new Map<SheetId, readonly ConditionalFormatRule[]>();
   for (const [index, reference] of workbookInfo.sheets.entries()) {
     const relationship = findRelationshipById(workbookRelationships, reference.relationshipId);
     if (relationship === undefined || relationship.targetMode !== 'Internal') {
@@ -108,6 +116,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
       sharedStrings,
       partPath,
       name: reference.name,
+      indexedPalette: stylesInfo?.indexedPalette ?? null,
     });
     const sheet = parsed.sheet;
     const worksheetRelsPath = relsPathForPart(partPath);
@@ -125,6 +134,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     sheetPartPaths.set(sheet.id, partPath);
     sheetRelationshipIds.set(sheet.id, reference.relationshipId);
     sheetIdByWorkbookIndex[index] = sheet.id;
+    conditionalFormatRules.set(sheet.id, parsed.conditionalFormatRules);
   }
 
   const workbookNames: DefinedName[] = [];
@@ -222,6 +232,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     package: pkg,
     initialSheetId,
     compatibility,
+    conditionalFormatRules,
   };
 }
 
