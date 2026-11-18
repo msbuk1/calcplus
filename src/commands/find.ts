@@ -23,6 +23,8 @@ import type { CommandChange, CommandContext, CommandDefinition, CommandResult } 
  * belong to the chrome layer; these ids are the submission seam it calls.
  */
 
+export type FindDirection = 'down' | 'up';
+
 export interface FindArgs {
   readonly query: string;
   readonly scope?: FindScope;
@@ -30,6 +32,12 @@ export interface FindArgs {
   readonly wholeCell?: boolean;
   readonly inFormulas?: boolean;
   readonly inValues?: boolean;
+  /**
+   * Direction constrains the scan from the active cell (matrix row 1, ticket
+   * 28 D3). Results arrive in scan order: document order downwards, reverse
+   * document order upwards. 'down' is the default and the prior behaviour.
+   */
+  readonly direction?: FindDirection;
 }
 
 export interface ReplaceArgs extends FindArgs {
@@ -61,10 +69,15 @@ export const findSearchCommand: CommandDefinition<FindArgs> = {
     if (options.query === '') {
       return { changes: [], matches: [], find: { matches: [], total: 0 } };
     }
-    const matches = searchWorkbook(context.workbook, options);
+    const matches = scanOrder(searchWorkbook(context.workbook, options), args?.direction);
     return { changes: [], matches, find: { matches, total: matches.length } };
   },
 };
+
+/** Results in scan order: document order downwards, reversed upwards. */
+function scanOrder(matches: FindMatch[], direction: FindDirection | undefined): FindMatch[] {
+  return direction === 'up' ? [...matches].reverse() : matches;
+}
 
 export const findReplaceOneCommand: CommandDefinition<ReplaceArgs> = {
   id: 'find.replaceOne',
@@ -74,9 +87,9 @@ export const findReplaceOneCommand: CommandDefinition<ReplaceArgs> = {
   isEnabled: hasSheet,
   run(context, args): CommandResult {
     const options = replaceOptions(context, args);
-    const matches = searchWorkbook(context.workbook, options);
+    const matches = scanOrder(searchWorkbook(context.workbook, options), args?.direction);
     if (matches.length === 0) return toast('No matches found.');
-    for (const match of orderedMatches(context, matches)) {
+    for (const match of orderedMatches(context, matches, args?.direction)) {
       const outcome = changeForMatch(context.workbook, match, options);
       if (outcome === null) continue;
       if (outcome.kind !== 'change') return toast(outcome.message);
@@ -160,9 +173,14 @@ function displayTextFor(workbook: Workbook, cell: Cell): string {
 
 /**
  * Excel repeats Replace from the current selection: replace the selected match
- * if it is one, otherwise start at the next match in document order and wrap.
+ * if it is one, otherwise start at the next match in scan order and wrap. The
+ * matches arrive in scan order, so the direction only flips the "next" test.
  */
-function orderedMatches(context: CommandContext, matches: readonly FindMatch[]): FindMatch[] {
+function orderedMatches(
+  context: CommandContext,
+  matches: readonly FindMatch[],
+  direction: FindDirection | undefined,
+): FindMatch[] {
   const active =
     context.activeCell ??
     (context.selection === null
@@ -178,18 +196,23 @@ function orderedMatches(context: CommandContext, matches: readonly FindMatch[]):
   );
   if (exact >= 0) return [...matches.slice(exact), ...matches.slice(0, exact)];
 
-  const activeSheetIndex = context.workbook.sheets.findIndex(
-    (sheet) => sheet.id === context.activeSheetId,
-  );
+  const activeSheetIndex = sheetIndexOf(context, context.activeSheetId);
   const next = matches.findIndex((match) => {
-    const sheetIndex = context.workbook.sheets.findIndex((sheet) => sheet.id === match.sheetId);
-    if (sheetIndex !== activeSheetIndex) {
-      return activeSheetIndex < 0 ? true : sheetIndex > activeSheetIndex;
-    }
-    return match.row > active.row || (match.row === active.row && match.col >= active.col);
+    const sheetIndex = sheetIndexOf(context, match.sheetId);
+    const position =
+      sheetIndex !== activeSheetIndex
+        ? Math.sign(sheetIndex - activeSheetIndex)
+        : match.row !== active.row
+          ? Math.sign(match.row - active.row)
+          : Math.sign(match.col - active.col);
+    return direction === 'up' ? position < 0 : position > 0;
   });
   if (next < 0) return [...matches];
   return [...matches.slice(next), ...matches.slice(0, next)];
+}
+
+function sheetIndexOf(context: CommandContext, sheetId: string | null): number {
+  return context.workbook.sheets.findIndex((sheet) => sheet.id === sheetId);
 }
 
 function changeForMatch(

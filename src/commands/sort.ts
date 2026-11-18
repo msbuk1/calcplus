@@ -33,9 +33,17 @@ export interface SortArgs {
    * Up to 64 keys in order (§2.3). Omitting them is the ribbon/menu path: the
    * command asks the Sort dialog to collect them instead of guessing.
    */
-  readonly keys?: readonly SortKey[];
+  readonly keys?: readonly (SortKey | SortQuickKey)[];
   /** `null` or omitted guesses with the §2.2 heuristic; a boolean overrides it. */
   readonly hasHeaders?: boolean | null;
+}
+
+/**
+ * A menu key: Sort Ascending / Sort Descending sort by the active column, as
+ * Excel does, so the map does not need to know the column when it is authored.
+ */
+export interface SortQuickKey {
+  readonly direction: SortKey['direction'];
 }
 
 export const sortCommand: CommandDefinition<SortArgs> = {
@@ -58,7 +66,7 @@ function runSort(context: CommandContext, args: SortArgs): CommandResult {
   if (selection === null) return toast('Select a cell or range to sort.');
   const range = resolveTargetRange(sheet, selection);
 
-  const keys = args.keys ?? [];
+  const keys = normaliseKeys(args.keys ?? [], range, context);
   if (keys.length === 0) {
     // Dialogs are commands: the ribbon and menu open the sort dialog, and the
     // dialog submits this command again with keys.
@@ -291,6 +299,25 @@ function rangeOfActiveCell(context: CommandContext): GridRange | null {
   const active = context.activeCell;
   if (active === null) return null;
   return { startRow: active.row, startCol: active.col, endRow: active.row, endCol: active.col };
+}
+
+/**
+ * A quick key ("Sort Ascending" in the Sort & Filter menu) sorts by the active
+ * column, clamped into the target range, exactly as the Data tab's A→Z button
+ * does. A full key passes through untouched.
+ */
+function normaliseKeys(
+  keys: readonly (SortKey | SortQuickKey)[],
+  range: GridRange,
+  context: CommandContext,
+): SortKey[] {
+  const quickColumn = Math.min(
+    Math.max(context.activeCell?.col ?? range.startCol, range.startCol),
+    range.endCol,
+  );
+  return keys.map((key) =>
+    'column' in key ? key : { column: quickColumn, direction: key.direction },
+  );
 }
 
 function toast(message: string): CommandResult {

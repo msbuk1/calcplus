@@ -978,6 +978,7 @@ export function App(): JSX.Element {
             document.sheetId,
             selection.focus,
             document.session.workbook,
+            query.direction,
           );
           if (next !== null) selectFindMatch(next);
         }
@@ -2083,6 +2084,7 @@ function findQueryArgument(args: unknown): FindQuery | null {
     wholeCell: value.wholeCell === true,
     inFormulas: value.inFormulas !== false,
     inValues: value.inValues !== false,
+    direction: value.direction === 'up' ? 'up' : 'down',
   };
 }
 
@@ -2140,23 +2142,30 @@ function findMatches(value: readonly FindMatch[] | undefined, workbook: Workbook
   return matches;
 }
 
-/** The first match after the active cell in document order, wrapping at the end. */
+/** The next match to select: the first after the active cell in scan order. */
 function nextFindMatch(
   matches: readonly FindMatchView[],
   activeSheetId: string,
   active: { readonly row: number; readonly col: number },
   workbook: Workbook,
+  direction: 'down' | 'up' = 'down',
 ): FindMatchView | null {
   if (matches.length === 0) return null;
   const sheetIndex = (sheetId: string): number =>
     workbook.sheets.findIndex((sheet) => sheet.id === sheetId);
   const activeSheetIndex = sheetIndex(activeSheetId);
-  // The command returns matches in document order: sheet order, then row,
-  // then column.
+  // The command returns matches in scan order: document order downwards,
+  // reverse document order upwards. The test itself works on document
+  // position, so the direction only flips which side counts as "next".
   const next = matches.find((match) => {
     const index = sheetIndex(match.sheetId);
-    if (index !== activeSheetIndex) return index > activeSheetIndex;
-    return match.row > active.row || (match.row === active.row && match.col > active.col);
+    const position =
+      index !== activeSheetIndex
+        ? Math.sign(index - activeSheetIndex)
+        : match.row !== active.row
+          ? Math.sign(match.row - active.row)
+          : Math.sign(match.col - active.col);
+    return direction === 'up' ? position < 0 : position > 0;
   });
   return next ?? matches[0] ?? null;
 }

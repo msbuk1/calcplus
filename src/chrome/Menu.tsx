@@ -19,6 +19,8 @@ export interface MenuProps {
   readonly onSelect: (item: MenuItemModel) => void;
   readonly onClose: () => void;
   readonly label?: string;
+  /** A bold, non-interactive section heading above the items (Excel style). */
+  readonly heading?: string;
   readonly className?: string;
   readonly style?: CSSProperties;
   /** A click on this element (the trigger) must not count as an outside click. */
@@ -37,6 +39,7 @@ export function Menu({
   onSelect,
   onClose,
   label = 'Menu',
+  heading,
   className,
   style,
   anchorRef,
@@ -64,7 +67,18 @@ export function Menu({
       onClose();
     };
     const closeOnResize = (): void => onClose();
+    /**
+     * A click can scroll the anchor into view, and the browser delivers that
+     * scroll event after the menu has mounted. Ignore scrolls until the next
+     * frame so the opening interaction cannot close the menu it just opened;
+     * a real scroll afterwards still closes it.
+     */
+    let armed = false;
+    const frame = requestAnimationFrame(() => {
+      armed = true;
+    });
     const closeOnScroll = (event: Event): void => {
+      if (!armed) return;
       if (event.target instanceof Node && menuRef.current?.contains(event.target) === true) return;
       onClose();
     };
@@ -72,6 +86,7 @@ export function Menu({
     window.addEventListener('resize', closeOnResize);
     window.addEventListener('scroll', closeOnScroll, true);
     return () => {
+      cancelAnimationFrame(frame);
       window.removeEventListener('pointerdown', closeOnPointer);
       window.removeEventListener('resize', closeOnResize);
       window.removeEventListener('scroll', closeOnScroll, true);
@@ -152,6 +167,11 @@ export function Menu({
       style={style}
       onKeyDown={onKeyDown}
     >
+      {heading === undefined ? null : (
+        <div className="menu-heading" role="presentation">
+          {heading}
+        </div>
+      )}
       {items.map((item, index) => (
         <MenuRow
           key={item.id}

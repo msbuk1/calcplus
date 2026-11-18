@@ -1,4 +1,4 @@
-import { COMMAND_INVENTORY } from '@commands/inventory';
+import { COMMAND_INVENTORY, inventoryCommand } from '@commands/inventory';
 import type {
   CommandInventoryEntry,
   CompactPlacement,
@@ -22,6 +22,11 @@ export interface RibbonTabDefinition {
   readonly label: string;
 }
 
+export interface RibbonLauncher {
+  readonly commandId: string;
+  readonly title: string;
+}
+
 export interface ResolvedRibbonControl {
   readonly key: string;
   readonly kind: RibbonPlacement['kind'];
@@ -30,17 +35,27 @@ export interface ResolvedRibbonControl {
   readonly title: string;
   readonly icon?: string;
   readonly wide: boolean;
+  /** Present-but-disabled placement (ticket 27); the resolver cannot re-enable it. */
+  readonly disabled: boolean;
+  /** 1-based row inside the group band. */
+  readonly row: number;
+  /** Rows the control spans; Paste spans the whole Clipboard band. */
+  readonly rowSpan: number;
   readonly controlId?: string;
   readonly valueFrom?: ControlValueSource;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
+  readonly menuHeading?: string;
 }
 
 export interface ResolvedRibbonGroup {
   readonly id: string;
   readonly label: string;
   readonly controls: readonly ResolvedRibbonControl[];
+  readonly rowCount: number;
+  /** The Excel dialog launcher at the band's bottom-right corner. */
+  readonly launcher?: RibbonLauncher;
 }
 
 export interface ResolvedCompactControl {
@@ -65,6 +80,11 @@ export const RIBBON_TABS: readonly RibbonTabDefinition[] = [
 /**
  * Excel's familiar group order. A group with no implemented IN command is
  * dropped whole; it is never regrouped under another name.
+ *
+ * The Home order is the oracle's: Clipboard, Font, Alignment, Number, Styles,
+ * Cells, Editing. The Styles group is thin in v1 — one present-but-disabled
+ * Conditional Formatting button (ticket 27) — because Format As Table and Cell
+ * Styles are out of matrix. No conditional-formatting authoring is built here.
  */
 const GROUP_ORDER: Readonly<Record<RibbonTabId, readonly string[]>> = {
   Home: ['Clipboard', 'Font', 'Alignment', 'Number', 'Styles', 'Cells', 'Editing'],
@@ -76,12 +96,28 @@ const GROUP_ORDER: Readonly<Record<RibbonTabId, readonly string[]>> = {
   View: ['Show', 'Zoom', 'Window'],
 };
 
+/** The default grid: two rows of controls, the group label beneath them. */
+const DEFAULT_ROW_COUNT = 2;
+
 export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[] {
   const groups = new Map<string, ResolvedRibbonControl[]>();
+  const launchers = new Map<string, RibbonLauncher>();
   for (const entry of COMMAND_INVENTORY) {
-    if (!entry.implemented) continue;
     for (const placement of entry.ribbon ?? []) {
-      if (placement.tab !== tab || placement.menuOnly === true) continue;
+      if (placement.tab !== tab) continue;
+      // An unimplemented command is hidden, not greyed (ui-chrome §4.1). The
+      // single ruled exception is a present-but-disabled placement (ticket 27).
+      if (!entry.implemented && placement.disabled !== true) continue;
+      if (placement.menuOnly === true) continue;
+      if (placement.kind === 'launcher') {
+        if (!launchers.has(placement.group)) {
+          launchers.set(placement.group, {
+            commandId: entry.id,
+            title: placement.title ?? entry.label,
+          });
+        }
+        continue;
+      }
       const controls = groups.get(placement.group) ?? [];
       controls.push({
         key: `${entry.id}:${placement.controlId ?? placement.label ?? placement.kind}:${placement.order ?? 100}`,
@@ -91,11 +127,15 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
         title: placement.title ?? placement.label ?? entry.label,
         ...(placement.icon === undefined ? {} : { icon: placement.icon }),
         wide: placement.wide === true,
+        disabled: placement.disabled === true,
+        row: placement.row ?? 1,
+        rowSpan: Math.max(1, placement.rowSpan ?? 1),
         ...(placement.controlId === undefined ? {} : { controlId: placement.controlId }),
         ...(placement.valueFrom === undefined ? {} : { valueFrom: placement.valueFrom }),
         ...(placement.args === undefined ? {} : { args: placement.args }),
         ...(placement.options === undefined ? {} : { options: placement.options }),
         ...(placement.menu === undefined ? {} : { menu: placement.menu }),
+        ...(placement.menuHeading === undefined ? {} : { menuHeading: placement.menuHeading }),
       });
       groups.set(placement.group, controls);
     }
@@ -110,13 +150,48 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
         left[0].localeCompare(right[0])
       );
     })
-    .map(([id, controls]) => ({
-      id,
-      label: id,
-      controls: [...controls].sort(
+    .map(([id, controls]) => {
+      const sorted = [...controls].sort(
         (left, right) => (controlOrder(left) ?? 100) - (controlOrder(right) ?? 100),
-      ),
-    }));
+      );
+      const launcher = launchers.get(id);
+      return {
+        id,
+        label: id,
+        controls: sorted,
+        rowCount: Math.max(
+          DEFAULT_ROW_COUNT,
+          ...sorted.map((control) => control.row + control.rowSpan - 1),
+        ),
+        ...(launcher === undefined ? {} : { launcher }),
+      };
+    });
+}
+
+/**
+ * The authored ribbon menu, minus anything not implemented: a planned entry is
+ * hidden rather than greyed (ui-chrome §4.1). Split menus and dropdown-only
+ * menus share this so the Cells Insert shell and the Sort & Filter menu behave
+ * the same way.
+ */
+export function ribbonMenuItems(
+  menu: readonly RibbonMenuItem[],
+  resolveState: CommandStateResolver,
+): readonly MenuItemModel[] {
+  const items: MenuItemModel[] = [];
+  menu.forEach((item, index) => {
+    if (inventoryCommand(item.commandId)?.implemented !== true) return;
+    items.push({
+      id: `${item.commandId}:${index}`,
+      label: item.label,
+      commandId: item.commandId,
+      args: item.args,
+      ...(item.shortcut === undefined ? {} : { shortcut: item.shortcut }),
+      disabled: !resolveState(item.commandId).enabled,
+      ...(item.dividerBefore === true ? { dividerBefore: true } : {}),
+    });
+  });
+  return items;
 }
 
 export function compactControls(): readonly ResolvedCompactControl[] {

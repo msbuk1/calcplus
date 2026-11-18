@@ -10,13 +10,17 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 56
-- Inventory commands: 94
-- Implemented in this build: 39
-- Planned for a later slice: 55
+- Inventory commands: 100
+- Implemented in this build: 48
+- Planned for a later slice: 52
 - Out-of-scope rows (V2 or NEVER): 29
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
 that the command exists.
+
+One ruled exception (ui-chrome §4.1, ticket 27): a matrix row that is IN as render-only with
+V2 authoring ships its ribbon control present-but-disabled, with a tooltip naming the v2
+limitation. `format.conditionalRender` is the v1 instance.
 
 ## Commands
 
@@ -45,30 +49,36 @@ that the command exists.
 | `merge.unmerge` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Unmerge | — | — | — | A sheet is active and a merged cell is selected | Planned |
 | `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
 | `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | — | — | Ctrl+Z | The undo history is not empty | Implemented |
-| `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Replace All | — | — | — | A sheet is active | Implemented |
-| `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Replace | Home → Editing | Context menu | Ctrl+H | A sheet is active | Implemented |
-| `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | Find | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
-| `goto.goto` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go To | Home → Editing | Edit<br>Context menu | Ctrl+G | A sheet is active | Implemented |
+| `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace all | — | — | — | A sheet is active | Implemented |
+| `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace | Home → Editing (menu) | Context menu | Ctrl+H | A sheet is active | Implemented |
+| `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Find | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
+| `goto.goto` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go to | Home → Editing (menu) | Edit<br>Context menu | Ctrl+G | A sheet is active | Implemented |
 | `edit.clearAll` | 1. Grid and editing — Clear contents / formats / all | Clear all | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Planned |
-| `edit.clearContents` | 1. Grid and editing — Clear contents / formats / all | Clear contents | Home → Editing (menu) | Context menu | Delete, Backspace | A sheet is active and a range is selected | Implemented |
-| `format.clear` | 1. Grid and editing — Clear contents / formats / all | Clear formats | Home → Editing | Context menu | — | A sheet is active and a range is selected | Implemented |
-| `data.sort` | 2. Data — Sort a range (one or more keys; header row; ascending/descending) | Sort | Data → Sort & Filter | — | — | A sheet is active and a range is selected | Planned |
-| `data.filter` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter | Data → Sort & Filter | — | Ctrl+Shift+L | A sheet is active and a plain range is selected | Planned |
-| `data.filterClear` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear filter | Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Planned |
+| `edit.clearContents` | 1. Grid and editing — Clear contents / formats / all | Clear contents | Home → Editing | Context menu | Delete, Backspace | A sheet is active and a range is selected | Implemented |
+| `format.clear` | 1. Grid and editing — Clear contents / formats / all | Clear formats | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Implemented |
+| `data.sort` | 2. Data — Sort a range (one or more keys; header row; ascending/descending) | Sort | Home → Editing<br>Data → Sort & Filter | — | — | A sheet is active and a range is selected | Implemented |
+| `data.filter` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter | Home → Editing (menu)<br>Data → Sort & Filter | — | Ctrl+Shift+L | A sheet is active and a plain range is selected | Implemented |
+| `data.filterClear` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear filter | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
+| `data.filterClearColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear Filter from '<column>' | — | — | — | The column has an active criterion | Implemented |
+| `data.filterColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter by column | — | — | — | A sheet is active and an AutoFilter is applied | Implemented |
+| `data.filterReapply` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Reapply filter | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
 | `format.bold` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Bold | Home → Font | — | Ctrl+B | A sheet is active and a range is selected | Implemented |
-| `format.font` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Font | Home → Font<br>Home → Font<br>Home → Font | — | — | A sheet is active and a range is selected | Implemented |
+| `format.font` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Font | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
 | `format.italic` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Italic | Home → Font | — | Ctrl+I | A sheet is active and a range is selected | Implemented |
 | `format.strike` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Strikethrough | Home → Font | — | Ctrl+5 | A sheet is active and a range is selected | Implemented |
 | `format.underline` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Underline | Home → Font | — | Ctrl+U | A sheet is active and a range is selected | Implemented |
 | `format.fill` | 3. Formatting — Fill: solid and pattern | Fill | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
 | `format.border` | 3. Formatting — Borders: all line styles, weights and colours; outline and inside | Borders | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
-| `format.alignment` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Alignment | Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
+| `format.alignment` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Alignment | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
+| `format.wrapText` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Wrap Text | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
 | `format.importedTextLayout` | 3. Formatting — Shrink to fit and text rotation | Imported shrink to fit and text rotation | — | — | — | Imported values render and round-trip; authoring arrives in v2 | Planned |
 | `painter.apply` | 3. Formatting — Format Painter | Apply picked-up format | — | — | — | A format is picked up and a target range is selected | Implemented |
 | `painter.pickup` | 3. Formatting — Format Painter | Format Painter | Home → Clipboard | Context menu | — | A sheet is active and a cell is selected | Implemented |
-| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | Home → Number | Context menu | Ctrl+1 | A sheet is active | Implemented |
-| `format.numberFormat` | 3. Formatting — Number formats: built-in categories + full custom grammar | Number format | Home → Number<br>Home → Number<br>Home → Number<br>Home → Number | — | — | A sheet is active and a range is selected | Implemented |
-| `format.conditionalRender` | 3. Formatting — Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules | Conditional formatting | — | — | — | Imported rules render; authoring arrives in v2 | Planned |
+| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | Home → Font (launcher)<br>Home → Alignment (launcher)<br>Home → Number (launcher) | Context menu | Ctrl+1 | A sheet is active | Implemented |
+| `format.decreaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Decrease decimal | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.increaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Increase decimal | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.numberFormat` | 3. Formatting — Number formats: built-in categories + full custom grammar | Number format | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.conditionalRender` | 3. Formatting — Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules | Conditional Formatting | Home → Styles (present, disabled) | — | — | Always disabled in v1: imported rules render, authoring arrives in v2 (ticket 27) | Planned |
 | `formula.recalculate` | 4. Formulas and names — Formula bar, in-cell entry, automatic calculation | Recalculate | — | — | F9 | A sheet is active | Planned |
 | `formula.autosum` | 4. Formulas and names — AutoSum (`Alt+=`, command `formula.autosum`) | AutoSum | Home → Editing<br>Formulas → Function Library | — | Alt+= | A sheet is active and a cell is selected | Implemented |
 | `formula.autocomplete` | 4. Formulas and names — Function autocomplete and signature hints | Function autocomplete and signature hints | — | — | — | The formula editor is open | Planned |

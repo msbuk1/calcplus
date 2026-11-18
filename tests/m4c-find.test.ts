@@ -211,6 +211,58 @@ describe('M4C find search', () => {
     ]);
   });
 
+  it('orders matches upwards when the search direction is Up (ticket 28 D3)', () => {
+    const { workbook, first, second } = searchFixture();
+    const session = new DocumentSession(workbook);
+    const base = {
+      query: 'apple',
+      scope: 'workbook',
+      matchCase: false,
+      wholeCell: false,
+      inFormulas: true,
+      inValues: true,
+    };
+
+    const down = session.dispatch('find.search', { ...base, direction: 'down' });
+    expect(down.find?.matches?.map((match) => [match.sheetId, match.row]) ?? []).toEqual([
+      [first.id, 1],
+      [second.id, 0],
+    ]);
+
+    const up = session.dispatch('find.search', { ...base, direction: 'up' });
+    expect(up.find?.matches?.map((match) => [match.sheetId, match.row]) ?? []).toEqual([
+      [second.id, 0],
+      [first.id, 1],
+    ]);
+    // Direction is a scan parameter: no transaction either way.
+    expect(session.transactionCount).toBe(0);
+  });
+
+  it('replaces the previous match when Replace runs upwards', () => {
+    const { workbook, first } = replaceFixture();
+    const session = new DocumentSession(workbook);
+
+    const result = session.dispatch(
+      'find.replaceOne',
+      {
+        query: 'old',
+        replacement: 'new',
+        scope: 'sheet',
+        matchCase: false,
+        wholeCell: false,
+        inFormulas: true,
+        inValues: true,
+        direction: 'up',
+      },
+      { activeSheetId: first.id, activeCell: { row: 1, col: 0 } },
+    );
+
+    // The formula cell at A2 holds "SUM(A1:A2)", which does not contain "old";
+    // the previous match upwards is A1.
+    expect(result.replaced).toBe(1);
+    expect(getCell(first, 0, 0)?.value).toEqual(textValue('new value'));
+  });
+
   it('treats regex punctuation as literal text without throwing', () => {
     const { workbook, first } = searchFixture();
     const matches = searchWorkbook(workbook, {

@@ -48,7 +48,7 @@ test('Format Cells exposes every v1 tab and applies font, fill, border, alignmen
   await openFixture(page, fixture);
   await clickCell(page, 1, 1);
 
-  const trigger = page.getByRole('button', { name: 'Format Cells' });
+  const trigger = page.getByRole('button', { name: 'Number Settings' });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
@@ -117,7 +117,7 @@ test('Format Cells commits every changed tab as one undo step', async ({ page })
   await clickCell(page, 1, 1);
   const before = await styleAt(page, 1, 1);
 
-  await page.getByRole('button', { name: 'Format Cells' }).click();
+  await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
 
@@ -150,7 +150,7 @@ test('Format Cells rejects an invalid colour and number code without dispatching
   await clickCell(page, 0, 0);
   const before = await styleAt(page, 0, 0);
 
-  await page.getByRole('button', { name: 'Format Cells' }).click();
+  await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
 
@@ -193,13 +193,13 @@ test('Format Cells rejects an invalid colour and number code without dispatching
 
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Format Cells' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Number Settings' })).toBeFocused();
 });
 
 test('Format Cells traps focus, closes on Esc and returns focus to the grid', async ({ page }) => {
   await openFixture(page, fixture);
   await clickCell(page, 1, 1);
-  await page.getByRole('button', { name: 'Format Cells' }).click();
+  await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
 

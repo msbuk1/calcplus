@@ -12,7 +12,7 @@ import rawInventory from './command-inventory.json';
 export type RibbonTabId =
   'Home' | 'Insert' | 'Page Layout' | 'Formulas' | 'Data' | 'Review' | 'View';
 
-export type RibbonControlKind = 'button' | 'toggle' | 'select' | 'split';
+export type RibbonControlKind = 'button' | 'toggle' | 'select' | 'split' | 'menu' | 'launcher';
 
 export type ControlValueSource = 'fontName' | 'fontSize' | 'numberFormat';
 
@@ -28,6 +28,9 @@ export interface RibbonMenuItem {
   readonly label: string;
   readonly commandId: string;
   readonly args?: Readonly<Record<string, unknown>>;
+  /** The trailing shortcut text the capture shows, when it shows one. */
+  readonly shortcut?: string;
+  readonly dividerBefore?: boolean;
 }
 
 export interface RibbonPlacement {
@@ -35,17 +38,28 @@ export interface RibbonPlacement {
   readonly group: string;
   readonly kind: RibbonControlKind;
   readonly order?: number;
+  /** 1-based row inside the group band; the body packs up to two rows. */
+  readonly row?: number;
+  /** How many rows the control spans; a large control such as Paste spans three. */
+  readonly rowSpan?: number;
   readonly label?: string;
   readonly title?: string;
   readonly icon?: string;
   /** Hidden below 1100 px; short labels and icons stay. */
   readonly wide?: boolean;
+  /**
+   * Present-but-disabled: the ticket-27 carve-out for a render-only IN row whose
+   * authoring arrives in v2. No other planned command may use it.
+   */
+  readonly disabled?: boolean;
   readonly controlId?: string;
   readonly valueFrom?: ControlValueSource;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
-  /** Listed in the group's split menu but not rendered as its own control. */
+  /** A bold section heading above the menu's items, as Excel shows it. */
+  readonly menuHeading?: string;
+  /** Listed in the group's split/menu control but not rendered as its own control. */
   readonly menuOnly?: boolean;
 }
 

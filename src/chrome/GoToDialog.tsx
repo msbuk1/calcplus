@@ -52,7 +52,7 @@ export function GoToDialog({ initialValue, onClose, onSubmit }: GoToDialogProps)
 
   return (
     <Dialog
-      title="Go To"
+      title="Go to"
       onClose={onClose}
       defaultAction={{ label: 'OK', onSelect: submit }}
       secondaryAction={{ label: 'Cancel', onSelect: () => onClose('dismiss') }}

@@ -131,7 +131,7 @@ export interface CommandResult {
    * view state and never enters the undo log.
    */
   readonly painter?: PainterSnapshot;
-  /** The matches `find.search` found, in document order. */
+  /** The matches `find.search` found, in scan order (document order unless direction is Up). */
   readonly matches?: readonly FindMatch[];
   /** Cells changed by `find.replaceOne` or `find.replaceAll`. */
   readonly replaced?: number;

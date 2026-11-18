@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { RibbonMenuItem, RibbonSelectOption, RibbonTabId } from '@commands/inventory';
+import type { RibbonSelectOption, RibbonTabId } from '@commands/inventory';
 import { Menu } from './Menu';
-import type { MenuItemModel } from './Menu';
-import { RIBBON_TABS, menuItemsFor, ribbonGroupsFor } from './ribbon-model';
+import { RIBBON_TABS, menuItemsFor, ribbonGroupsFor, ribbonMenuItems } from './ribbon-model';
 import type {
   CommandStateResolver,
   ResolvedRibbonControl,
@@ -24,7 +23,11 @@ export interface RibbonProps {
 /**
  * Variant A. Every control dispatches a command ID; checked and enabled state
  * comes from the registry through `resolveState`. Groups with no implemented
- * IN command are absent, and OUT commands are never rendered.
+ * IN command are absent, and OUT commands are never rendered; the one ruled
+ * exception is a present-but-disabled placement (ticket 27).
+ *
+ * Each group band packs up to two rows of controls over its label, as Excel
+ * does. A control's row comes from the command map (`row`, `rowSpan`).
  */
 export function Ribbon({
   activeTab,
@@ -167,19 +170,50 @@ function RibbonGroup({
   controlValues,
   onCommand,
 }: RibbonGroupProps): JSX.Element {
+  const launcher = group.launcher;
   return (
-    <div className="ribbon-group" role="group" aria-label={group.label}>
-      <div className="ribbon-group-body">
+    <div
+      className={
+        launcher === undefined ? 'ribbon-group' : 'ribbon-group ribbon-group-with-launcher'
+      }
+      role="group"
+      aria-label={group.label}
+      data-group={group.label}
+    >
+      <div
+        className="ribbon-group-body"
+        style={{ gridTemplateRows: `repeat(${group.rowCount}, 24px)` }}
+      >
         {group.controls.map((control) => (
-          <RibbonControl
+          <div
             key={control.key}
-            control={control}
-            resolveState={resolveState}
-            controlValues={controlValues}
-            onCommand={onCommand}
-          />
+            className={control.rowSpan > 1 ? 'ribbon-cell ribbon-cell-large' : 'ribbon-cell'}
+            style={{ gridRow: `${control.row} / span ${control.rowSpan}` }}
+          >
+            <RibbonControl
+              control={control}
+              resolveState={resolveState}
+              controlValues={controlValues}
+              onCommand={onCommand}
+            />
+          </div>
         ))}
       </div>
+      {launcher === undefined ? null : (
+        <button
+          type="button"
+          className="ribbon-group-launcher"
+          title={launcher.title}
+          aria-label={launcher.title}
+          disabled={!resolveState(launcher.commandId).enabled}
+          data-command={launcher.commandId}
+          onClick={() => onCommand(launcher.commandId)}
+        >
+          <svg viewBox="0 0 8 8" aria-hidden="true" focusable="false">
+            <path d="M1 1h2M1 1v2M7 7H5M7 7V5M1 7h2M1 7V5" />
+          </svg>
+        </button>
+      )}
       <div className="ribbon-group-label">{group.label}</div>
     </div>
   );
@@ -199,25 +233,27 @@ function RibbonControl({
   onCommand,
 }: RibbonControlProps): JSX.Element {
   const state = resolveState(control.commandId);
+  const enabled = !control.disabled && state.enabled;
   const wideClass = control.wide ? ' ribbon-control-wide' : '';
   if (control.kind === 'select') {
     return (
       <RibbonSelect
         control={control}
         value={control.controlId === undefined ? '' : (controlValues[control.controlId] ?? '')}
-        enabled={state.enabled}
+        enabled={enabled}
         onCommand={onCommand}
       />
     );
   }
-  if (control.kind === 'split') {
+  if (control.kind === 'split' || control.kind === 'menu') {
     return (
-      <RibbonSplitButton
+      <RibbonMenuControl
         control={control}
-        enabled={state.enabled}
+        enabled={enabled}
         resolveState={resolveState}
         onCommand={onCommand}
         wideClass={wideClass}
+        dropdownOnly={control.kind === 'menu'}
       />
     );
   }
@@ -238,7 +274,7 @@ function RibbonControl({
       title={control.title}
       aria-label={control.title}
       aria-pressed={checked}
-      disabled={!state.enabled}
+      disabled={!enabled}
       data-command={control.commandId}
       onClick={() => onCommand(control.commandId, control.args)}
     >
@@ -320,7 +356,7 @@ function RibbonSelect({ control, value, enabled, onCommand }: RibbonSelectProps)
   const hasCurrent = options.some((option) => optionValue(option) === safeValue);
   return (
     <label className={control.wide ? 'ribbon-select ribbon-control-wide' : 'ribbon-select'}>
-      <span className="ribbon-select-label">{control.label}</span>
+      {control.label === '' ? null : <span className="ribbon-select-label">{control.label}</span>}
       <select
         className="ribbon-select-input"
         aria-label={control.title}
@@ -344,26 +380,34 @@ function RibbonSelect({ control, value, enabled, onCommand }: RibbonSelectProps)
   );
 }
 
-interface RibbonSplitButtonProps {
+interface RibbonMenuControlProps {
   readonly control: ResolvedRibbonControl;
   readonly enabled: boolean;
   readonly resolveState: CommandStateResolver;
   readonly onCommand: (commandId: string, args?: unknown) => void;
   readonly wideClass: string;
+  /** A `menu` control opens its list only; a `split` control has a main action. */
+  readonly dropdownOnly: boolean;
 }
 
-function RibbonSplitButton({
+/**
+ * The split button (main action + dropdown) and the dropdown-only button share
+ * one implementation so the menu's placement, keyboard handling and focus
+ * restoration stay in one place.
+ */
+function RibbonMenuControl({
   control,
   enabled,
   resolveState,
   onCommand,
   wideClass,
-}: RibbonSplitButtonProps): JSX.Element {
+  dropdownOnly,
+}: RibbonMenuControlProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
-  const items = splitMenuItems(control.menu ?? [], resolveState);
+  const items = ribbonMenuItems(control.menu ?? [], resolveState);
 
   const toggleMenu = (): void => {
     if (open) {
@@ -372,7 +416,7 @@ function RibbonSplitButton({
     }
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect === undefined) return;
-    const width = 200;
+    const width = 210;
     setMenuPosition({
       left: Math.max(6, Math.min(rect.left, window.innerWidth - width)),
       top: rect.bottom + 2,
@@ -382,43 +426,61 @@ function RibbonSplitButton({
 
   return (
     <div ref={containerRef} className={`ribbon-split${wideClass}`}>
-      <button
-        type="button"
-        className="ribbon-button ribbon-split-main"
-        title={control.title}
-        aria-label={control.title}
-        disabled={!enabled}
-        data-command={control.commandId}
-        onClick={() => {
-          setOpen(false);
-          onCommand(control.commandId, control.args);
-        }}
-      >
-        {control.icon === undefined ? null : (
-          <span className="ribbon-icon" aria-hidden="true">
-            {control.icon}
-          </span>
-        )}
-        <span>{control.label}</span>
-      </button>
+      {dropdownOnly ? null : (
+        <button
+          type="button"
+          className="ribbon-button ribbon-split-main"
+          title={control.title}
+          aria-label={control.title}
+          disabled={!enabled}
+          data-command={control.commandId}
+          onClick={() => {
+            setOpen(false);
+            onCommand(control.commandId, control.args);
+          }}
+        >
+          {control.icon === undefined ? null : (
+            <span className="ribbon-icon" aria-hidden="true">
+              {control.icon}
+            </span>
+          )}
+          <span>{control.label}</span>
+        </button>
+      )}
       <button
         ref={toggleRef}
         type="button"
-        className="ribbon-split-toggle"
-        title={`${control.title} options`}
-        aria-label={`${control.title} options`}
+        className={dropdownOnly ? 'ribbon-button ribbon-menu-button' : 'ribbon-split-toggle'}
+        title={dropdownOnly ? control.title : `${control.title} options`}
+        aria-label={dropdownOnly ? control.title : `${control.title} options`}
         aria-haspopup="menu"
         aria-expanded={open}
-        disabled={!enabled || control.menu === undefined}
+        disabled={!enabled || control.menu === undefined || items.length === 0}
+        data-command={dropdownOnly ? control.commandId : undefined}
         onClick={toggleMenu}
       >
-        ▾
+        {dropdownOnly ? (
+          <>
+            {control.icon === undefined ? null : (
+              <span className="ribbon-icon" aria-hidden="true">
+                {control.icon}
+              </span>
+            )}
+            <span>{control.label}</span>
+            <span className="ribbon-menu-caret" aria-hidden="true">
+              ▾
+            </span>
+          </>
+        ) : (
+          '▾'
+        )}
       </button>
       {open && menuPosition !== null
         ? createPortal(
             <Menu
               items={items}
               label={`${control.title} options`}
+              heading={control.menuHeading}
               className="ribbon-menu"
               style={{
                 position: 'fixed',
@@ -428,6 +490,9 @@ function RibbonSplitButton({
               anchorRef={containerRef}
               onSelect={(item) => {
                 setOpen(false);
+                // The menu item disappears with the menu; the trigger is the
+                // stable invoking control for a dialog's focus restoration.
+                toggleRef.current?.focus();
                 if (item.commandId !== undefined) onCommand(item.commandId, item.args);
               }}
               onClose={() => {
@@ -440,19 +505,6 @@ function RibbonSplitButton({
         : null}
     </div>
   );
-}
-
-function splitMenuItems(
-  menu: readonly RibbonMenuItem[],
-  resolveState: CommandStateResolver,
-): readonly MenuItemModel[] {
-  return menu.map((item, index) => ({
-    id: `${item.commandId}:${index}`,
-    label: item.label,
-    commandId: item.commandId,
-    args: item.args,
-    disabled: !resolveState(item.commandId).enabled,
-  }));
 }
 
 function optionValue(option: RibbonSelectOption): string {

@@ -4,6 +4,7 @@ import { Dialog } from './Dialog';
 import type { DialogAction, DialogCloseReason } from './Dialog';
 
 export type FindScope = 'sheet' | 'workbook';
+export type FindDirection = 'down' | 'up';
 
 /** The exact payload `find.search` accepts (command-system §6, matrix row 1). */
 export interface FindQuery {
@@ -13,6 +14,8 @@ export interface FindQuery {
   readonly wholeCell: boolean;
   readonly inFormulas: boolean;
   readonly inValues: boolean;
+  /** Scan direction from the active cell; 'down' is Excel's default. */
+  readonly direction: FindDirection;
 }
 
 /**
@@ -80,6 +83,7 @@ export function FindDialog({
   const [query, setQuery] = useState('');
   const [replacement, setReplacement] = useState('');
   const [scope, setScope] = useState<FindScope>('sheet');
+  const [direction, setDirection] = useState<FindDirection>('down');
   const [matchCase, setMatchCase] = useState(false);
   const [wholeCell, setWholeCell] = useState(false);
   const [inFormulas, setInFormulas] = useState(true);
@@ -93,6 +97,7 @@ export function FindDialog({
   const queryId = useId();
   const replaceId = useId();
   const scopeId = useId();
+  const directionId = useId();
 
   // The shell focuses its default action first. A feature dialog puts the
   // caret in its primary field instead, after that effect has run.
@@ -119,7 +124,7 @@ export function FindDialog({
       return { error: 'Choose formulas, values, or both.' };
     }
     return {
-      query: { query, scope, matchCase, wholeCell, inFormulas, inValues },
+      query: { query, scope, matchCase, wholeCell, inFormulas, inValues, direction },
     };
   };
 
@@ -148,7 +153,7 @@ export function FindDialog({
   const defaultAction: DialogAction =
     enterIntent === 'replace'
       ? { label: 'Replace', onSelect: () => submitReplace(false) }
-      : { label: 'Find Next', onSelect: () => submitSearch(false) };
+      : { label: 'Find next', onSelect: () => submitSearch(false) };
 
   const displayedError = error ?? outcome?.error ?? null;
   const summary = outcome === null || displayedError !== null ? null : outcomeSummary(outcome);
@@ -165,7 +170,7 @@ export function FindDialog({
       <div className="find-form">
         <div className="find-row">
           <label className="find-label" htmlFor={queryId}>
-            Find what
+            Find
           </label>
           <input
             ref={queryRef}
@@ -173,6 +178,7 @@ export function FindDialog({
             type="text"
             className="find-input"
             value={query}
+            placeholder="Insert Text"
             spellCheck={false}
             autoComplete="off"
             data-testid="find-query"
@@ -193,6 +199,7 @@ export function FindDialog({
             type="text"
             className="find-input"
             value={replacement}
+            placeholder="Insert Text"
             spellCheck={false}
             autoComplete="off"
             data-testid="find-replacement"
@@ -217,6 +224,25 @@ export function FindDialog({
           >
             <option value="sheet">Sheet</option>
             <option value="workbook">Workbook</option>
+          </select>
+        </div>
+
+        <div className="find-row">
+          <label className="find-label" htmlFor={directionId}>
+            Direction
+          </label>
+          <select
+            id={directionId}
+            className="find-select"
+            value={direction}
+            data-testid="find-direction"
+            onChange={(event) => {
+              setDirection(event.target.value === 'up' ? 'up' : 'down');
+              resetResult();
+            }}
+          >
+            <option value="down">Down</option>
+            <option value="up">Up</option>
           </select>
         </div>
 
@@ -275,11 +301,11 @@ export function FindDialog({
         <div className="find-actions">
           {enterIntent === 'replace' ? (
             <button type="button" onClick={() => submitSearch(false)} data-testid="find-next">
-              Find Next
+              Find next
             </button>
           ) : null}
           <button type="button" onClick={() => submitSearch(true)} data-testid="find-all">
-            Find All
+            Find all
           </button>
           {enterIntent === 'find' ? (
             <button type="button" onClick={() => submitReplace(false)} data-testid="find-replace">
@@ -287,7 +313,7 @@ export function FindDialog({
             </button>
           ) : null}
           <button type="button" onClick={() => submitReplace(true)} data-testid="find-replace-all">
-            Replace All
+            Replace all
           </button>
         </div>
 

@@ -9,9 +9,11 @@ test('Ctrl+F opens Find, rejects an empty query and Esc returns to the grid', as
   await page.keyboard.press('Control+f');
   const dialog = page.getByRole('dialog', { name: 'Find' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Find what')).toBeFocused();
+  await expect(dialog.getByLabel('Find', { exact: true })).toBeFocused();
+  // The capture's Direction dropdown, defaulting to Down (ticket 28 D3).
+  await expect(dialog.getByLabel('Direction')).toHaveValue('down');
 
-  await dialog.getByRole('button', { name: 'Find Next' }).click();
+  await dialog.getByRole('button', { name: 'Find next' }).click();
   await expect(dialog.getByTestId('find-error')).toHaveText('Enter a value or formula to find.');
   // A rejected query never dispatches, so the selection stays where it was.
   await expect(page.getByTestId('name-box')).toHaveValue('A1');
@@ -21,7 +23,7 @@ test('Ctrl+F opens Find, rejects an empty query and Esc returns to the grid', as
   await expect(page.getByTestId('grid-shell')).toBeFocused();
 });
 
-test('Find Next selects a match and Find All lists it', async ({ page }) => {
+test('Find next selects a match and Find all lists it', async ({ page }) => {
   await openFixture(page, fixture);
 
   await page.getByTestId('name-box').click();
@@ -31,12 +33,12 @@ test('Find Next selects a match and Find All lists it', async ({ page }) => {
 
   await page.keyboard.press('Control+f');
   const dialog = page.getByRole('dialog', { name: 'Find' });
-  await dialog.getByLabel('Find what').fill('Alpha');
-  await dialog.getByRole('button', { name: 'Find Next' }).click();
+  await dialog.getByLabel('Find', { exact: true }).fill('Alpha');
+  await dialog.getByRole('button', { name: 'Find next' }).click();
   await expect(page.getByTestId('name-box')).toHaveValue('A2');
   await expect(dialog).toBeVisible();
 
-  await dialog.getByRole('button', { name: 'Find All' }).click();
+  await dialog.getByRole('button', { name: 'Find all' }).click();
   const results = dialog.getByTestId('find-results');
   await expect(results).toBeVisible();
   await expect(results.getByTestId('find-result-0')).toContainText('A2');
@@ -51,41 +53,41 @@ test('Find Next selects a match and Find All lists it', async ({ page }) => {
   await expect(page.getByTestId('grid-shell')).toBeFocused();
 });
 
-test('Find All respects the match case and whole cell options', async ({ page }) => {
+test('Find all respects the match case and whole cell options', async ({ page }) => {
   await openFixture(page, fixture);
   await page.keyboard.press('Control+f');
   const dialog = page.getByRole('dialog', { name: 'Find' });
 
-  await dialog.getByLabel('Find what').fill('alpha');
-  await dialog.getByRole('button', { name: 'Find All' }).click();
+  await dialog.getByLabel('Find', { exact: true }).fill('alpha');
+  await dialog.getByRole('button', { name: 'Find all' }).click();
   await expect(dialog.getByTestId('find-summary')).toHaveText('Found 1 match.');
   await expect(dialog.getByTestId('find-result-0')).toContainText('A2');
 
   await dialog.getByTestId('find-match-case').check();
-  await dialog.getByRole('button', { name: 'Find All' }).click();
+  await dialog.getByRole('button', { name: 'Find all' }).click();
   await expect(dialog.getByTestId('find-summary')).toHaveText('No matches found.');
 
   await dialog.getByTestId('find-match-case').uncheck();
   await dialog.getByTestId('find-whole-cell').check();
-  await dialog.getByLabel('Find what').fill('Alph');
-  await dialog.getByRole('button', { name: 'Find All' }).click();
+  await dialog.getByLabel('Find', { exact: true }).fill('Alph');
+  await dialog.getByRole('button', { name: 'Find all' }).click();
   await expect(dialog.getByTestId('find-summary')).toHaveText('No matches found.');
 
   await dialog.getByTestId('find-whole-cell').uncheck();
-  await dialog.getByRole('button', { name: 'Find All' }).click();
+  await dialog.getByRole('button', { name: 'Find all' }).click();
   await expect(dialog.getByTestId('find-summary')).toHaveText('Found 1 match.');
   await expect(dialog.getByTestId('find-result-0')).toContainText('A2');
 });
 
-test('Replace All changes every match in one undo step', async ({ page }) => {
+test('Replace all changes every match in one undo step', async ({ page }) => {
   await openFixture(page, fixture);
 
   await page.keyboard.press('Control+h');
   const dialog = page.getByRole('dialog', { name: 'Find and Replace' });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel('Find what').fill('Alpha');
+  await dialog.getByLabel('Find', { exact: true }).fill('Alpha');
   await dialog.getByLabel('Replace with').fill('Gamma');
-  await dialog.getByRole('button', { name: 'Replace All' }).click();
+  await dialog.getByRole('button', { name: 'Replace all' }).click();
 
   await expect
     .poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(1, 0)))
@@ -106,9 +108,9 @@ test('Replace replaces one match through the replace field', async ({ page }) =>
   await page.keyboard.press('Control+h');
   const dialog = page.getByRole('dialog', { name: 'Find and Replace' });
 
-  await dialog.getByLabel('Find what').fill('Alpha');
+  await dialog.getByLabel('Find', { exact: true }).fill('Alpha');
   await dialog.getByLabel('Replace with').fill('Gamma');
-  // Enter in the replacement field runs Replace, not Find Next.
+  // Enter in the replacement field runs Replace, not Find next.
   await page.keyboard.press('Enter');
   await expect
     .poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(1, 0)))
@@ -116,7 +118,7 @@ test('Replace replaces one match through the replace field', async ({ page }) =>
   await expect(dialog.getByTestId('find-summary')).toContainText('Replaced 1 cell');
 });
 
-test('Go To accepts a range and rejects invalid input without moving the selection', async ({
+test('Go to accepts a range and rejects invalid input without moving the selection', async ({
   page,
 }) => {
   await openFixture(page, fixture);
@@ -128,7 +130,7 @@ test('Go To accepts a range and rejects invalid input without moving the selecti
   await expect(page.getByTestId('name-box')).toHaveValue('B2');
 
   await page.keyboard.press('Control+g');
-  const dialog = page.getByRole('dialog', { name: 'Go To' });
+  const dialog = page.getByRole('dialog', { name: 'Go to' });
   await expect(dialog).toBeVisible();
   const input = dialog.getByLabel('Reference');
   await expect(input).toBeFocused();
@@ -151,30 +153,32 @@ test('Go To accepts a range and rejects invalid input without moving the selecti
   await expect(page.getByTestId('grid-shell')).toBeFocused();
 });
 
-test('Go To returns focus to the invoking ribbon button on dismissal', async ({ page }) => {
+test('Go to returns focus to the invoking ribbon menu button on dismissal', async ({ page }) => {
   await openFixture(page, fixture);
-  const button = page.getByRole('button', { name: 'Go To (Ctrl+G)' });
-  await button.click();
-  const dialog = page.getByRole('dialog', { name: 'Go To' });
+  const menuButton = page.getByRole('button', { name: 'Find & Select' });
+  await menuButton.click();
+  await page.getByRole('menuitem', { name: 'Go to' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Go to' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
-  await expect(button).toBeFocused();
+  await expect(menuButton).toBeFocused();
 });
 
 test('Find is reachable from the ribbon, compact bar and context menu', async ({ page }) => {
   await openFixture(page, fixture);
 
-  // Ribbon Editing group.
-  await page.getByRole('button', { name: 'Find (Ctrl+F)' }).click();
+  // Ribbon Editing group: the Find & Select menu carries the three commands.
+  await page.getByRole('button', { name: 'Find & Select' }).click();
+  await page.getByRole('menuitem', { name: 'Find', exact: true }).click();
   const findDialog = page.getByRole('dialog', { name: 'Find' });
   await expect(findDialog).toBeVisible();
   await page.keyboard.press('Escape');
 
   // Context menu.
   await page.getByTestId('grid-canvas').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Go To' }).click();
-  const gotoDialog = page.getByRole('dialog', { name: 'Go To' });
+  await page.getByRole('menuitem', { name: 'Go to' }).click();
+  const gotoDialog = page.getByRole('dialog', { name: 'Go to' });
   await expect(gotoDialog).toBeVisible();
   await page.keyboard.press('Escape');
 

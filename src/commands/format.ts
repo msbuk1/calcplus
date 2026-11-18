@@ -123,6 +123,19 @@ export const formatStrikeCommand: CommandDefinition<FormatTargetArgs> = toggleCo
   (style) => ({ font: { strike: !style.font.strike } }),
 );
 
+/**
+ * Wrap Text (Alignment: horizontal/vertical, indent, wrap text). A toggle like
+ * Bold: one transaction, checked from the active cell's style, and the patch is
+ * applied per cell so a mixed selection flips each cell's own flag.
+ */
+export const formatWrapTextCommand: CommandDefinition<FormatTargetArgs> = toggleCommand(
+  'format.wrapText',
+  'Wrap Text',
+  null,
+  (style) => style.alignment.wrapText,
+  (style) => ({ alignment: { wrapText: !style.alignment.wrapText } }),
+);
+
 export const formatFontCommand: CommandDefinition<FontFormatArgs> = {
   id: 'format.font',
   label: 'Font',
@@ -309,6 +322,25 @@ export const formatClearCommand: CommandDefinition<FormatTargetArgs> = {
 };
 
 /**
+ * Increase/Decrease Decimal (Number formats: built-in categories + full custom
+ * grammar). Excel adjusts the format code of the selection by one decimal
+ * place, so the value is untouched and the cached result is unchanged; the
+ * command reads the active cell's code and applies one new code to every cell
+ * in the target, as one transaction.
+ */
+export const formatIncreaseDecimalCommand: CommandDefinition<FormatTargetArgs> = decimalCommand(
+  'format.increaseDecimal',
+  'Increase decimal',
+  1,
+);
+
+export const formatDecreaseDecimalCommand: CommandDefinition<FormatTargetArgs> = decimalCommand(
+  'format.decreaseDecimal',
+  'Decrease decimal',
+  -1,
+);
+
+/**
  * Chrome-owned dialog opener. The dialog itself submits `format.font`,
  * `format.fill`, `format.border`, `format.alignment` and `format.numberFormat`
  * with a payload (ui-chrome §4.1); the registry owns the command id and
@@ -330,7 +362,7 @@ export const formatCellsDialogCommand: CommandDefinition<void> = {
 function toggleCommand(
   id: string,
   label: string,
-  keybinding: string,
+  keybinding: string | null,
   checked: (style: StyleRecord) => boolean,
   patchFor: (style: StyleRecord) => StylePatch,
 ): CommandDefinition<FormatTargetArgs> {
@@ -338,7 +370,7 @@ function toggleCommand(
     id,
     label,
     category: 'format',
-    keybindings: [keybinding],
+    keybindings: keybinding === null ? [] : [keybinding],
     isEnabled: workbookHasSheet,
     isChecked(context) {
       const target = resolveFormatTarget(context, {});
@@ -351,6 +383,90 @@ function toggleCommand(
       );
     },
   };
+}
+
+function decimalCommand(
+  id: string,
+  label: string,
+  delta: 1 | -1,
+): CommandDefinition<FormatTargetArgs> {
+  return {
+    id,
+    label,
+    category: 'format',
+    keybindings: [],
+    isEnabled: workbookHasSheet,
+    run(context, args = {}) {
+      const target = resolveFormatTarget(context, args);
+      if (target === null) return noTarget();
+      const current = styleRecordForCell(target, activeCellOf(target, context)).numFmtCode;
+      const next = adjustDecimalPlaces(current, delta);
+      if (next === null) return { changes: [] };
+      if (!numberFormatIsValid(next)) return invalidNumberFormat();
+      return applyPatch(context, args, { numFmtCode: next });
+    },
+  };
+}
+
+/** The cell whose format seeds a selection-wide number-format step. */
+function activeCellOf(target: ResolvedTarget, context: CommandContext): Cell | null {
+  const active = context.activeCell;
+  if (
+    active !== null &&
+    active.row >= target.range.startRow &&
+    active.row <= target.range.endRow &&
+    active.col >= target.range.startCol &&
+    active.col <= target.range.endCol
+  ) {
+    const cell = getCell(target.sheet, active.row, active.col);
+    if (cell !== null) return cell;
+  }
+  return getCell(target.sheet, target.range.startRow, target.range.startCol);
+}
+
+/**
+ * One decimal-place step over the first section of a number-format code. The
+ * general format gains two places on the first increase (`0.00`) and a plain
+ * integer on the first decrease; a patterned code gains or loses one `0`
+ * after its decimal point. `null` means "nothing to remove".
+ */
+export function adjustDecimalPlaces(code: string | null, delta: 1 | -1): string | null {
+  const source = (code ?? '').trim();
+  if (source === '' || /^general$/i.test(source) || source === '@') {
+    return delta > 0 ? '0.00' : '0';
+  }
+  const [first = '', ...rest] = source.split(';');
+  if (first === '') return null;
+  const point = first.indexOf('.');
+  const next = point < 0 ? addDecimalPoint(first, delta) : stepDecimalRun(first, point, delta);
+  if (next === null || next === first) return null;
+  return [next, ...rest].join(';');
+}
+
+function addDecimalPoint(section: string, delta: 1 | -1): string | null {
+  if (delta < 0) return null;
+  // Place the point after the last digit placeholder: `0%` becomes `0.0%`.
+  for (let index = section.length - 1; index >= 0; index -= 1) {
+    if ('0#?'.includes(section[index]!)) {
+      return `${section.slice(0, index + 1)}.0${section.slice(index + 1)}`;
+    }
+  }
+  return '0.00';
+}
+
+function stepDecimalRun(section: string, point: number, delta: 1 | -1): string | null {
+  let runEnd = point + 1;
+  while (runEnd < section.length && '0#?'.includes(section[runEnd]!)) runEnd += 1;
+  const runLength = runEnd - point - 1;
+  if (delta > 0) {
+    return `${section.slice(0, runEnd)}0${section.slice(runEnd)}`;
+  }
+  if (runLength === 0) {
+    // `0.` has no place left to remove: drop the point itself.
+    return `${section.slice(0, point)}${section.slice(point + 1)}`;
+  }
+  const trimmed = `${section.slice(0, runEnd - 1)}${section.slice(runEnd)}`;
+  return runLength === 1 ? `${trimmed.slice(0, point)}${trimmed.slice(point + 1)}` : trimmed;
 }
 
 function applyPatch(
@@ -578,11 +694,14 @@ export function formatCommands(): readonly CommandDefinition<never>[] {
     formatItalicCommand as unknown as CommandDefinition<never>,
     formatUnderlineCommand as unknown as CommandDefinition<never>,
     formatStrikeCommand as unknown as CommandDefinition<never>,
+    formatWrapTextCommand as unknown as CommandDefinition<never>,
     formatFontCommand as unknown as CommandDefinition<never>,
     formatFillCommand as unknown as CommandDefinition<never>,
     formatBorderCommand as unknown as CommandDefinition<never>,
     formatAlignmentCommand as unknown as CommandDefinition<never>,
     formatNumberFormatCommand as unknown as CommandDefinition<never>,
+    formatIncreaseDecimalCommand as unknown as CommandDefinition<never>,
+    formatDecreaseDecimalCommand as unknown as CommandDefinition<never>,
     formatClearCommand as unknown as CommandDefinition<never>,
     formatCellsDialogCommand as unknown as CommandDefinition<never>,
   ];

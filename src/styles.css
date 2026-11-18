@@ -267,10 +267,10 @@ a:focus-visible,
 }
 
 .ribbon-group {
+  position: relative;
   display: flex;
   flex: none;
   flex-direction: column;
-  justify-content: space-between;
   min-width: max-content;
   padding: 1px 6px 0;
   border-right: 1px solid var(--border);
@@ -280,19 +280,77 @@ a:focus-visible,
   border-right: 0;
 }
 
+.ribbon-group-with-launcher .ribbon-group-body {
+  padding-right: 12px;
+}
+
+/* The band packs its controls into a two-row grid (a large control may span). */
 .ribbon-group-body {
-  display: flex;
+  display: grid;
   flex: 1;
-  align-items: flex-start;
-  gap: 2px;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  align-items: stretch;
+  gap: 1px 2px;
+}
+
+.ribbon-cell {
+  display: flex;
+  min-width: 0;
+}
+
+.ribbon-cell > * {
+  flex: 1 1 auto;
+}
+
+.ribbon-cell .ribbon-button,
+.ribbon-cell .ribbon-select,
+.ribbon-cell .ribbon-split-main,
+.ribbon-cell .ribbon-split-toggle,
+.ribbon-cell .ribbon-menu-button {
+  height: 100%;
+}
+
+.ribbon-cell-large .ribbon-button {
+  flex-direction: column;
+  font-weight: 600;
 }
 
 .ribbon-group-label {
+  margin-top: auto;
   padding: 1px 0 2px;
   color: var(--disabled);
   font-size: 9px;
   text-align: center;
   white-space: nowrap;
+}
+
+/* The dialog launcher sits at the band's bottom-right corner, above the label. */
+.ribbon-group-launcher {
+  position: absolute;
+  right: 2px;
+  bottom: 15px;
+  width: 13px;
+  height: 13px;
+  padding: 3px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--disabled);
+}
+
+.ribbon-group-launcher svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.ribbon-group-launcher:hover:not(:disabled) {
+  background: var(--button-hover);
+  color: var(--text);
 }
 
 .ribbon-button {
@@ -396,6 +454,17 @@ a:focus-visible,
   align-items: stretch;
 }
 
+.ribbon-menu-button {
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.ribbon-menu-caret {
+  color: var(--disabled);
+  font-size: 9px;
+  line-height: 1;
+}
+
 .ribbon-split-main {
   border-radius: 3px 0 0 3px;
 }
@@ -450,6 +519,14 @@ a:focus-visible,
 .compact-file .menu {
   top: 100%;
   left: 0;
+}
+
+.menu-heading {
+  padding: 4px 8px 3px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .context-menu {
@@ -1709,8 +1786,12 @@ a:focus-visible,
     display: none;
   }
 
+  .ribbon-group-launcher {
+    bottom: 2px;
+  }
+
   .ribbon-body {
-    height: 40px;
+    height: 78px;
     padding-bottom: 3px;
   }
 }

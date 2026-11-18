@@ -8,7 +8,7 @@ test('context menu stays inside the viewport near the bottom edge', async ({ pag
 
   // Right-click low on the grid: without viewport clamping the menu's last
   // items render below the window and cannot be clicked (the regression that
-  // made the context-menu "Go To" item unreachable on short windows).
+  // made the context-menu "Go to" item unreachable on short windows).
   const canvas = page.getByTestId('grid-canvas');
   const canvasBox = await canvas.boundingBox();
   expect(canvasBox).not.toBeNull();
@@ -29,6 +29,6 @@ test('context menu stays inside the viewport near the bottom edge', async ({ pag
   expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewport!.width);
 
   // The last item is genuinely clickable, not just on screen in theory.
-  await page.getByRole('menuitem', { name: 'Go To' }).click();
-  await expect(page.getByRole('dialog', { name: 'Go To' })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Go to' }).click();
+  await expect(page.getByRole('dialog', { name: 'Go to' })).toBeVisible();
 });

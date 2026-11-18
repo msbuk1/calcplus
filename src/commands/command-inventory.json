@@ -69,6 +69,7 @@
         "group": "Clipboard",
         "kind": "button",
         "order": 20,
+        "row": 1,
         "label": "Cut",
         "title": "Cut (Ctrl+X)"
       }
@@ -91,6 +92,7 @@
         "group": "Clipboard",
         "kind": "button",
         "order": 30,
+        "row": 2,
         "label": "Copy",
         "title": "Copy (Ctrl+C)"
       }
@@ -113,9 +115,10 @@
         "group": "Clipboard",
         "kind": "button",
         "order": 10,
+        "row": 1,
+        "rowSpan": 3,
         "label": "Paste",
-        "title": "Paste (Ctrl+V)",
-        "wide": true
+        "title": "Paste (Ctrl+V)"
       }
     ],
     "contextMenu": { "order": 30 },
@@ -284,7 +287,7 @@
   {
     "id": "find.search",
     "matrixSection": "1. Grid and editing",
-    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction)",
     "label": "Find",
     "category": "edit",
     "enablement": "A sheet is active",
@@ -294,10 +297,16 @@
       {
         "tab": "Home",
         "group": "Editing",
-        "kind": "button",
+        "kind": "menu",
         "order": 40,
-        "label": "Find",
-        "title": "Find (Ctrl+F)"
+        "label": "Find & Select",
+        "title": "Find & Select",
+        "menuHeading": "Find & Select",
+        "menu": [
+          { "label": "Find", "commandId": "find.search", "shortcut": "Ctrl+F" },
+          { "label": "Replace", "commandId": "find.replaceOne" },
+          { "label": "Go to", "commandId": "goto.goto", "shortcut": "Ctrl+G" }
+        ]
       }
     ],
     "contextMenu": { "order": 80 },
@@ -306,7 +315,7 @@
   {
     "id": "find.replaceOne",
     "matrixSection": "1. Grid and editing",
-    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction)",
     "label": "Replace",
     "category": "edit",
     "enablement": "A sheet is active",
@@ -319,7 +328,7 @@
         "kind": "button",
         "order": 50,
         "label": "Replace",
-        "title": "Replace (Ctrl+H)"
+        "menuOnly": true
       }
     ],
     "contextMenu": { "order": 90 },
@@ -328,8 +337,8 @@
   {
     "id": "find.replaceAll",
     "matrixSection": "1. Grid and editing",
-    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell)",
-    "label": "Replace All",
+    "matrixFeature": "Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction)",
+    "label": "Replace all",
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
@@ -339,7 +348,7 @@
     "id": "goto.goto",
     "matrixSection": "1. Grid and editing",
     "matrixFeature": "Go To (Ctrl+G and name box)",
-    "label": "Go To",
+    "label": "Go to",
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
@@ -350,13 +359,13 @@
         "group": "Editing",
         "kind": "button",
         "order": 60,
-        "label": "Go To",
-        "title": "Go To (Ctrl+G)"
+        "label": "Go to",
+        "menuOnly": true
       }
     ],
     "menu": [{ "menu": "Edit", "order": 100 }],
     "contextMenu": { "order": 100 },
-    "compact": { "kind": "button", "order": 42, "label": "Go To" }
+    "compact": { "kind": "button", "order": 42, "label": "Go to" }
   },
   {
     "id": "edit.clearContents",
@@ -371,10 +380,16 @@
       {
         "tab": "Home",
         "group": "Editing",
-        "kind": "button",
+        "kind": "split",
         "order": 20,
-        "label": "Clear Contents",
-        "menuOnly": true
+        "label": "Clear",
+        "title": "Clear",
+        "args": {},
+        "menu": [
+          { "label": "Clear All", "commandId": "edit.clearAll" },
+          { "label": "Clear Contents", "commandId": "edit.clearContents", "args": {} },
+          { "label": "Clear Formats", "commandId": "format.clear", "args": {} }
+        ]
       }
     ],
     "contextMenu": { "order": 40 },
@@ -393,15 +408,10 @@
       {
         "tab": "Home",
         "group": "Editing",
-        "kind": "split",
+        "kind": "button",
         "order": 30,
         "label": "Clear Formats",
-        "title": "Clear",
-        "args": {},
-        "menu": [
-          { "label": "Clear Contents", "commandId": "edit.clearContents" },
-          { "label": "Clear Formats", "commandId": "format.clear", "args": {} }
-        ]
+        "menuOnly": true
       }
     ],
     "contextMenu": { "order": 50 }
@@ -434,9 +444,34 @@
     "label": "Sort",
     "category": "data",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "menu",
+        "order": 30,
+        "label": "Sort & Filter",
+        "title": "Sort & Filter",
+        "menuHeading": "Sort & Filter",
+        "menu": [
+          {
+            "label": "Sort Ascending",
+            "commandId": "data.sort",
+            "args": { "keys": [{ "direction": "ascending" }], "hasHeaders": null }
+          },
+          {
+            "label": "Sort Descending",
+            "commandId": "data.sort",
+            "args": { "keys": [{ "direction": "descending" }], "hasHeaders": null }
+          },
+          { "label": "Custom Sort", "commandId": "data.sort" },
+          { "label": "Filter", "commandId": "data.filter", "dividerBefore": true },
+          { "label": "Clear", "commandId": "data.filterClear" },
+          { "label": "Reapply", "commandId": "data.filterReapply" }
+        ]
+      },
       { "tab": "Data", "group": "Sort & Filter", "kind": "button", "order": 10, "label": "Sort" }
     ]
   },
@@ -447,9 +482,17 @@
     "label": "Filter",
     "category": "data",
     "enablement": "A sheet is active and a plain range is selected",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+Shift+L"],
     "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 35,
+        "label": "Filter",
+        "menuOnly": true
+      },
       {
         "tab": "Data",
         "group": "Sort & Filter",
@@ -460,21 +503,76 @@
     ]
   },
   {
+    "id": "data.filterColumn",
+    "matrixSection": "2. Data",
+    "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
+    "label": "Filter by column",
+    "category": "data",
+    "enablement": "A sheet is active and an AutoFilter is applied",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "data.filterClearColumn",
+    "matrixSection": "2. Data",
+    "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
+    "label": "Clear Filter from '<column>'",
+    "category": "data",
+    "enablement": "The column has an active criterion",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
     "id": "data.filterClear",
     "matrixSection": "2. Data",
     "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
     "label": "Clear filter",
     "category": "data",
     "enablement": "A sheet is active and an AutoFilter is applied",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 36,
+        "label": "Clear",
+        "menuOnly": true
+      },
       {
         "tab": "Data",
         "group": "Sort & Filter",
         "kind": "button",
         "order": 30,
-        "label": "Clear Filter"
+        "label": "Clear"
+      }
+    ]
+  },
+  {
+    "id": "data.filterReapply",
+    "matrixSection": "2. Data",
+    "matrixFeature": "AutoFilter on a plain range (value checklist; text/number/date conditions; clear)",
+    "label": "Reapply filter",
+    "category": "data",
+    "enablement": "A sheet is active and an AutoFilter is applied",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Editing",
+        "kind": "button",
+        "order": 37,
+        "label": "Reapply",
+        "menuOnly": true
+      },
+      {
+        "tab": "Data",
+        "group": "Sort & Filter",
+        "kind": "button",
+        "order": 40,
+        "label": "Reapply"
       }
     ]
   },
@@ -493,8 +591,10 @@
         "group": "Font",
         "kind": "select",
         "order": 1,
+        "row": 1,
         "controlId": "font-family",
-        "label": "Font",
+        "label": "",
+        "title": "Font",
         "wide": true,
         "valueFrom": "fontName",
         "options": [
@@ -513,8 +613,10 @@
         "group": "Font",
         "kind": "select",
         "order": 2,
+        "row": 1,
         "controlId": "font-size",
-        "label": "Size",
+        "label": "",
+        "title": "Font size",
         "valueFrom": "fontSize",
         "options": [
           { "label": "8", "value": "8", "args": { "size": 8 } },
@@ -535,7 +637,8 @@
         "tab": "Home",
         "group": "Font",
         "kind": "split",
-        "order": 60,
+        "order": 80,
+        "row": 2,
         "controlId": "font-color",
         "label": "A",
         "title": "Font Colour",
@@ -565,6 +668,7 @@
         "group": "Font",
         "kind": "toggle",
         "order": 20,
+        "row": 2,
         "label": "B",
         "title": "Bold (Ctrl+B)"
       }
@@ -586,6 +690,7 @@
         "group": "Font",
         "kind": "toggle",
         "order": 30,
+        "row": 2,
         "label": "I",
         "title": "Italic (Ctrl+I)"
       }
@@ -607,6 +712,7 @@
         "group": "Font",
         "kind": "toggle",
         "order": 40,
+        "row": 2,
         "label": "U",
         "title": "Underline (Ctrl+U)"
       }
@@ -628,6 +734,7 @@
         "group": "Font",
         "kind": "toggle",
         "order": 50,
+        "row": 2,
         "label": "S",
         "title": "Strikethrough (Ctrl+5)"
       }
@@ -648,6 +755,7 @@
         "group": "Font",
         "kind": "split",
         "order": 70,
+        "row": 2,
         "label": "Fill",
         "title": "Fill Colour",
         "wide": true,
@@ -702,7 +810,8 @@
         "tab": "Home",
         "group": "Font",
         "kind": "split",
-        "order": 80,
+        "order": 60,
+        "row": 2,
         "label": "Borders",
         "title": "Borders",
         "wide": true,
@@ -743,6 +852,7 @@
         "group": "Alignment",
         "kind": "button",
         "order": 10,
+        "row": 1,
         "label": "L",
         "title": "Align Left",
         "args": { "horizontal": "left" }
@@ -752,6 +862,7 @@
         "group": "Alignment",
         "kind": "button",
         "order": 20,
+        "row": 1,
         "label": "C",
         "title": "Centre",
         "args": { "horizontal": "center" }
@@ -761,6 +872,7 @@
         "group": "Alignment",
         "kind": "button",
         "order": 30,
+        "row": 1,
         "label": "R",
         "title": "Align Right",
         "args": { "horizontal": "right" }
@@ -770,6 +882,7 @@
         "group": "Alignment",
         "kind": "button",
         "order": 40,
+        "row": 2,
         "label": "Top",
         "title": "Align Top",
         "args": { "vertical": "top" }
@@ -779,6 +892,7 @@
         "group": "Alignment",
         "kind": "button",
         "order": 50,
+        "row": 2,
         "label": "Middle",
         "title": "Align Middle",
         "args": { "vertical": "center" }
@@ -788,9 +902,31 @@
         "group": "Alignment",
         "kind": "button",
         "order": 60,
+        "row": 2,
         "label": "Bottom",
         "title": "Align Bottom",
         "args": { "vertical": "bottom" }
+      }
+    ]
+  },
+  {
+    "id": "format.wrapText",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Alignment: horizontal/vertical, indent, wrap text",
+    "label": "Wrap Text",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "toggle",
+        "order": 70,
+        "row": 1,
+        "label": "Wrap Text",
+        "title": "Wrap Text"
       }
     ]
   },
@@ -819,7 +955,8 @@
         "group": "Clipboard",
         "kind": "button",
         "order": 40,
-        "label": "Painter",
+        "row": 3,
+        "label": "Format Painter",
         "title": "Format Painter"
       }
     ],
@@ -847,11 +984,24 @@
     "ribbon": [
       {
         "tab": "Home",
+        "group": "Font",
+        "kind": "launcher",
+        "order": 999,
+        "title": "Font Settings"
+      },
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "launcher",
+        "order": 999,
+        "title": "Alignment Settings"
+      },
+      {
+        "tab": "Home",
         "group": "Number",
-        "kind": "button",
-        "order": 40,
-        "label": "Format…",
-        "title": "Format Cells"
+        "kind": "launcher",
+        "order": 999,
+        "title": "Number Settings"
       }
     ],
     "contextMenu": { "order": 55 }
@@ -871,8 +1021,10 @@
         "group": "Number",
         "kind": "select",
         "order": 1,
+        "row": 1,
         "controlId": "number-format",
-        "label": "Number Format",
+        "label": "",
+        "title": "Number Format",
         "wide": true,
         "valueFrom": "numberFormat",
         "options": [
@@ -892,6 +1044,7 @@
         "group": "Number",
         "kind": "button",
         "order": 10,
+        "row": 2,
         "label": "$",
         "title": "Currency",
         "args": { "code": "\"$\"#,##0.00" }
@@ -901,6 +1054,7 @@
         "group": "Number",
         "kind": "button",
         "order": 20,
+        "row": 2,
         "label": "%",
         "title": "Percent",
         "args": { "code": "0.00%" }
@@ -910,6 +1064,7 @@
         "group": "Number",
         "kind": "button",
         "order": 30,
+        "row": 2,
         "label": ",",
         "title": "Comma",
         "args": { "code": "#,##0" }
@@ -924,14 +1079,69 @@
     }
   },
   {
+    "id": "format.increaseDecimal",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Number formats: built-in categories + full custom grammar",
+    "label": "Increase decimal",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 40,
+        "row": 2,
+        "label": ".00",
+        "icon": "←",
+        "title": "Increase Decimal"
+      }
+    ]
+  },
+  {
+    "id": "format.decreaseDecimal",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Number formats: built-in categories + full custom grammar",
+    "label": "Decrease decimal",
+    "category": "format",
+    "enablement": "A sheet is active and a range is selected",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Number",
+        "kind": "button",
+        "order": 50,
+        "row": 2,
+        "label": ".00",
+        "icon": "→",
+        "title": "Decrease Decimal"
+      }
+    ]
+  },
+  {
     "id": "format.conditionalRender",
     "matrixSection": "3. Formatting",
     "matrixFeature": "Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules",
-    "label": "Conditional formatting",
+    "label": "Conditional Formatting",
     "category": "format",
-    "enablement": "Imported rules render; authoring arrives in v2",
+    "enablement": "Always disabled in v1: imported rules render, authoring arrives in v2 (ticket 27)",
     "implemented": false,
-    "shortcut": []
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Styles",
+        "kind": "button",
+        "order": 10,
+        "disabled": true,
+        "label": "Conditional Formatting",
+        "title": "Conditional Formatting — authoring arrives in v2"
+      }
+    ]
   },
   {
     "id": "formula.recalculate",
@@ -956,11 +1166,14 @@
       {
         "tab": "Home",
         "group": "Editing",
-        "kind": "button",
+        "kind": "split",
         "order": 10,
+        "row": 1,
         "label": "AutoSum",
         "title": "AutoSum (Alt+=)",
-        "icon": "Σ"
+        "icon": "Σ",
+        "args": {},
+        "menu": [{ "label": "AutoSum", "commandId": "formula.autosum", "args": {} }]
       },
       {
         "tab": "Formulas",
@@ -1079,7 +1292,30 @@
     "implemented": true,
     "shortcut": ["Shift+F11"],
     "ribbon": [
-      { "tab": "Home", "group": "Cells", "kind": "button", "order": 10, "label": "Insert Sheet" }
+      {
+        "tab": "Home",
+        "group": "Cells",
+        "kind": "menu",
+        "order": 10,
+        "row": 1,
+        "label": "Insert",
+        "title": "Insert",
+        "menu": [
+          { "label": "Insert Rows Above", "commandId": "structure.insertRows" },
+          { "label": "Insert Columns to the Left", "commandId": "structure.insertColumns" },
+          {
+            "label": "Insert Cells & Shift Right",
+            "commandId": "structure.insertCells",
+            "args": { "shift": "right" }
+          },
+          {
+            "label": "Insert Cells & Shift Down",
+            "commandId": "structure.insertCells",
+            "args": { "shift": "down" }
+          },
+          { "label": "Insert Sheet", "commandId": "sheet.insert" }
+        ]
+      }
     ],
     "contextMenu": { "order": 60 }
   },

@@ -28,7 +28,7 @@ const RIBBON_TABS = new Set([
   'Review',
   'View',
 ]);
-const CONTROL_KINDS = new Set(['button', 'toggle', 'select', 'split']);
+const CONTROL_KINDS = new Set(['button', 'toggle', 'select', 'split', 'menu', 'launcher']);
 /** The only command allowed to use the ui-chrome pseudo-row instead of the feature matrix. */
 const UI_CHROME_COMMANDS = new Set(['help.about']);
 const ERROR_LIMIT = 40;
@@ -172,6 +172,33 @@ async function main() {
       if (placement.kind === 'select' && !Array.isArray(placement.options)) {
         fail(`${label}: select control ${placement.controlId ?? placement.label} has no options.`);
       }
+      if (placement.row !== undefined && (!Number.isInteger(placement.row) || placement.row < 1)) {
+        fail(`${label}: ribbon placement row must be a positive integer.`);
+      }
+      if (
+        placement.rowSpan !== undefined &&
+        (!Number.isInteger(placement.rowSpan) || placement.rowSpan < 1)
+      ) {
+        fail(`${label}: ribbon placement rowSpan must be a positive integer.`);
+      }
+      if (placement.disabled !== undefined && typeof placement.disabled !== 'boolean') {
+        fail(`${label}: ribbon placement "disabled" must be boolean.`);
+      }
+      if (
+        placement.menuHeading !== undefined &&
+        (typeof placement.menuHeading !== 'string' || placement.menuHeading.trim() === '')
+      ) {
+        fail(`${label}: ribbon placement "menuHeading" must be a non-empty string.`);
+      }
+      if (placement.disabled === true && entry.implemented === true) {
+        // The present-but-disabled carve-out (ui-chrome §4.1, ticket 27) is for
+        // planned, render-only IN rows only; a live command is never greyed.
+        fail(`${label}: an implemented command cannot carry a disabled ribbon placement.`);
+      }
+      if (placement.disabled === true && (placement.title ?? '').trim() === '') {
+        // The carve-out requires a tooltip that names the v2 limitation.
+        fail(`${label}: a disabled ribbon placement needs a tooltip (title).`);
+      }
       for (const option of placement.options ?? []) {
         if (typeof option.label !== 'string' || option.label.trim() === '') {
           fail(`${label}: select option without a label.`);
@@ -182,6 +209,9 @@ async function main() {
           fail(`${label}: split menu item needs label and commandId.`);
         } else if (!inventory.some((candidate) => candidate.id === menuItem.commandId)) {
           fail(`${label}: split menu item names an unknown command: ${menuItem.commandId}`);
+        }
+        if (menuItem.shortcut !== undefined && typeof menuItem.shortcut !== 'string') {
+          fail(`${label}: menu item "${menuItem.label}" has a non-string shortcut.`);
         }
       }
     }
@@ -272,6 +302,14 @@ async function main() {
   );
   lines.push('that the command exists.');
   lines.push('');
+  lines.push(
+    'One ruled exception (ui-chrome §4.1, ticket 27): a matrix row that is IN as render-only with',
+  );
+  lines.push(
+    'V2 authoring ships its ribbon control present-but-disabled, with a tooltip naming the v2',
+  );
+  lines.push('limitation. `format.conditionalRender` is the v1 instance.');
+  lines.push('');
   lines.push('## Commands');
   lines.push('');
   lines.push(
@@ -279,13 +317,18 @@ async function main() {
   );
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const entry of sorted) {
+    // Several controls of one command can sit in the same band (Font family,
+    // size and colour are all `format.font`); the map records each placement,
+    // and the register lists the distinct tab → group addresses once.
     const ribbon =
-      (entry.ribbon ?? [])
-        .map(
-          (placement) =>
-            `${placement.tab} → ${placement.group}${placement.menuOnly === true ? ' (menu)' : ''}`,
-        )
-        .join('<br>') || '—';
+      [
+        ...new Set(
+          (entry.ribbon ?? []).map(
+            (placement) =>
+              `${placement.tab} → ${placement.group}${placement.menuOnly === true ? ' (menu)' : ''}${placement.kind === 'launcher' ? ' (launcher)' : ''}${placement.disabled === true ? ' (present, disabled)' : ''}`,
+          ),
+        ),
+      ].join('<br>') || '—';
     const menuParts = (entry.menu ?? []).map((placement) => placement.menu);
     if (entry.contextMenu !== undefined) menuParts.push('Context menu');
     const menu = menuParts.join('<br>') || '—';
