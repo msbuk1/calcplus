@@ -3,6 +3,7 @@ import { formatCellRef } from '@model/types';
 import type { SharedStringsTable } from '../types';
 import type { SharedStringsAppender } from './shared-strings-patch';
 import { cellToXml } from './cell-xml';
+import { AFTER_AUTO_FILTER, type AutoFilterSavePlan } from '../autofilter-xml';
 import {
   findElement,
   findElements,
@@ -28,6 +29,7 @@ export interface TreePatchInput {
   readonly dirtyCells: readonly DirtyCellInput[];
   readonly dirtyDimensions?: DirtyDimensions;
   readonly syncMerges?: boolean;
+  readonly syncAutoFilter?: AutoFilterSavePlan;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
 }
@@ -59,6 +61,10 @@ const AFTER_SHEET_DATA = new Set([
   'extLst',
 ]);
 
+/**
+ * Children of `<worksheet>` that follow `autoFilter` in the schema order
+ * (CT_Worksheet). The first of them is where a new filter element goes.
+ */
 export function patchWorksheetAsTree(input: TreePatchInput): Uint8Array {
   const xml = new TextDecoder().decode(input.sourceBytes);
   const document = parseXmlTree(xml, input.partName);
@@ -98,8 +104,36 @@ export function patchWorksheetAsTree(input: TreePatchInput): Uint8Array {
 
   applyDimensions(document.root, sheetData, input.dirtyDimensions);
   applyMerges(document.root, sheetData, input);
+  applyAutoFilter(document.root, input.syncAutoFilter);
 
   return new TextEncoder().encode(serializeXmlDocument(document));
+}
+
+/**
+ * Replace, insert or remove the sheet's `autoFilter` element in the tree
+ * fallback. The element itself is parsed from the text the model wrote, so an
+ * untouched filter keeps the source bytes it was re-emitted from.
+ */
+function applyAutoFilter(root: XmlElement, plan: AutoFilterSavePlan | undefined): void {
+  if (plan === undefined || !plan.changed) return;
+  const existing = findElement(root, 'autoFilter');
+  if (plan.xml === null) {
+    if (existing === undefined) return;
+    const index = root.children.indexOf(existing);
+    if (index >= 0) root.children.splice(index, 1);
+    return;
+  }
+  const element = parseXmlTree(plan.xml, 'autoFilter element').root;
+  if (existing !== undefined) {
+    const index = root.children.indexOf(existing);
+    root.children[index] = element;
+    return;
+  }
+  const insertion = root.children.findIndex(
+    (child) => child.type === 'element' && AFTER_AUTO_FILTER.has(localName(child)),
+  );
+  if (insertion < 0) root.children.push(element);
+  else root.children.splice(insertion, 0, element);
 }
 
 function applyMerges(root: XmlElement, sheetData: XmlElement, input: TreePatchInput): void {

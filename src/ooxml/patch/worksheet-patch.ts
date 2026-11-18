@@ -3,8 +3,13 @@ import { formatCellRef } from '@model/types';
 import type { SharedStringsTable } from '../types';
 import type { SharedStringsAppender } from './shared-strings-patch';
 import { cellToXml } from './cell-xml';
-import type { ParsedWorksheet, WorksheetRowPosition } from '../worksheet-xml';
+import type {
+  ParsedWorksheet,
+  WorksheetElementPosition,
+  WorksheetRowPosition,
+} from '../worksheet-xml';
 import { parseWorksheetXml } from '../worksheet-xml';
+import { AFTER_AUTO_FILTER, type AutoFilterSavePlan } from '../autofilter-xml';
 import { WorkbookSaveError } from '../errors';
 import { escapeXmlAttribute, isWellFormedXml } from '../xml';
 import { patchWorksheetAsTree } from './tree-patch';
@@ -30,6 +35,8 @@ export interface WorksheetSaveInput {
   readonly dirtyDimensions?: DirtyDimensions;
   /** Replace the merge list from the model, even when no cell changed. */
   readonly syncMerges?: boolean;
+  /** Write or remove the sheet's `autoFilter` element, when it changed. */
+  readonly syncAutoFilter?: AutoFilterSavePlan;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
   readonly options?: WorksheetSaveOptions;
@@ -59,7 +66,8 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
   if (
     input.dirtyCells.length === 0 &&
     !hasDirtyDimensions(input.dirtyDimensions) &&
-    input.syncMerges !== true
+    input.syncMerges !== true &&
+    input.syncAutoFilter?.changed !== true
   ) {
     return { bytes: input.sourceBytes, mode: 'none' };
   }
@@ -102,6 +110,7 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     dirtyCells: input.dirtyCells,
     dirtyDimensions: input.dirtyDimensions,
     syncMerges: input.syncMerges,
+    syncAutoFilter: input.syncAutoFilter,
     sharedStringsTable: input.sharedStringsTable,
     sharedStrings: input.sharedStrings,
   });
@@ -285,8 +294,42 @@ function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): st
   }
 
   edits.push(...columnDimensionEdits(parsed, dirtyColumns));
+  const autoFilterEdit = autoFilterPositionEdit(parsed, input.syncAutoFilter);
+  if (autoFilterEdit !== null) edits.push(autoFilterEdit);
 
   return applyEdits(xml, groupInsertions(edits));
+}
+
+/**
+ * Children of `<worksheet>` that follow `autoFilter` in the schema order
+ * (CT_Worksheet). Inserting before the first of them keeps the part valid.
+ */
+function autoFilterPositionEdit(
+  parsed: ParsedWorksheet,
+  plan: AutoFilterSavePlan | undefined,
+): Edit | null {
+  if (plan === undefined || !plan.changed) return null;
+  const existing = parsed.rootChildren.find((child) => child.local === 'autoFilter') ?? null;
+  if (plan.xml === null) {
+    return existing === null
+      ? null
+      : { start: existing.start, end: existing.end, text: '', kind: 'replace' };
+  }
+  if (existing !== null) {
+    if (parsed.xml.slice(existing.start, existing.end) === plan.xml) return null;
+    return { start: existing.start, end: existing.end, text: plan.xml, kind: 'replace' };
+  }
+  const position = autoFilterInsertionPosition(parsed);
+  return { start: position, end: position, text: plan.xml, kind: 'insert' };
+}
+
+function autoFilterInsertionPosition(parsed: ParsedWorksheet): number {
+  const next = parsed.rootChildren.find((child: WorksheetElementPosition) =>
+    AFTER_AUTO_FILTER.has(child.local),
+  );
+  if (next !== undefined) return next.start;
+  const closing = parsed.xml.lastIndexOf('</');
+  return closing < 0 ? parsed.xml.length : closing;
 }
 
 function columnDimensionEdits(

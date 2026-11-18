@@ -36,6 +36,13 @@ import { parseSharedStringsXml } from './shared-strings';
 import { parseWorksheetXml } from './worksheet-xml';
 import { parseStylesXml } from './styles-xml';
 import { parseWorkbookXml } from './workbook-xml';
+import {
+  filterHiddenFlagChanges,
+  patchFilterDatabaseNames,
+  planAutoFilterSave,
+  withFilterHiddenRows,
+  type AutoFilterSavePlan,
+} from './autofilter-xml';
 import { WorkbookSaveError } from './errors';
 import { validatePatchedPart } from './xml';
 import { writePackage } from './zip';
@@ -145,8 +152,23 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   const dirtyMergeSheetIds = [...(input.dirtyMerges ?? [])].filter((sheetId) =>
     input.workbook.sheets.some((sheet) => sheet.id === sheetId),
   );
+  // The AutoFilter is document state owned by the command layer; compare it
+  // with the source part so a filter-only change still reaches the worksheet
+  // and an untouched filter never rewrites the part (§3.6).
+  const autoFilterPlans = new Map<SheetId, AutoFilterSavePlan>();
+  for (const sheet of input.workbook.sheets) {
+    if (newSheetIds.has(sheet.id)) continue;
+    const sourceBytes = input.workbook.sourceParts.get(sheet.partPath) ?? null;
+    const autoFilterPlan = planAutoFilterSave(sheet.autoFilter, sourceBytes);
+    if (autoFilterPlan.changed) autoFilterPlans.set(sheet.id, autoFilterPlan);
+  }
   const dirtySheetIds = [
-    ...new Set([...dirtyCellSheetIds, ...dirtyDimensionSheetIds, ...dirtyMergeSheetIds]),
+    ...new Set([
+      ...dirtyCellSheetIds,
+      ...dirtyDimensionSheetIds,
+      ...dirtyMergeSheetIds,
+      ...autoFilterPlans.keys(),
+    ]),
   ].filter(
     (sheetId) =>
       !newSheetIds.has(sheetId) && input.workbook.sheets.some((sheet) => sheet.id === sheetId),
@@ -218,9 +240,8 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
         return { row: address.row, col: address.col, cell };
       })
       .sort((a, b) => a.row - b.row || a.col - b.col);
-    const dirtyDimensions = input.dirtyDimensions?.get(sheetId);
     const syncMerges = input.dirtyMerges?.has(sheetId) === true;
-
+    const syncAutoFilter = autoFilterPlans.get(sheetId);
     const sourceBytes = input.workbook.sourceParts.get(sheet.partPath);
     if (sourceBytes === undefined) {
       throw new WorkbookSaveError(
@@ -228,6 +249,17 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
         `The worksheet ${sheet.partPath} has no source skeleton to patch.`,
       );
     }
+    const dirtyDimensions = withSheetFilterHiddenRows(
+      sheet,
+      syncAutoFilter?.changed === true
+        ? reconcileAutoFilterDimensions(
+            sheet,
+            sourceBytes,
+            input.dirtyDimensions?.get(sheetId),
+            input,
+          )
+        : input.dirtyDimensions?.get(sheetId),
+    );
 
     for (const dirty of dirtyCells) {
       const arrayMaster = arrayFormulaForCell(sheet, dirty.row, dirty.col);
@@ -251,6 +283,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       dirtyCells,
       dirtyDimensions,
       syncMerges,
+      syncAutoFilter,
       sharedStringsTable: input.package.sharedStrings,
       sharedStrings: appender,
       options: input.options?.worksheet,
@@ -378,6 +411,32 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       });
       if (patchedNames !== null) {
         entries.set(workbookPath, patchedNames);
+        if (!patchedParts.includes(workbookPath)) patchedParts.push(workbookPath);
+        modeByPart.set(workbookPath, 'position');
+      }
+    }
+  }
+
+  // The AutoFilter feature owns the hidden `_xlnm._FilterDatabase` name
+  // (file-compat §3): create it when a filter is switched on, retarget it when
+  // the range moves and remove it when the filter goes (§3.6).
+  {
+    const workbookBytes = entries.get(workbookPath);
+    const filterSheetIds = new Set<SheetId>();
+    for (const sheet of input.workbook.sheets) {
+      if (sheet.autoFilter !== null || autoFilterPlans.has(sheet.id)) {
+        filterSheetIds.add(sheet.id);
+      }
+    }
+    if (workbookBytes !== undefined && filterSheetIds.size > 0) {
+      const patchedFilterNames = patchFilterDatabaseNames({
+        bytes: workbookBytes,
+        partName: workbookPath,
+        workbook: input.workbook,
+        sheetIds: filterSheetIds,
+      });
+      if (patchedFilterNames !== null) {
+        entries.set(workbookPath, patchedFilterNames);
         if (!patchedParts.includes(workbookPath)) patchedParts.push(workbookPath);
         modeByPart.set(workbookPath, 'position');
       }
@@ -644,6 +703,54 @@ function mergeDirtyCells(
     merged.set(sheetId, set);
   }
   return merged;
+}
+
+/**
+ * §3.3: a save writes the effective hidden flag, `manual || filter`. A row the
+ * save is already rewriting is marked hidden when the sheet's filter hides it;
+ * rows outside the dirty set keep their source bytes.
+ */
+function withSheetFilterHiddenRows(
+  sheet: Sheet,
+  dimensions: DirtyDimensions | undefined,
+): DirtyDimensions | undefined {
+  if (sheet.autoFilter === null) return dimensions;
+  const rows = withFilterHiddenRows(sheet, dimensions?.rows ?? new Map());
+  if (dimensions === undefined && rows.size === 0) return undefined;
+  return { rows, columns: dimensions?.columns ?? new Map() };
+}
+
+/**
+ * A changed filter rewrites the hidden flag of every row whose visibility
+ * changed: the source part holds the previous effective flags, the model holds
+ * the new criteria. Filter-hidden rows are derived from the criteria (§3.3), so
+ * this is the step that lets the criteria travel into the file.
+ */
+function reconcileAutoFilterDimensions(
+  sheet: Sheet,
+  sourceBytes: Uint8Array,
+  dimensions: DirtyDimensions | undefined,
+  input: SaveWorkbookInput,
+): DirtyDimensions | undefined {
+  let sourceSheet: Sheet;
+  try {
+    sourceSheet = parseWorksheetXml(sourceBytes, {
+      sharedStrings: input.package.sharedStrings,
+      partPath: sheet.partPath,
+      name: sheet.name,
+    }).sheet;
+  } catch {
+    return dimensions;
+  }
+  const changes = filterHiddenFlagChanges(sheet, sourceSheet);
+  if (changes.size === 0) return dimensions;
+  const rows = new Map(dimensions?.rows ?? []);
+  for (const [row, hidden] of changes) {
+    const current = rows.has(row) ? rows.get(row) : (sheet.rowDimensions.get(row) ?? null);
+    const base = current ?? sourceSheet.rowDimensions.get(row) ?? null;
+    rows.set(row, { ...(base ?? {}), hidden });
+  }
+  return { rows, columns: dimensions?.columns ?? new Map() };
 }
 
 /**

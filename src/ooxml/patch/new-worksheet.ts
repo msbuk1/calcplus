@@ -1,5 +1,6 @@
 import type { Cell, Sheet } from '@model/types';
 import { columnToLetters, formatCellRef, parseCellKey, type RowDimension } from '@model/types';
+import { filterHiddenRows, serialiseAutoFilterElement } from '../autofilter-xml';
 import { WorkbookSaveError } from '../errors';
 import { RELATIONSHIPS_NS, SPREADSHEET_NS, XML_DECLARATION_UTF8, escapeXmlAttribute } from '../xml';
 import { cellToXml } from './cell-xml';
@@ -56,6 +57,9 @@ export function createWorksheetBytes(
   }
 
   const rowNumbers = new Set<number>([...cellsByRow.keys(), ...sheet.rowDimensions.keys()]);
+  // §3.3: the saved flag is the effective one, so a row the sheet's filter
+  // hides is written hidden even when the model only holds the criteria.
+  const filterHidden = filterHiddenRows(sheet);
   const rows = [...rowNumbers]
     .sort((left, right) => left - right)
     .map((row) =>
@@ -64,6 +68,7 @@ export function createWorksheetBytes(
         cellsByRow.get(row) ?? new Map<number, Cell>(),
         sheet.rowDimensions.get(row),
         sharedStrings,
+        filterHidden.has(row),
       ),
     )
     .filter((xml) => xml !== '');
@@ -72,6 +77,7 @@ export function createWorksheetBytes(
   const cols = colsXml(sheet);
   const merges = mergeXml(sheet);
   const protection = sheet.protection === null ? '' : sheet.protection.rawXml;
+  const autoFilter = sheet.autoFilter === null ? '' : serialiseAutoFilterElement(sheet.autoFilter);
 
   const xml = `${XML_DECLARATION_UTF8}
 <worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${RELATIONSHIPS_NS}">
@@ -81,6 +87,7 @@ export function createWorksheetBytes(
   ${cols}
   <sheetData>${rows.join('')}</sheetData>
   ${protection}
+  ${autoFilter}
   ${merges}
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
 </worksheet>`;
@@ -134,6 +141,7 @@ function rowXml(
   cells: Map<number, Cell>,
   dimension: RowDimension | undefined,
   sharedStrings: SharedStringsAppender | null,
+  filterHidden = false,
 ): string {
   const cellXml = [...cells.entries()]
     .sort(([left], [right]) => left - right)
@@ -146,7 +154,7 @@ function rowXml(
   const attributes = [`r="${row + 1}"`];
   if (dimension?.height !== undefined) attributes.push(`ht="${number(dimension.height)}"`);
   if (dimension?.customHeight === true) attributes.push('customHeight="1"');
-  if (dimension?.hidden === true) attributes.push('hidden="1"');
+  if (dimension?.hidden === true || filterHidden) attributes.push('hidden="1"');
   if (dimension?.styleId !== undefined && dimension.styleId !== 0) {
     attributes.push(`s="${dimension.styleId}"`);
   }

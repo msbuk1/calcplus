@@ -1,5 +1,6 @@
 import type { SheetId, Workbook } from '@model/types';
 import type { Relationship } from '../types';
+import { isFilterDatabaseName } from '../autofilter-xml';
 import { WorkbookSaveError } from '../errors';
 import {
   decodeXml,
@@ -191,6 +192,26 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
 
     if (ownerSheetId !== null && input.removedSheetIds.has(ownerSheetId)) {
       edits.push({ start: record.start, end: record.end, text: '' });
+      continue;
+    }
+
+    if (isFilterDatabaseName(record.name)) {
+      // File-compat §3: the AutoFilter feature owns this name's text, so a
+      // range change is written by the filter writer, not here. Only the
+      // `localSheetId` index, which moves with the sheet list, is maintained.
+      const currentIndex =
+        ownerSheetId === null ? null : (currentIndexBySheetId.get(ownerSheetId) ?? null);
+      if (currentIndex !== null && Number(record.localSheetId) !== currentIndex) {
+        edits.push({
+          start: record.start,
+          end: record.openEnd,
+          text: replaceDefinedNameAttribute(
+            xml.slice(record.start, record.openEnd),
+            'localSheetId',
+            String(currentIndex),
+          ),
+        });
+      }
       continue;
     }
 

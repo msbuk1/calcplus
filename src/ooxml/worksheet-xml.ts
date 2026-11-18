@@ -9,6 +9,7 @@ import {
   type CellValue,
 } from '@model/value';
 import { createSheet, createSheetId } from '@model/workbook';
+import { applyAutoFilterHiddenLayers, parseAutoFilterElement } from './autofilter-xml';
 import { WorkbookOpenError, WorkbookSaveError } from './errors';
 import type { SharedStringEntry, SharedStringsTable } from './types';
 import { SPREADSHEET_NS, STRICT_SPREADSHEET_NS, decodeXml, openTagStart, parseXml } from './xml';
@@ -69,6 +70,16 @@ export interface SheetDataPosition {
   readonly prefix: string;
 }
 
+/** The source position of one direct child of the worksheet root. */
+export interface WorksheetElementPosition {
+  readonly local: string;
+  readonly start: number;
+  readonly openEnd: number;
+  readonly end: number;
+  readonly selfClosing: boolean;
+  readonly prefix: string;
+}
+
 export interface ParsedWorksheet {
   readonly sheet: Sheet;
   readonly xml: string;
@@ -76,6 +87,8 @@ export interface ParsedWorksheet {
   readonly cols: SheetDataPosition | null;
   readonly rows: Map<number, WorksheetRowPosition>;
   readonly columns: readonly WorksheetColumnPosition[];
+  /** Direct children of `<worksheet>`, in document order, with their positions. */
+  readonly rootChildren: readonly WorksheetElementPosition[];
   readonly unsafeReasons: readonly string[];
   readonly rootPrefix: string;
 }
@@ -139,6 +152,13 @@ export function parseWorksheetXml(
   }[] = [];
   const stack: OpenElement[] = [];
   const rootHolder: { root: OpenElement | null } = { root: null };
+  const rootChildren: WorksheetElementPosition[] = [];
+  let openRootChild: {
+    local: string;
+    start: number;
+    openEnd: number;
+    prefix: string;
+  } | null = null;
   const sheetDataHolder: { value: SheetDataPosition | null } = { value: null };
   let colsHolder: SheetDataPosition | null = null;
   let sheetDataCount = 0;
@@ -181,6 +201,15 @@ export function parseWorksheetXml(
           }
           rootHolder.root = { local: tag.local, start, openEnd: position, prefix: tag.prefix };
           return;
+        }
+
+        if (stack.length === 2) {
+          openRootChild = {
+            local: tag.local,
+            start,
+            openEnd: position,
+            prefix: tag.prefix,
+          };
         }
 
         if (tag.local === 'sheetData') {
@@ -533,6 +562,23 @@ export function parseWorksheetXml(
             selfClosing: open.openEnd === end,
           };
         }
+
+        if (
+          stack.length === 1 &&
+          openRootChild !== null &&
+          open !== undefined &&
+          open.start === openRootChild.start
+        ) {
+          rootChildren.push({
+            local: openRootChild.local,
+            start: openRootChild.start,
+            openEnd: openRootChild.openEnd,
+            end,
+            selfClosing: openRootChild.openEnd === end,
+            prefix: openRootChild.prefix,
+          });
+          openRootChild = null;
+        }
       },
     },
     options.partPath,
@@ -552,6 +598,21 @@ export function parseWorksheetXml(
   if (sheet.view.freezeRows !== 0) sheet.view.freezeRows = Math.floor(sheet.view.freezeRows);
   if (sheet.view.freezeCols !== 0) sheet.view.freezeCols = Math.floor(sheet.view.freezeCols);
 
+  // The AutoFilter is document state; its hidden-row effect is derived (§3.3).
+  // The element is parsed after the cells so a checklist value can take the
+  // type of the cells in its column (§3.2).
+  const autoFilterElement = rootChildren.find((child) => child.local === 'autoFilter');
+  if (autoFilterElement !== undefined) {
+    const filter = parseAutoFilterElement(
+      xml.slice(autoFilterElement.start, autoFilterElement.end),
+      sheet,
+    );
+    if (filter !== null) {
+      sheet.autoFilter = filter;
+      applyAutoFilterHiddenLayers(sheet);
+    }
+  }
+
   return {
     sheet,
     xml,
@@ -559,6 +620,7 @@ export function parseWorksheetXml(
     cols: colsHolder,
     rows,
     columns,
+    rootChildren,
     unsafeReasons,
     rootPrefix: root.prefix,
   };
