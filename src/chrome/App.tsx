@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { RibbonTabId } from '@commands/inventory';
 import { DocumentSession } from '@commands/session';
-import type { CommandResult, FindResultPayload } from '@commands/types';
+import type { CommandResult, FindResultPayload, PainterSnapshot } from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
 import type { EngineCellRef } from '@engine/port';
@@ -49,6 +49,8 @@ import { ContextMenu } from '@chrome/ContextMenu';
 import type { DialogCloseReason } from '@chrome/Dialog';
 import { FindDialog } from '@chrome/FindDialog';
 import type { FindMatchView, FindOutcome, FindQuery, FindReplaceQuery } from '@chrome/FindDialog';
+import { FormatCellsDialog } from '@chrome/FormatCellsDialog';
+import type { FormatCellsOutcome, FormatCellsPayload } from '@chrome/FormatCellsDialog';
 import { FormulaBar } from '@chrome/FormulaBar';
 import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
 import { GoToDialog } from '@chrome/GoToDialog';
@@ -80,7 +82,7 @@ interface LoadedDocument {
   readonly calculation: CalculationController;
 }
 
-type AppDialog = 'about' | 'find' | 'replace' | 'goto';
+type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -119,6 +121,7 @@ export function App(): JSX.Element {
     null,
   );
   const [dialog, setDialog] = useState<AppDialog | null>(null);
+  const [painter, setPainter] = useState<PainterSnapshot | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
   const ribbonRef = useRef<HTMLElement | null>(null);
   const compactRef = useRef<HTMLElement | null>(null);
@@ -218,6 +221,7 @@ export function App(): JSX.Element {
     setDimensionPreview(null);
     setContextMenu(null);
     setDialog(null);
+    setPainter(null);
     setRibbonTab('Home');
     barEditAddressRef.current = null;
     barPointingRef.current = null;
@@ -369,6 +373,88 @@ export function App(): JSX.Element {
     shellRef.current?.focus();
   };
 
+  const clearPainter = (): void => {
+    setPainter(null);
+  };
+
+  /**
+   * `painter.pickup` captures all supported formatting from the active cell.
+   * The command returns the snapshot it will apply; the application keeps it
+   * as view state, exactly as the clipboard snapshot is kept.
+   */
+  const startPainter = (): void => {
+    if (document === null) return;
+    setPainter(null);
+    // The command reads the style at the source range's anchor, so the whole
+    // selection is the pickup source; a collapsed selection is the common case.
+    const source = selectionRange(selection);
+    try {
+      const result = document.session.dispatch(
+        'painter.pickup',
+        { sheetId: document.sheetId, range: source },
+        {
+          activeSheetId: document.sheetId,
+          selection: source,
+          activeCell: selection.focus,
+        },
+      );
+      if (result.ui?.message !== undefined) {
+        setStatus(result.ui.message);
+        return;
+      }
+      const snapshot = readPainterSnapshot(result);
+      if (snapshot === null) {
+        setStatus('The Format Painter could not pick up formatting from that cell.');
+        return;
+      }
+      setPainter(snapshot);
+      focusGrid();
+      setStatus(
+        `Format Painter picked up ${formatCellRef(source.startRow, source.startCol)}. Select a cell or drag a range, or press Esc to cancel.`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /**
+   * A completed painter gesture is one `painter.apply` command, so the whole
+   * target range is one undo transaction. The command owns style copying; the
+   * chrome only supplies the source and target.
+   */
+  const applyPainter = (target: GridRange): void => {
+    const snapshot = painter;
+    if (document === null || snapshot === null) return;
+    const args = { sheetId: document.sheetId, range: target, snapshot };
+    setPainter(null);
+    try {
+      const result = document.session.dispatch('painter.apply', args, {
+        activeSheetId: document.sheetId,
+        selection: target,
+        activeCell: { row: target.startRow, col: target.startCol },
+      });
+      setVersion((current) => current + 1);
+      if (result.selectionAfter !== undefined) {
+        setSelection(
+          selectionForRange(result.selectionAfter, {
+            row: result.selectionAfter.startRow,
+            col: result.selectionAfter.startCol,
+          }),
+        );
+      }
+      if (result.ui?.message !== undefined) {
+        setStatus(result.ui.message);
+      } else if (result.changes.length === 0) {
+        setStatus('The Format Painter made no change.');
+      } else {
+        setStatus(`Applied formatting to ${formatRangeAddress(target, false, false)}.`);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+    focusGrid();
+  };
+
   // A completed dialog command (Go To) returns the keyboard to the grid after
   // the dialog shell has unmounted and restored its invoker.
   useEffect(() => {
@@ -428,6 +514,7 @@ export function App(): JSX.Element {
     const targetId = targetSheet?.id ?? firstVisibleSheetId(workbook);
     if (targetId === null || targetId === document.sheetId) return;
     setDocument({ ...document, sheetId: targetId });
+    setPainter(null);
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setLiveEditText(null);
     setBarDraft(null);
@@ -551,7 +638,21 @@ export function App(): JSX.Element {
   );
 
   const resolveState = useCallback(
-    (commandId: string) => resolveCommandState(commandContext, commandId),
+    (commandId: string) => {
+      const state = resolveCommandState(commandContext, commandId);
+      if (state.enabled) return state;
+      // Format Cells is a chrome-owned dialog command; the dialog itself
+      // dispatches the formatting commands. An active sheet is its only
+      // enablement condition.
+      if (
+        commandId === 'format.cellsDialog' &&
+        commandContext.activeSheetId !== null &&
+        !commandContext.busy
+      ) {
+        return { enabled: true, checked: state.checked };
+      }
+      return state;
+    },
     [commandContext],
   );
 
@@ -615,6 +716,13 @@ export function App(): JSX.Element {
         }
         return;
       }
+      if (event.key === 'Escape' && painter !== null) {
+        event.preventDefault();
+        setPainter(null);
+        setFocusZone('grid');
+        setStatus('Format Painter cancelled.');
+        return;
+      }
       if (event.key === 'F6') {
         event.preventDefault();
         setFocusZone((zone) => nextFocusZone(zone, event.shiftKey));
@@ -651,6 +759,10 @@ export function App(): JSX.Element {
         if (document === null) return;
         event.preventDefault();
         runCommandRef.current?.('goto.goto');
+      } else if (!inTextInput && !event.shiftKey && event.key === '1') {
+        if (document === null) return;
+        event.preventDefault();
+        runCommandRef.current?.('format.cellsDialog');
       } else if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
         runCommandRef.current?.(event.shiftKey ? 'file.saveAs' : 'file.save');
@@ -766,6 +878,7 @@ export function App(): JSX.Element {
     (target: NavigationTarget): void => {
       if (document !== null && target.sheetId !== document.sheetId) {
         setDocument({ ...document, sheetId: target.sheetId });
+        setPainter(null);
       }
       const single =
         target.range.startRow === target.range.endRow &&
@@ -897,6 +1010,7 @@ export function App(): JSX.Element {
     }
     if (sheet.id !== document.sheetId) {
       setDocument({ ...document, sheetId: sheet.id });
+      setPainter(null);
       setLiveEditText(null);
       setBarDraft(null);
       setBarCaretRequest(null);
@@ -985,6 +1099,7 @@ export function App(): JSX.Element {
       return;
     }
     setDocument({ ...document, sheetId: sheet.id });
+    setPainter(null);
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setLiveEditText(null);
     setBarDraft(null);
@@ -1544,6 +1659,63 @@ export function App(): JSX.Element {
     );
   };
 
+  /**
+   * Submit the Format Cells dialog's changed tabs as one atomic batch. The
+   * dialog validates values first; the session applies every tab command and
+   * records a single undo transaction, rolling the whole batch back if a
+   * command rejects (for example the 100,000-cell formatting budget) or throws.
+   * The rejection keeps the dialog open and is shown in the status bar and
+   * inline.
+   */
+  const applyFormatCells = (payload: FormatCellsPayload): FormatCellsOutcome => {
+    if (document === null) return { ok: false, message: 'Open a workbook first.' };
+    const range = selectionRange(selection);
+    const entries: { readonly id: string; readonly args: Record<string, unknown> }[] = [];
+    if (payload.font !== undefined) entries.push({ id: 'format.font', args: { ...payload.font } });
+    if (payload.fill !== undefined) entries.push({ id: 'format.fill', args: { ...payload.fill } });
+    if (payload.border !== undefined) {
+      entries.push({ id: 'format.border', args: { ...payload.border } });
+    }
+    if (payload.alignment !== undefined) {
+      entries.push({ id: 'format.alignment', args: { ...payload.alignment } });
+    }
+    if (payload.numberFormat !== undefined) {
+      entries.push({ id: 'format.numberFormat', args: { ...payload.numberFormat } });
+    }
+    if (entries.length === 0) return { ok: true, message: null };
+    const batch = entries.map((entry) => ({
+      id: entry.id,
+      args: { sheetId: document.sheetId, range, ...entry.args },
+    }));
+    try {
+      const result = document.session.dispatchBatch(
+        batch,
+        {
+          activeSheetId: document.sheetId,
+          selection: range,
+          activeCell: selection.focus,
+        },
+        // A single-tab Apply keeps its own command id in the transaction log;
+        // a multi-tab Apply is one `format.cellsDialog` transaction.
+        batch.length === 1 ? batch[0]!.id : 'format.cellsDialog',
+      );
+      if (result.ui?.message !== undefined) {
+        setStatus(result.ui.message);
+        return { ok: false, message: result.ui.message };
+      }
+      if (result.changes.length > 0) setVersion((current) => current + 1);
+      const label = formatRangeAddress(range, false, false);
+      setStatus(
+        result.changes.length === 0 ? `No formatting change for ${label}.` : `Formatted ${label}.`,
+      );
+      return { ok: true, message: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+      return { ok: false, message };
+    }
+  };
+
   const runCommand = (commandId: string, args?: unknown): string | null => {
     switch (commandId) {
       case 'file.new':
@@ -1592,10 +1764,20 @@ export function App(): JSX.Element {
         changeZoom(100);
         focusGrid();
         return null;
+      case 'format.cellsDialog':
+        if (document === null || busy) return null;
+        clearPainter();
+        setDialog('format');
+        return null;
+      case 'painter.pickup':
+        if (busy) return null;
+        startPainter();
+        return null;
       case 'find.search': {
         if (document === null) return null;
         const query = findQueryArgument(args);
         if (query === null) {
+          clearPainter();
           setDialog('find');
           return null;
         }
@@ -1606,6 +1788,7 @@ export function App(): JSX.Element {
         if (document === null) return null;
         const query = findQueryArgument(args);
         if (query === null) {
+          clearPainter();
           setDialog('replace');
           return null;
         }
@@ -1616,6 +1799,7 @@ export function App(): JSX.Element {
         if (document === null) return null;
         const query = findReplaceQueryArgument(args);
         if (query === null) {
+          clearPainter();
           setDialog('replace');
           return null;
         }
@@ -1626,6 +1810,7 @@ export function App(): JSX.Element {
         if (document === null) return null;
         const target = goToTargetArgument(args);
         if (target === null) {
+          clearPainter();
           setDialog('goto');
           return null;
         }
@@ -1633,6 +1818,7 @@ export function App(): JSX.Element {
         return null;
       }
       case 'help.about':
+        clearPainter();
         setDialog('about');
         return null;
       case 'nameBox.navigate': {
@@ -1777,6 +1963,8 @@ export function App(): JSX.Element {
             onResizePreview={previewDimensionResize}
             onResizeCommit={commitDimensionResize}
             onZoomChange={changeZoom}
+            painterActive={painter !== null}
+            onPainterApply={applyPainter}
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />
@@ -1859,9 +2047,23 @@ export function App(): JSX.Element {
         <GoToDialog initialValue={nameBoxValue} onClose={closeDialog} onSubmit={submitGoTo} />
       ) : null}
 
+      {dialog === 'format' ? (
+        <FormatCellsDialog
+          initial={activeCell?.style}
+          targetLabel={formatRangeAddress(selectionRange(selection), false, false)}
+          onClose={closeDialog}
+          onApply={applyFormatCells}
+        />
+      ) : null}
+
       {dialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
     </div>
   );
+}
+
+/** The picked-up style record is view state returned by `painter.pickup`. */
+function readPainterSnapshot(result: CommandResult): PainterSnapshot | null {
+  return result.painter ?? null;
 }
 
 function commandTextArgument(args: unknown): string | null {

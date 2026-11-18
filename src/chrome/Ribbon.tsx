@@ -222,6 +222,7 @@ function RibbonControl({
     );
   }
   const checked = control.kind === 'toggle' ? state.checked : undefined;
+  const glyph = alignmentGlyphKind(control);
   return (
     <button
       type="button"
@@ -229,6 +230,7 @@ function RibbonControl({
         'ribbon-button',
         control.kind === 'toggle' ? 'ribbon-toggle' : '',
         checked === true ? 'active' : '',
+        glyph === null ? '' : 'ribbon-button-glyph',
         wideClass,
       ]
         .filter(Boolean)
@@ -240,13 +242,67 @@ function RibbonControl({
       data-command={control.commandId}
       onClick={() => onCommand(control.commandId, control.args)}
     >
-      {control.icon === undefined ? null : (
-        <span className="ribbon-icon" aria-hidden="true">
-          {control.icon}
-        </span>
+      {glyph === null ? (
+        control.icon === undefined ? null : (
+          <span className="ribbon-icon" aria-hidden="true">
+            {control.icon}
+          </span>
+        )
+      ) : (
+        <AlignmentGlyph kind={glyph} />
       )}
-      <span>{control.label}</span>
+      {glyph === null ? <span>{control.label}</span> : null}
     </button>
+  );
+}
+
+type AlignmentGlyphKind =
+  | 'align-left'
+  | 'align-center'
+  | 'align-right'
+  | 'align-top'
+  | 'align-middle'
+  | 'align-bottom'
+  | 'wrap-text'
+  | 'indent';
+
+/**
+ * The six placed alignment commands carry their direction in `args`. The wrap
+ * and indent cases are ready for the same command's remaining arguments, which
+ * currently have no ribbon placement; the icon set stays in one place.
+ */
+function alignmentGlyphKind(control: ResolvedRibbonControl): AlignmentGlyphKind | null {
+  if (control.commandId !== 'format.alignment' || control.args === undefined) return null;
+  const args = control.args;
+  if (args.horizontal === 'left') return 'align-left';
+  if (args.horizontal === 'center') return 'align-center';
+  if (args.horizontal === 'right') return 'align-right';
+  if (args.vertical === 'top') return 'align-top';
+  if (args.vertical === 'center') return 'align-middle';
+  if (args.vertical === 'bottom') return 'align-bottom';
+  if (args.wrapText === true) return 'wrap-text';
+  if (typeof args.indent === 'number') return 'indent';
+  return null;
+}
+
+const ALIGNMENT_GLYPH_PATHS: Readonly<Record<AlignmentGlyphKind, readonly string[]>> = {
+  'align-left': ['M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h7'],
+  'align-center': ['M2.5 3.5h11M4.5 6.5h7M2.5 9.5h11M4.5 12.5h7'],
+  'align-right': ['M2.5 3.5h11M6.5 6.5h7M2.5 9.5h11M6.5 12.5h7'],
+  'align-top': ['M2.5 3.5h11', 'M8 13V6.5', 'M5.5 8.5 8 6l2.5 2.5'],
+  'align-middle': ['M2.5 8h11', 'M5.5 5.5 8 3l2.5 2.5', 'M5.5 10.5 8 13l2.5-2.5'],
+  'align-bottom': ['M2.5 12.5h11', 'M8 3v6.5', 'M5.5 7.5 8 10l2.5-2.5'],
+  'wrap-text': ['M2.5 3.5h11', 'M2.5 7.5h7.5a2.5 2.5 0 0 1 0 5H7', 'M8.5 10.5 7 12l1.5 1.5'],
+  indent: ['M2.5 3.5h11M2.5 7.5h11M2.5 11.5h11', 'M2.5 5.5 5 7.5 2.5 9.5'],
+};
+
+function AlignmentGlyph({ kind }: { readonly kind: AlignmentGlyphKind }): JSX.Element {
+  return (
+    <svg className="ribbon-glyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {ALIGNMENT_GLYPH_PATHS[kind].map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
   );
 }
 

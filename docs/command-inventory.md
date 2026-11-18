@@ -10,9 +10,9 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 56
-- Inventory commands: 93
-- Implemented in this build: 36
-- Planned for a later slice: 57
+- Inventory commands: 94
+- Implemented in this build: 39
+- Planned for a later slice: 55
 - Out-of-scope rows (V2 or NEVER): 29
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -64,8 +64,9 @@ that the command exists.
 | `format.border` | 3. Formatting — Borders: all line styles, weights and colours; outline and inside | Borders | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
 | `format.alignment` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Alignment | Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment<br>Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
 | `format.importedTextLayout` | 3. Formatting — Shrink to fit and text rotation | Imported shrink to fit and text rotation | — | — | — | Imported values render and round-trip; authoring arrives in v2 | Planned |
-| `edit.formatPainter` | 3. Formatting — Format Painter | Format Painter | Home → Clipboard | — | Esc | A sheet is active | Planned |
-| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | Home → Number | — | Ctrl+1 | A sheet is active | Planned |
+| `painter.apply` | 3. Formatting — Format Painter | Apply picked-up format | — | — | — | A format is picked up and a target range is selected | Implemented |
+| `painter.pickup` | 3. Formatting — Format Painter | Format Painter | Home → Clipboard | Context menu | — | A sheet is active and a cell is selected | Implemented |
+| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | Home → Number | Context menu | Ctrl+1 | A sheet is active | Implemented |
 | `format.numberFormat` | 3. Formatting — Number formats: built-in categories + full custom grammar | Number format | Home → Number<br>Home → Number<br>Home → Number<br>Home → Number | — | — | A sheet is active and a range is selected | Implemented |
 | `format.conditionalRender` | 3. Formatting — Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules | Conditional formatting | — | — | — | Imported rules render; authoring arrives in v2 | Planned |
 | `formula.recalculate` | 4. Formulas and names — Formula bar, in-cell entry, automatic calculation | Recalculate | — | — | F9 | A sheet is active | Planned |

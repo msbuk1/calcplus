@@ -68,6 +68,15 @@ export function Dialog({
     if (dialog === null) return;
     const onDocumentKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        // A dialog can open its own popup over the form (for example the font
+        // family list). While that popup is open its owner handles Escape to
+        // close only the popup; the modal stays open.
+        if (
+          event.target instanceof Element &&
+          event.target.closest('[data-dialog-popup-open="true"]') !== null
+        ) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         closedByEscapeRef.current = true;

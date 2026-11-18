@@ -9,6 +9,7 @@ import type {
   Sheet,
   SheetId,
   StyleId,
+  StyleRecord,
   Workbook,
 } from '@model/types';
 
@@ -67,6 +68,11 @@ export interface CommandResult {
    * enters the undo log.
    */
   readonly clipboard?: ClipboardSnapshot;
+  /**
+   * The style snapshot `painter.pickup` captured. Like the clipboard, it is
+   * view state and never enters the undo log.
+   */
+  readonly painter?: PainterSnapshot;
   /** The matches `find.search` found, in document order. */
   readonly matches?: readonly FindMatch[];
   /** Cells changed by `find.replaceOne` or `find.replaceAll`. */
@@ -95,6 +101,19 @@ export interface StyleSetChange {
   readonly range: GridRange;
   readonly before: readonly (readonly (StyleId | null)[])[];
   readonly after: readonly (readonly (StyleId | null)[])[];
+}
+
+/**
+ * A Format Painter pickup: the full style record at the anchor cell of the
+ * source range. It is view state, not a document change, so it never enters the
+ * undo log. Esc cancels the painter by clearing this snapshot in the UI; there
+ * is no cancel command.
+ */
+export interface PainterSnapshot {
+  readonly sheetId: SheetId;
+  readonly range: GridRange;
+  readonly styleId: StyleId;
+  readonly style: StyleRecord;
 }
 
 /** The workbook-level date-system flag. Undo restores the flag exactly. */

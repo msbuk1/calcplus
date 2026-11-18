@@ -1,3 +1,4 @@
+import { isValidFormat } from 'numfmt';
 import type {
   BorderEdgeStyle,
   BorderStyle,
@@ -13,6 +14,7 @@ import type {
 import { cellIsEmpty, getCell } from '@model/types';
 import { borderEdge } from '@model/style';
 import { findOrAppendStyle, patchedStyleInput, type StylePatch } from '@model/style-table';
+import { normalizeFormatCode } from '@view/number-format';
 import type { StyleSetChange } from './types';
 import type { CommandContext, CommandDefinition, CommandResult } from './types';
 
@@ -75,11 +77,16 @@ export interface NumberFormatArgs extends FormatTargetArgs {
   readonly code: string | null;
 }
 
-interface ResolvedTarget {
+export interface ResolvedTarget {
   readonly workbook: Workbook;
   readonly sheet: Sheet;
   readonly range: GridRange;
 }
+
+type NormalizedColor =
+  { readonly ok: true; readonly color: string | null } | { readonly ok: false };
+
+const BORDER_EDGE_NAMES: readonly BorderEdgeName[] = ['left', 'right', 'top', 'bottom', 'diagonal'];
 
 /** A formatting command is one transaction; keep the before/after patch bounded. */
 const MAX_FORMAT_CELLS = 100_000;
@@ -123,6 +130,8 @@ export const formatFontCommand: CommandDefinition<FontFormatArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
+    const color = args.color === undefined ? null : normalizeColorInput(args.color);
+    if (color !== null && !color.ok) return invalidColor();
     const underlineStyle =
       args.underlineStyle ??
       (args.underline === undefined ? undefined : args.underline ? 'single' : 'none');
@@ -135,7 +144,7 @@ export const formatFontCommand: CommandDefinition<FontFormatArgs> = {
         ? {}
         : { underline: underlineStyle !== 'none', underlineStyle }),
       ...(args.strike === undefined ? {} : { strike: args.strike }),
-      ...(args.color === undefined ? {} : { color: args.color }),
+      ...(color === null ? {} : { color: color.color }),
     };
     if (Object.keys(font).length === 0) return { changes: [] };
     return applyPatch(context, args, { font });
@@ -156,10 +165,15 @@ export const formatFillCommand: CommandDefinition<FillFormatArgs> = {
     ) {
       return { changes: [] };
     }
+    const color = args.color === undefined ? null : normalizeColorInput(args.color);
+    if (color !== null && !color.ok) return invalidColor();
+    const backgroundColor =
+      args.backgroundColor === undefined ? null : normalizeColorInput(args.backgroundColor);
+    if (backgroundColor !== null && !backgroundColor.ok) return invalidColor();
     const fill: NonNullable<StylePatch['fill']> = {
       ...(args.pattern === undefined ? {} : { pattern: args.pattern }),
-      ...(args.color === undefined ? {} : { color: args.color }),
-      ...(args.backgroundColor === undefined ? {} : { backgroundColor: args.backgroundColor }),
+      ...(color === null ? {} : { color: color.color }),
+      ...(backgroundColor === null ? {} : { backgroundColor: backgroundColor.color }),
     };
     return applyPatch(context, args, { fill });
   },
@@ -172,7 +186,7 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
-    const target = resolveTarget(context, args);
+    const target = resolveFormatTarget(context, args);
     if (target === null) return noTarget();
     if (args.preset === 'none') {
       return applyPatch(context, args, {
@@ -187,17 +201,29 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
         },
       });
     }
-    if (
-      args.preset === 'outline' ||
-      args.preset === 'inside' ||
-      args.preset === 'all' ||
-      args.edges !== undefined ||
-      args.style !== undefined
-    ) {
-      const edge = (): BorderEdgeStyle => borderEdge(args.style ?? 'thin', args.color ?? null);
+    const preset = args.preset;
+    const hasCustomEdges = args.edges !== undefined;
+    if (preset !== undefined || hasCustomEdges || args.style !== undefined) {
+      // An explicit custom edge is authoritative. Edges that the caller did not
+      // name stay untouched: a custom top edge must not quietly add a thin
+      // border to the other three sides.
+      let customEdges: Partial<Record<BorderEdgeName, BorderEdgeStyle>> | undefined;
+      if (args.edges !== undefined) {
+        customEdges = {};
+        for (const name of BORDER_EDGE_NAMES) {
+          const custom = args.edges[name];
+          if (custom === undefined) continue;
+          const customColor = normalizeColorInput(custom.color);
+          if (!customColor.ok) return invalidColor();
+          customEdges[name] = borderEdge(custom.style, customColor.color);
+        }
+      }
+      const color = args.color === undefined ? null : normalizeColorInput(args.color);
+      if (color !== null && !color.ok) return invalidColor();
+      const edge = (): BorderEdgeStyle =>
+        borderEdge(args.style ?? 'thin', color === null ? null : color.color);
       return applyPerCellPatch(context, args, (row, col) => {
         const border: Mutable<Partial<BorderStyle>> = {};
-        const preset = args.preset;
         if (preset === 'outline' || preset === 'all') {
           if (row === target.range.startRow) border.top = edge();
           if (row === target.range.endRow) border.bottom = edge();
@@ -210,7 +236,7 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
           if (col > target.range.startCol) border.left = edge();
           if (col < target.range.endCol) border.right = edge();
         }
-        if (preset === undefined) {
+        if (preset === undefined && customEdges === undefined && args.style !== undefined) {
           Object.assign(border, {
             left: edge(),
             right: edge(),
@@ -218,7 +244,7 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
             bottom: edge(),
           });
         }
-        if (args.edges !== undefined) Object.assign(border, args.edges);
+        if (customEdges !== undefined) Object.assign(border, customEdges);
         if (args.diagonalUp !== undefined) border.diagonalUp = args.diagonalUp;
         if (args.diagonalDown !== undefined) border.diagonalDown = args.diagonalDown;
         return Object.keys(border).length === 0 ? null : { border };
@@ -263,8 +289,10 @@ export const formatNumberFormatCommand: CommandDefinition<NumberFormatArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = { code: null }) {
+    const code = args.code ?? null;
+    if (code !== null && !numberFormatIsValid(code)) return invalidNumberFormat();
     return applyPatch(context, args, {
-      numFmtCode: args.code,
+      numFmtCode: code,
     });
   },
 };
@@ -276,10 +304,26 @@ export const formatClearCommand: CommandDefinition<FormatTargetArgs> = {
   keybindings: [],
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
-    const target = resolveTarget(context, args);
-    if (target === null) return noTarget();
-    const change = buildChange(target, () => 0);
-    return change === null ? { changes: [] } : { changes: [change] };
+    return applyStyleIdToTarget(context, args, 0);
+  },
+};
+
+/**
+ * Chrome-owned dialog opener. The dialog itself submits `format.font`,
+ * `format.fill`, `format.border`, `format.alignment` and `format.numberFormat`
+ * with a payload (ui-chrome §4.1); the registry owns the command id and
+ * enablement, and the run is a no-op like the other chrome commands.
+ */
+export const formatCellsDialogCommand: CommandDefinition<void> = {
+  id: 'format.cellsDialog',
+  label: 'Format Cells',
+  category: 'format',
+  keybindings: ['Ctrl+1'],
+  isEnabled(context) {
+    return context.activeSheetId !== null && context.busy !== true;
+  },
+  run() {
+    return { changes: [] };
   },
 };
 
@@ -297,13 +341,13 @@ function toggleCommand(
     keybindings: [keybinding],
     isEnabled: workbookHasSheet,
     isChecked(context) {
-      const target = resolveTarget(context, {});
+      const target = resolveFormatTarget(context, {});
       if (target === null) return false;
       return checked(baseStyle(target, context.activeCell));
     },
     run(context, args = {}) {
       return applyPatchForCell(context, args, (cell) =>
-        patchFor(styleRecord(context.workbook, cell?.styleId ?? 0)),
+        patchFor(styleRecordById(context.workbook, cell?.styleId ?? 0)),
       );
     },
   };
@@ -330,7 +374,7 @@ function applyPatchForCell(
   args: FormatTargetArgs,
   patchFor: (cell: Cell | null, row: number, col: number) => StylePatch | null,
 ): CommandResult {
-  const target = resolveTarget(context, args);
+  const target = resolveFormatTarget(context, args);
   if (target === null) return noTarget();
   const change = buildChange(target, (cell, row, col) => {
     const patch = patchFor(cell, row, col);
@@ -346,6 +390,7 @@ function applyPatchForCell(
 function buildChange(
   target: ResolvedTarget,
   styleFor: (cell: Cell | null, row: number, col: number) => StyleId | null,
+  pruneUnstyledBlanks = false,
 ): StyleSetChange | null {
   const before: (StyleId | null)[][] = [];
   const after: (StyleId | null)[][] = [];
@@ -358,7 +403,7 @@ function buildChange(
       const beforeId =
         cell === null || (cell.styleId === 0 && cellIsEmpty(cell)) ? null : cell.styleId;
       const targetId = styleFor(cell, row, col) ?? 0;
-      const afterId = styleForCellAfter(cell, targetId);
+      const afterId = styleForCellAfter(cell, targetId, pruneUnstyledBlanks);
       beforeRow.push(beforeId);
       afterRow.push(afterId);
       if (beforeId !== afterId) changed = true;
@@ -376,17 +421,44 @@ function buildChange(
   };
 }
 
-function styleForCellAfter(cell: Cell | null, targetId: StyleId): StyleId | null {
+function styleForCellAfter(
+  cell: Cell | null,
+  targetId: StyleId,
+  pruneUnstyledBlanks: boolean,
+): StyleId | null {
   if (cell === null) return targetId === 0 ? null : targetId;
-  if (targetId === 0 && cellIsEmpty(cell)) return null;
+  // A formatting patch may bring a blank cell back to the default style (for
+  // example clearing the last underline or colour). The cell record stays so
+  // the caller still sees the style it just applied. Only an explicit style-id
+  // apply (Clear Formats, painter) removes a blank that ends up unstyled.
+  if (pruneUnstyledBlanks && targetId === 0 && cellIsEmpty(cell)) return null;
   return targetId;
 }
 
 function styleRecordForCell(target: ResolvedTarget, cell: Cell | null): StyleRecord {
-  return styleRecord(target.workbook, cell?.styleId ?? 0);
+  return styleRecordById(target.workbook, cell?.styleId ?? 0);
 }
 
-function resolveTarget(context: CommandContext, args: FormatTargetArgs): ResolvedTarget | null {
+/**
+ * Apply one existing style id to a target range as a single `style.set`
+ * change. The Format Painter uses this with its picked-up record; no style is
+ * appended and undo restores the exact prior style ids.
+ */
+export function applyStyleIdToTarget(
+  context: CommandContext,
+  args: FormatTargetArgs,
+  styleId: StyleId,
+): CommandResult {
+  const target = resolveFormatTarget(context, args);
+  if (target === null) return noTarget();
+  const change = buildChange(target, () => styleId, true);
+  return change === null ? { changes: [] } : { changes: [change] };
+}
+
+export function resolveFormatTarget(
+  context: CommandContext,
+  args: FormatTargetArgs,
+): ResolvedTarget | null {
   const sheetId = args.sheetId ?? context.activeSheetId;
   if (sheetId === null) return null;
   const sheet = context.workbook.sheets.find((candidate) => candidate.id === sheetId);
@@ -431,18 +503,18 @@ function baseStyle(
     activeCell.col <= target.range.endCol
   ) {
     const active = getCell(target.sheet, activeCell.row, activeCell.col);
-    if (active !== null) return styleRecord(target.workbook, active.styleId);
+    if (active !== null) return styleRecordById(target.workbook, active.styleId);
   }
   for (let row = target.range.startRow; row <= target.range.endRow; row += 1) {
     for (let col = target.range.startCol; col <= target.range.endCol; col += 1) {
       const cell = getCell(target.sheet, row, col);
-      if (cell !== null) return styleRecord(target.workbook, cell.styleId);
+      if (cell !== null) return styleRecordById(target.workbook, cell.styleId);
     }
   }
-  return styleRecord(target.workbook, 0);
+  return styleRecordById(target.workbook, 0);
 }
 
-function styleRecord(workbook: Workbook, styleId: StyleId): StyleRecord {
+export function styleRecordById(workbook: Workbook, styleId: StyleId): StyleRecord {
   return workbook.styles.find((style) => style.id === styleId) ?? workbook.styles[0]!;
 }
 
@@ -450,14 +522,53 @@ function workbookHasSheet(context: CommandContext): boolean {
   return context.workbook.sheets.length > 0;
 }
 
+function normalizeColorInput(value: string | null): NormalizedColor {
+  if (value === null) return { ok: true, color: null };
+  if (typeof value !== 'string') return { ok: false };
+  // The dialog accepts Excel's #AARRGGBB spelling. The model paints CSS
+  // #RRGGBB, so the alpha byte is dropped rather than passed to the renderer
+  // (where an eight-digit value would be read as #RRGGBBAA).
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(value.trim());
+  if (match === null) return { ok: false };
+  const hex = match[1]!;
+  const rgb = hex.length === 8 ? hex.slice(2) : hex;
+  const expanded =
+    rgb.length === 3
+      ? rgb
+          .split('')
+          .map((character) => character + character)
+          .join('')
+      : rgb;
+  return { ok: true, color: `#${expanded.toUpperCase()}` };
+}
+
+function numberFormatIsValid(code: string): boolean {
+  if (typeof code !== 'string') return false;
+  const trimmed = code.trim();
+  if (trimmed === '' || trimmed === 'General') return true;
+  const normalized = normalizeFormatCode(code);
+  if (normalized.trim() === '') return false;
+  try {
+    return isValidFormat(normalized);
+  } catch {
+    return false;
+  }
+}
+
+function invalidColor(): CommandResult {
+  return toast('That colour is not valid. Use a hex colour such as #FF0000.');
+}
+
+function invalidNumberFormat(): CommandResult {
+  return toast('That is not a valid number format. The cells were not changed.');
+}
+
+function toast(message: string): CommandResult {
+  return { changes: [], ui: { type: 'toast', message } };
+}
+
 function noTarget(): CommandResult {
-  return {
-    changes: [],
-    ui: {
-      type: 'toast',
-      message: 'Select a cell or a range of at most 100,000 cells before formatting.',
-    },
-  };
+  return toast('Select a cell or a range of at most 100,000 cells before formatting.');
 }
 
 /** Shared by the registry and tests; typed as the narrow formatting surface. */
@@ -473,5 +584,6 @@ export function formatCommands(): readonly CommandDefinition<never>[] {
     formatAlignmentCommand as unknown as CommandDefinition<never>,
     formatNumberFormatCommand as unknown as CommandDefinition<never>,
     formatClearCommand as unknown as CommandDefinition<never>,
+    formatCellsDialogCommand as unknown as CommandDefinition<never>,
   ];
 }

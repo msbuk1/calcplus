@@ -48,6 +48,8 @@ export interface GridRenderState {
   readonly selection: GridSelection;
   /** The range a formula edit is pointing at, when it is not the selection. */
   readonly pointing?: GridRange | null;
+  /** The live Format Painter target, drawn as a dashed outline. */
+  readonly painter?: GridRange | null;
   readonly scrollX: number;
   readonly scrollY: number;
   readonly width: number;

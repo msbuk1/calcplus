@@ -9,13 +9,7 @@ import type {
   StyleId,
   Workbook,
 } from '@model/types';
-import {
-  cellIsEmpty,
-  cellStateEquals,
-  cloneCell,
-  getSheetById,
-  setCellSnapshot,
-} from '@model/types';
+import { cellStateEquals, cloneCell, getSheetById, setCellSnapshot } from '@model/types';
 import { findSheet } from '@model/workbook';
 import { BLANK, cellValueEquals, errorValue, type CellValue } from '@model/value';
 import { isSheetVisible } from '@view/sheet-visibility';
@@ -49,6 +43,12 @@ export interface DispatchOptions {
   readonly activeSheetId?: SheetId | null;
   readonly selection?: GridRange | null;
   readonly activeCell?: CellAddress | null;
+}
+
+/** One command inside a batch. Commands run in order and share one context. */
+export interface DispatchBatchEntry {
+  readonly id: string;
+  readonly args: unknown;
 }
 
 const MAX_TRANSACTIONS = 200;
@@ -240,6 +240,73 @@ export class DocumentSession {
     this.editVersionCounter += 1;
     this.calculationScheduler?.afterChanges(result.changes);
     return result;
+  }
+
+  /**
+   * Run several commands as one undo transaction. Each command runs in order
+   * and its changes are applied before the next command runs, so dependent
+   * patches compose exactly as they do through separate dispatches. If a
+   * command rejects with a toast or throws, the changes already applied in this
+   * batch are rolled back and nothing is recorded. The whole batch therefore
+   * reaches the document atomically, with one transaction and one history
+   * entry, whatever the number of commands.
+   */
+  dispatchBatch(
+    entries: readonly DispatchBatchEntry[],
+    options: DispatchOptions = {},
+    commandId = 'batch',
+  ): CommandResult {
+    if (entries.length === 0) return { changes: [] };
+    const context: CommandContext = {
+      workbook: this.workbook,
+      activeSheetId: options.activeSheetId ?? this.workbook.sheets[0]?.id ?? null,
+      selection: options.selection ?? null,
+      activeCell: options.activeCell ?? null,
+    };
+    const applied: CommandChange[] = [];
+    let terminal = false;
+    const rollback = (): void => {
+      if (applied.length === 0) return;
+      this.applyChanges([...applied].reverse().map(inverseChange), 'after');
+      applied.length = 0;
+    };
+    try {
+      for (const entry of entries) {
+        const command = this.registry.require(entry.id);
+        if (!command.isEnabled(context)) {
+          throw new Error(`Command is disabled: ${entry.id}`);
+        }
+        const result = (command.run as (context: CommandContext, args: unknown) => CommandResult)(
+          context,
+          entry.args,
+        );
+        if (result.ui?.message !== undefined) {
+          // A rejection means the whole action failed; roll the earlier
+          // commands back so no tab is left half-applied.
+          rollback();
+          return { ...result, changes: [] };
+        }
+        if (result.changes.length === 0) continue;
+        this.applyChanges(result.changes, 'after');
+        applied.push(...result.changes);
+        if (command.history === 'terminal') terminal = true;
+      }
+    } catch (error) {
+      rollback();
+      throw error;
+    }
+    if (applied.length === 0) return { changes: [] };
+    if (terminal) {
+      this.undoStack.length = 0;
+      this.redoStack.length = 0;
+      this.markDirty(applied);
+    } else {
+      this.record(commandId, applied);
+    }
+    this.documentVersion += 1;
+    this.editVersionCounter += 1;
+    this.calculationScheduler?.afterChanges(applied);
+    return { changes: applied };
   }
 
   undo(): CommandResult {
@@ -613,11 +680,7 @@ export class DocumentSession {
           continue;
         }
         const next: Cell = { ...existing, styleId };
-        if (styleId === 0 && cellIsEmpty(next)) {
-          sheet.cells.delete(key);
-        } else {
-          sheet.cells.set(key, next);
-        }
+        sheet.cells.set(key, next);
       }
     }
   }
