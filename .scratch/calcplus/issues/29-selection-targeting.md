@@ -48,6 +48,32 @@ the command map, dispatch through each surface and assert the whole selection
 is affected in one transaction and undo restores it. This belongs with the
 testing-conformance §6 command suite and the M5 gate.
 
+## Concrete instance (2026-11-18)
+
+The maintainer reports the Format Cells dialog failing on range targets with
+"Select a cell or a range of at most 100,000 cells before formatting."
+
+Diagnosis: the selection seam is healthy — `applyFormatCells` passes
+`selectionRange(selection)` as both `args.range` and the command context. The
+error is the `MAX_FORMAT_CELLS = 100_000` budget in `resolveFormatTarget`
+(`src/commands/format.ts`), which shares `noTarget()` with the genuinely
+empty-selection case, and which **no contract backs**: the command map's
+enablement says only "a sheet is active and a range is selected", and the
+performance contract budgets 100k/250k touched cells but never caps formatting.
+Column picks (1,048,576 cells), whole-sheet and large blocks all trip it. The
+same guard family bounds painter (100k), clear and clipboard.
+
+Ruled 2026-11-18 (maintainer): quick fix now, dimension styles next.
+
+1. **Quick unblock:** split the message ("nothing selected" vs "range too
+   large") and raise the cap to the guaranteed envelope (250,000 cells) across
+   the guard family.
+2. **Real fix — dimension styles:** full-column/row formatting must apply as a
+   column/row-dimension style (`RowDimension`/`ColumnDimension.styleId`, OOXML
+   `col style="n"`), not per-cell writes — O(1) and unbounded, matching Excel.
+   Needs style resolution in the renderer (dimension style with cell override),
+   round-trip in the patch writer, and its own tests. Lands as a dedicated lane.
+
 ## Answer
 
 Pending.
