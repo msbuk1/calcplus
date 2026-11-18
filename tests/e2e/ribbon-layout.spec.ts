@@ -19,6 +19,8 @@ test('each ribbon row starts at the left of its group', async ({ page }) => {
   expect(familyBox).not.toBeNull();
   expect(boldBox).not.toBeNull();
   expect(Math.abs(boldBox!.x - familyBox!.x)).toBeLessThanOrEqual(4);
+  // Row 1's wide font select must not widen row 2's first slot.
+  expect(boldBox!.width).toBeLessThan(familyBox!.width / 2);
 
   // Alignment: row 1 starts with Align Left, row 2 with Align Top.
   const alignLeft = page.getByRole('button', { name: 'Align Left' });

@@ -164,6 +164,21 @@ interface RibbonGroupProps {
   readonly onCommand: (commandId: string, args?: unknown) => void;
 }
 
+/**
+ * Non-spanning controls grouped into their map rows. Each row is an
+ * independent left-to-right flow, so a wide control in row 1 never widens
+ * row 2's first slot (the oracle's rows do not share columns).
+ */
+function controlRows(controls: readonly ResolvedRibbonControl[]): ResolvedRibbonControl[][] {
+  const rows: ResolvedRibbonControl[][] = [];
+  for (const control of controls) {
+    if (control.rowSpan > 1) continue;
+    while (rows.length < control.row) rows.push([]);
+    rows[control.row - 1]!.push(control);
+  }
+  return rows;
+}
+
 function RibbonGroup({
   group,
   resolveState,
@@ -180,24 +195,35 @@ function RibbonGroup({
       aria-label={group.label}
       data-group={group.label}
     >
-      <div
-        className="ribbon-group-body"
-        style={{ gridTemplateRows: `repeat(${group.rowCount}, 24px)` }}
-      >
-        {group.controls.map((control) => (
-          <div
-            key={control.key}
-            className={control.rowSpan > 1 ? 'ribbon-cell ribbon-cell-large' : 'ribbon-cell'}
-            style={{ gridRow: `${control.row} / span ${control.rowSpan}` }}
-          >
-            <RibbonControl
-              control={control}
-              resolveState={resolveState}
-              controlValues={controlValues}
-              onCommand={onCommand}
-            />
-          </div>
-        ))}
+      <div className="ribbon-group-body">
+        {group.controls
+          .filter((control) => control.rowSpan > 1)
+          .map((control) => (
+            <div key={control.key} className="ribbon-cell ribbon-cell-large">
+              <RibbonControl
+                control={control}
+                resolveState={resolveState}
+                controlValues={controlValues}
+                onCommand={onCommand}
+              />
+            </div>
+          ))}
+        <div className="ribbon-group-rows">
+          {controlRows(group.controls).map((rowControls, index) => (
+            <div className="ribbon-group-row" key={index}>
+              {rowControls.map((control) => (
+                <div key={control.key} className="ribbon-cell">
+                  <RibbonControl
+                    control={control}
+                    resolveState={resolveState}
+                    controlValues={controlValues}
+                    onCommand={onCommand}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
       {launcher === undefined ? null : (
         <button

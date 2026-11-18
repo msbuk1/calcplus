@@ -284,16 +284,29 @@ a:focus-visible,
   padding-right: 12px;
 }
 
-/* The band packs its controls into a two-row grid (a large control may span).
-   Row flow keeps every row left-aligned: each row packs from the first free
-   column past any tall control, instead of continuing the previous row. */
+/* The band packs its controls into rows that flow independently left to
+   right, as Excel's do. A tall control (Paste) claims its own slot beside
+   the stacked rows; each row hugs the left edge regardless of the row above
+   it, so row widths never gate each other. */
 .ribbon-group-body {
-  display: grid;
+  display: flex;
   flex: 1;
-  grid-auto-flow: row;
-  grid-auto-columns: max-content;
   align-items: stretch;
-  gap: 1px 2px;
+  gap: 2px;
+}
+
+.ribbon-group-rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ribbon-group-row {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 2px;
 }
 
 .ribbon-cell {
