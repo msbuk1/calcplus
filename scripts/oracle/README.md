@@ -18,6 +18,13 @@ runs locally; no test or check runs on GitHub.
 The capture must be reproducible before a golden is committed. There is no
 runner, scheduled GitHub job or repository variable.
 
+## Clipboard interop spike
+
+The M5 risk spike for Excel clipboard interop has its own harness and runbook:
+[`clipboard-spike.ps1`](clipboard-spike.ps1) and
+[`clipboard-spike.md`](clipboard-spike.md). It follows the same manual-capture
+rules as this harness and writes evidence under its own `-EvidencePath`.
+
 ## Script
 
 `capture-goldens.ps1` opens a workbook read-only through COM, calls
