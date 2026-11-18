@@ -5,7 +5,10 @@ import { mergedBorderStyle } from './merged-borders';
 import {
   cellRect,
   computePaneLayout,
+  intersectRects,
+  mergeSpillsPane,
   mergedRect,
+  panePaintRect,
   type CellRect,
   type PaneLayout,
   type PaneRect,
@@ -64,13 +67,22 @@ interface BorderMetrics {
   readonly double: boolean;
 }
 
-/** One visible cell, resolved once per pane and painted in four passes. */
+/** One visible cell, resolved once per pane and painted in the pane's passes. */
 interface VisibleCell {
   readonly cell: ProjectedCell;
   readonly rect: CellRect;
   readonly fill: ProjectedStyle['fill'] | null;
   readonly paintText: boolean;
   readonly paintBorder: boolean;
+  /** A covered cell of a merge paints the anchor's fill and nothing else. */
+  readonly covered: boolean;
+}
+
+/** A merged range that needs painting outside the pane that holds its anchor. */
+interface MergedOverflow {
+  readonly cell: ProjectedCell;
+  readonly rect: CellRect;
+  readonly clip: CellRect;
 }
 
 export class CanvasRenderFrame implements RenderFrame {
@@ -123,9 +135,11 @@ export class CanvasRenderFrame implements RenderFrame {
     context.textBaseline = 'alphabetic';
 
     const panes = buildPanes(projection, layout, scrollX, scrollY);
+    const overflow: MergedOverflow[] = [];
     for (const pane of panes) {
-      this.paintPane(pane, projection, layout, scrollX, scrollY);
+      this.paintPane(pane, projection, layout, scrollX, scrollY, overflow);
     }
+    this.paintMergedOverflow(overflow, projection);
     this.paintPointing(state, layout, panes, scrollX, scrollY);
     this.paintPainter(state, layout, panes, scrollX, scrollY);
     this.paintSelection(state, layout, panes, scrollX, scrollY);
@@ -237,6 +251,7 @@ export class CanvasRenderFrame implements RenderFrame {
     layout: PaneLayout,
     scrollX: number,
     scrollY: number,
+    overflow: MergedOverflow[],
   ): void {
     if (pane.rect.width <= 0 || pane.rect.height <= 0) return;
     const { context } = this;
@@ -256,21 +271,39 @@ export class CanvasRenderFrame implements RenderFrame {
 
     const cells = collectVisibleCells(pane, projection, layout, scrollX, scrollY, rowOf, colOf);
 
+    // A merged range that reaches past this pane is painted once, after every
+    // pane (see `paintMergedOverflow`). Here the pane clip would cut it at the
+    // freeze divider, and a pane painted later fills the covered cells over its
+    // text. The covered cells still paint the anchor's fill in their own pane.
+    const owned: VisibleCell[] = [];
+    for (const visible of cells) {
+      const merge = visible.cell.merge;
+      if (!visible.covered && merge !== null && mergeSpillsPane(merge, pane)) {
+        overflow.push({
+          cell: visible.cell,
+          rect: visible.rect,
+          clip: intersectRects(panePaintRect(layout, pane), visible.rect),
+        });
+        continue;
+      }
+      owned.push(visible);
+    }
+
     // Gridlines sit behind fills, as Excel paints them. A fill covers the
     // gridline at its own edge; the shared edge between two filled cells
     // disappears, matching Excel.
     if (projection.showGridLines) {
       this.paintGridlines(pane, projection, rowOf, colOf);
     }
-    for (const visible of cells) {
+    for (const visible of owned) {
       if (visible.fill !== null) this.paintFill(visible.rect, visible.fill);
     }
-    for (const visible of cells) {
+    for (const visible of owned) {
       if (visible.paintText && visible.cell.displayText !== '') {
         this.paintText(visible.cell, visible.rect, projection.zoom);
       }
     }
-    for (const visible of cells) {
+    for (const visible of owned) {
       if (!visible.paintBorder) continue;
       const merge = visible.cell.merge;
       this.paintBorderRect(
@@ -280,6 +313,36 @@ export class CanvasRenderFrame implements RenderFrame {
     }
 
     context.restore();
+  }
+
+  /**
+   * Paint the merged ranges that span more than one pane. The range is a single
+   * cell in the model, so it is painted whole and clipped at its own edge
+   * instead of at the divider of the pane that holds its anchor. The clip keeps
+   * it inside the grid body and inside the owning pane on any axis that pane
+   * scrolls, where the neighbouring strips are already on the canvas.
+   */
+  private paintMergedOverflow(
+    ranges: readonly MergedOverflow[],
+    projection: SheetProjection,
+  ): void {
+    if (ranges.length === 0) return;
+    const { context } = this;
+    for (const range of ranges) {
+      const { cell, rect, clip } = range;
+      if (clip.width <= 0 || clip.height <= 0) continue;
+      context.save();
+      context.beginPath();
+      context.rect(clip.x, clip.y, clip.width, clip.height);
+      context.clip();
+      if (cell.style.fill !== null) this.paintFill(rect, cell.style.fill);
+      if (cell.displayText !== '') this.paintText(cell, rect, projection.zoom);
+      const merge = cell.merge;
+      if (merge !== null) {
+        this.paintBorderRect(this.mergedBorderFor(projection, merge), rect);
+      }
+      context.restore();
+    }
   }
 
   private paintFill(rect: CellRect, fill: ProjectedStyle['fill']): void {
@@ -1252,6 +1315,7 @@ function collectVisibleCells(
           fill: anchor?.style.fill ?? null,
           paintText: false,
           paintBorder: false,
+          covered: true,
         });
         continue;
       }
@@ -1274,6 +1338,7 @@ function collectVisibleCells(
         fill: cell.style.fill,
         paintText: true,
         paintBorder: true,
+        covered: false,
       });
     }
   }

@@ -9,6 +9,14 @@ import type { MergeSpan, ProjectedCell, ProjectedStyle, SheetProjection } from '
 import { autofitColumnWidth, autofitRowHeight } from '@grid/autofit';
 import { mergedBorderStyle } from '@grid/merged-borders';
 import { resolveNavigation } from '@grid/navigation';
+import {
+  cellRect,
+  computePaneLayout,
+  intersectRects,
+  mergeSpillsPane,
+  mergedRect,
+  panePaintRect,
+} from '@grid/panes';
 import { collapseSelection } from '@grid/selection';
 import {
   fitFontSize,
@@ -263,6 +271,125 @@ describe('M4A formatted grid projection and sizing', () => {
     });
     expect(restored.rowHeight(3)).toBe(20);
     expect(restored.columnWidth(2)).toBe(64);
+  });
+});
+
+describe('M4A merged ranges across a frozen divider', () => {
+  // The formatted sheet freezes column A and rows 1-2, so A1:D1 and A11:D11
+  // start in a frozen pane and end in the scrolling one. The divider between
+  // them sits at x = headerWidth + frozenWidth.
+  const layoutFor = (projection: SheetProjection) => computePaneLayout(projection, 1254, 614);
+
+  it('lets a frozen-pane merge paint past the divider instead of cutting it', () => {
+    const projection = formattedProjection();
+    const layout = layoutFor(projection);
+    const anchor = cellRect(projection, layout, 0, 0, 10, 0);
+    const merged = mergedRect(projection, layout, 0, 0, 10, 0, 1, 4);
+
+    expect(layout.headerWidth).toBe(48);
+    expect(layout.frozenWidth).toBe(173);
+    expect(layout.headerWidth + layout.frozenWidth).toBe(221);
+    expect(merged.x).toBe(48);
+    expect(merged.width).toBe(636);
+    expect(merged.x + merged.width).toBe(684);
+    expect(merged.y).toBe(anchor.y);
+    expect(merged.height).toBe(20);
+
+    // The pane's own rectangle stops at the divider, which is where the label
+    // used to be cut; the frozen pane owns the whole body width, so the merged
+    // range fits there and is clipped at its own edge instead.
+    const paneRect = {
+      x: layout.headerWidth,
+      y: layout.headerHeight,
+      width: layout.frozenWidth,
+      height: layout.frozenHeight,
+    };
+    expect(paneRect.x + paneRect.width).toBeLessThan(merged.x + merged.width);
+
+    const band = panePaintRect(layout, { frozenRows: false, frozenCols: true });
+    expect(band).toEqual({
+      x: 48,
+      y: layout.headerHeight + layout.frozenHeight,
+      width: 1190,
+      height: 514,
+    });
+    expect(band.x + band.width).toBe(1254 - layout.scrollbarSize);
+    expect(intersectRects(band, merged)).toEqual(merged);
+  });
+
+  it('keeps a merge that starts in a scrolling pane inside that pane', () => {
+    const projection = formattedProjection();
+    const layout = layoutFor(projection);
+
+    // A pane that scrolls on an axis is a hard edge on that axis: the frozen
+    // columns and rows beside it are already on the canvas.
+    const scrolling = panePaintRect(layout, { frozenRows: false, frozenCols: false });
+    expect(scrolling).toEqual({
+      x: layout.headerWidth + layout.frozenWidth,
+      y: layout.headerHeight + layout.frozenHeight,
+      width: layout.scrollRegionWidth,
+      height: layout.scrollRegionHeight,
+    });
+
+    // A range scrolled up behind the frozen rows, and one scrolled left behind
+    // the frozen columns, are both cut at the divider.
+    const scrolledUp = { x: 300, y: scrolling.y - 40, width: 100, height: 60 };
+    expect(intersectRects(scrolling, scrolledUp)).toEqual({
+      x: 300,
+      y: scrolling.y,
+      width: 100,
+      height: 20,
+    });
+    const scrolledLeft = { x: scrolling.x - 60, y: 300, width: 120, height: 20 };
+    expect(intersectRects(scrolling, scrolledLeft)).toEqual({
+      x: scrolling.x,
+      y: 300,
+      width: 60,
+      height: 20,
+    });
+
+    // The frozen panes keep their own hard edge on the axis they do scroll.
+    const frozenRowsBand = panePaintRect(layout, { frozenRows: true, frozenCols: true });
+    expect(frozenRowsBand).toEqual({
+      x: 48,
+      y: 24,
+      width: 1190,
+      height: 574,
+    });
+  });
+
+  it('detects the merges that reach past the pane holding their anchor', () => {
+    const label: MergeSpan = { anchorRow: 10, anchorCol: 0, rowSpan: 1, colSpan: 4 };
+    // The frozen column pane holds column A only.
+    expect(mergeSpillsPane(label, { startRow: 2, endRow: 20, startCol: 0, endCol: 0 })).toBe(true);
+    // A range that reaches past the last visible column of a scrolling pane
+    // spills too, so its clip is taken from the pane it scrolls in.
+    expect(
+      mergeSpillsPane(
+        { anchorRow: 10, anchorCol: 1, rowSpan: 1, colSpan: 4 },
+        { startRow: 2, endRow: 20, startCol: 1, endCol: 3 },
+      ),
+    ).toBe(true);
+    // A merge that fits its pane stays in the pane pass.
+    expect(
+      mergeSpillsPane(
+        { anchorRow: 3, anchorCol: 1, rowSpan: 2, colSpan: 2 },
+        { startRow: 2, endRow: 11, startCol: 1, endCol: 3 },
+      ),
+    ).toBe(false);
+    // Row spans across the frozen row divider spill the same way.
+    expect(
+      mergeSpillsPane(
+        { anchorRow: 1, anchorCol: 1, rowSpan: 3, colSpan: 1 },
+        { startRow: 0, endRow: 1, startCol: 1, endCol: 3 },
+      ),
+    ).toBe(true);
+    expect(
+      mergeSpillsPane(
+        { anchorRow: 4, anchorCol: 1, rowSpan: 2, colSpan: 1 },
+        { startRow: 2, endRow: 3, startCol: 1, endCol: 3 },
+      ),
+    ).toBe(true);
   });
 });
 

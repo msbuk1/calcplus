@@ -1,4 +1,4 @@
-import type { SheetProjection } from '@view/types';
+import type { MergeSpan, SheetProjection } from '@view/types';
 import { GRID_METRICS, type GridCellAddress, type GridRange, type GridSelection } from './frame';
 import type { DimensionAxis } from './resize';
 
@@ -131,6 +131,63 @@ export function mergedRect(
     height += projection.rowHeight(anchorRow + row);
   }
   return { x: start.x, y: start.y, width, height };
+}
+
+/** The rows and columns a pane shows, in sheet indices. */
+export interface PaneBounds {
+  readonly startRow: number;
+  readonly endRow: number;
+  readonly startCol: number;
+  readonly endCol: number;
+}
+
+/**
+ * Whether a merged range reaches past the pane that holds its anchor cell.
+ *
+ * A pane only shows the rows and columns inside its own bounds, so a range that
+ * spans the freeze divider starts in one pane and ends in another. Painting it
+ * inside the starting pane would cut it at the divider.
+ */
+export function mergeSpillsPane(merge: MergeSpan, pane: PaneBounds): boolean {
+  return (
+    merge.anchorRow < pane.startRow ||
+    merge.anchorRow + merge.rowSpan - 1 > pane.endRow ||
+    merge.anchorCol < pane.startCol ||
+    merge.anchorCol + merge.colSpan - 1 > pane.endCol
+  );
+}
+
+/**
+ * The area a pane may paint into, in canvas pixels. Along an axis the pane does
+ * not scroll it owns the whole body rather than its own rectangle, so a merged
+ * range that reaches across the freeze divider is painted whole. Along an axis
+ * it does scroll, the pane rectangle is the hard edge: the frozen strips and
+ * the panes beside it are already on the canvas.
+ */
+export function panePaintRect(
+  layout: PaneLayout,
+  frozen: { readonly frozenRows: boolean; readonly frozenCols: boolean },
+): CellRect {
+  const bodyWidth = Math.max(0, layout.frozenWidth + layout.scrollRegionWidth);
+  const bodyHeight = Math.max(0, layout.frozenHeight + layout.scrollRegionHeight);
+  return {
+    x: frozen.frozenCols ? layout.headerWidth : layout.headerWidth + layout.frozenWidth,
+    y: frozen.frozenRows ? layout.headerHeight : layout.headerHeight + layout.frozenHeight,
+    width: frozen.frozenCols ? bodyWidth : layout.scrollRegionWidth,
+    height: frozen.frozenRows ? bodyHeight : layout.scrollRegionHeight,
+  };
+}
+
+/** The overlap of two rectangles, with a zero width or height when they miss. */
+export function intersectRects(a: CellRect, b: CellRect): CellRect {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x),
+    height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y),
+  };
 }
 
 /**
