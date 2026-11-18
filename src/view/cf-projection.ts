@@ -4,10 +4,16 @@ import type {
   CfCalendarDate,
   CfCellSource,
   CfCellSubject,
+  CfDxfResolver,
   ConditionalFormatRule,
 } from '@model/conditional-format';
 import { createConditionalFormatIndex } from '@model/conditional-format';
-import { conditionalFormatRulesFor } from '@ooxml/conditional-format-xml';
+import {
+  conditionalFormatRulesFor,
+  createDxfResolver,
+  parseDxfTable,
+  type DxfTable,
+} from '@ooxml/conditional-format-xml';
 import type { ConditionalFormattingInputs, ProjectedConditionalFormatting } from './types';
 
 /**
@@ -32,6 +38,10 @@ export interface ConditionalFormattingSources {
   readonly version: number;
   readonly date1904: boolean;
   readonly indexedPalette: readonly string[] | null;
+  /** The sheet's worksheet-part bytes, for the x14 extension payloads. */
+  readonly sourceBytes: Uint8Array | null;
+  /** The styles-part bytes, for the `dxfs` table a `dxfId` rule formats with. */
+  readonly stylesBytes: Uint8Array | null;
   /** Typed values and display text, for rule evaluation. */
   readonly cells: CfCellSource;
   /** Number formatting under an arbitrary code, for a CF number format. */
@@ -65,7 +75,7 @@ export function createSheetConditionalFormatting(
     date1904: sources.date1904,
     today: inputs?.today ?? localToday(),
     cells: sources.cells,
-    dxfFor: inputs?.dxfResolver ?? undefined,
+    dxfFor: inputs?.dxfResolver ?? dxfResolverFor(sources.stylesBytes),
   });
 
   return {
@@ -86,11 +96,28 @@ function rulesFromRecords(sources: ConditionalFormattingSources): readonly Condi
   const { sheet, version } = sources;
   const cached = rulesCache.get(sheet);
   if (cached !== undefined && cached.version === version) return cached.rules;
-  const rules = conditionalFormatRulesFor(sheet, null, {
+  const rules = conditionalFormatRulesFor(sheet, sources.sourceBytes, {
     indexedPalette: sources.indexedPalette,
   });
   rulesCache.set(sheet, { version, rules });
   return rules;
+}
+
+/**
+ * The `dxfs` table a `dxfId` rule formats with. The raw styles bytes are
+ * stable per document, so the parse is cached on the bytes themselves; a
+ * projection rebuild (a zoom) never re-parses the styles part.
+ */
+const dxfTableCache = new WeakMap<Uint8Array, DxfTable>();
+
+function dxfResolverFor(stylesBytes: Uint8Array | null): CfDxfResolver | undefined {
+  if (stylesBytes === null) return undefined;
+  let table = dxfTableCache.get(stylesBytes);
+  if (table === undefined) {
+    table = parseDxfTable(stylesBytes, 'xl/styles.xml');
+    dxfTableCache.set(stylesBytes, table);
+  }
+  return createDxfResolver(table);
 }
 
 /**

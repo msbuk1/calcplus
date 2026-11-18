@@ -1,5 +1,6 @@
-import type { Cell, Workbook } from '@model/types';
+import type { Cell, Sheet, Workbook } from '@model/types';
 import { cellKey, columnToLetters } from '@model/types';
+import { computeHiddenLayers } from '@model/autofilter';
 import type { CfCellSource } from '@model/conditional-format';
 import { BLANK, formatCellValue } from '@model/value';
 import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
@@ -25,6 +26,25 @@ import type {
 } from './types';
 
 const DEFAULT_ROW_HEIGHT = 20;
+const STYLES_PART_PATH = 'xl/styles.xml';
+
+/**
+ * The rows a sheet hides at one document version: the stored flags plus the
+ * rows the active AutoFilter derives (sort-autofilter §3.3).
+ */
+const effectiveHiddenCache = new WeakMap<Sheet, { version: number; rows: Set<number> }>();
+
+function effectiveHiddenRows(
+  sheet: Sheet,
+  manualHidden: readonly number[],
+  version: number,
+): Set<number> {
+  const cached = effectiveHiddenCache.get(sheet);
+  if (cached !== undefined && cached.version === version) return cached.rows;
+  const rows = new Set(computeHiddenLayers(sheet, sheet.autoFilter, manualHidden).effectiveHidden);
+  effectiveHiddenCache.set(sheet, { version, rows });
+  return rows;
+}
 const DEFAULT_COLUMN_WIDTH = 64;
 const MAX_ROWS = 1_048_576;
 const MAX_COLUMNS = 16_384;
@@ -61,11 +81,14 @@ export function createSheetProjection(
   const rowCount = options.rowCount ?? MAX_ROWS;
   const columnCount = options.columnCount ?? MAX_COLUMNS;
 
-  const hiddenRows = new Set(
-    [...sheet.rowDimensions.entries()]
-      .filter(([row, dimension]) => row >= 0 && row < rowCount && dimension.hidden === true)
-      .map(([row]) => row),
-  );
+  // Filter-hidden rows are derived from the criteria and never stored
+  // (sort-autofilter §3.3), so the projection folds them into the hidden set
+  // alongside the stored flags. The evaluation is cached per sheet and document
+  // version, like the CF rules: a zoom or other view-only rebuild reuses it.
+  const dimensionHiddenRows = [...sheet.rowDimensions.entries()]
+    .filter(([row, dimension]) => row >= 0 && row < rowCount && dimension.hidden === true)
+    .map(([row]) => row);
+  const hiddenRows = effectiveHiddenRows(sheet, dimensionHiddenRows, options.version);
   const hiddenColumns = new Set(
     [...sheet.columnDimensions.entries()]
       .filter(([col, dimension]) => col >= 0 && col < columnCount && dimension.hidden === true)
@@ -261,6 +284,8 @@ export function createSheetProjection(
       version: options.version,
       date1904: workbook.date1904,
       indexedPalette: workbook.indexedPalette,
+      sourceBytes: workbook.sourceParts.get(sheet.partPath) ?? null,
+      stylesBytes: workbook.sourceParts.get(STYLES_PART_PATH) ?? null,
       cells: cfCells,
       format: (value, code) => formatter.format(value, code, workbook.date1904),
       inputs: options.conditionalFormats,
