@@ -97,6 +97,7 @@ export function createSheet(name: string, partPath: string, id = createSheetId(p
     hyperlinks: new Map(),
     validation: [],
     conditionalFormats: [],
+    autoFilter: null,
     protection: null,
     view: createDefaultView(),
     defaultRowHeight: null,

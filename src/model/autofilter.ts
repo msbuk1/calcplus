@@ -1,5 +1,25 @@
 import { cellKey } from './types';
-import type { Cell, GridRange, Sheet, SheetId } from './types';
+import type {
+  AutoFilter,
+  Cell,
+  ColumnFilter,
+  ColumnOffset,
+  Condition,
+  ConditionsFilter,
+  DateComparisonOperator,
+  DateCondition,
+  DateOperator,
+  GridRange,
+  NumberComparisonOperator,
+  NumberCondition,
+  NumberOperator,
+  Sheet,
+  SheetId,
+  TextCondition,
+  TextOperator,
+  UnsupportedFilter,
+  ValueFilter,
+} from './types';
 import { BLANK, cellValueEquals, cloneCellValue, formatCellValue } from './value';
 import type { CellValue } from './value';
 
@@ -17,103 +37,31 @@ import type { CellValue } from './value';
  * before/after record one command needs (§3.9); it does not dispatch commands.
  */
 
-/** Column position relative to `range.startCol`, so a criterion moves with its column. */
-export type ColumnOffset = number;
-
 /**
- * One AutoFilter per sheet, attached to a plain range (§3.1). The range
- * includes the header row: `range.startRow` is always the header and is never
- * filtered, even when it looks like data. §3.1 writes the rectangle as
- * `{ r1, c1, r2, c2 }`; the model's `GridRange` is that same rectangle.
- *
- * `raw` keeps unknown XML and attributes untouched for the OOXML layer.
+ * The AutoFilter state model (sort-autofilter §3.1-§3.2) lives in the core
+ * model (`./types`), where `Sheet.autoFilter` carries it; this module owns its
+ * behaviour and re-exports the shapes for callers.
  */
-export interface AutoFilter {
-  readonly sheetId: SheetId;
-  readonly range: GridRange;
-  readonly columns: Map<ColumnOffset, ColumnFilter>;
-  readonly raw?: unknown;
-}
+export type {
+  AutoFilter,
+  ColumnFilter,
+  ColumnOffset,
+  Condition,
+  ConditionsFilter,
+  DateComparisonOperator,
+  DateCondition,
+  DateOperator,
+  NumberComparisonOperator,
+  NumberCondition,
+  NumberOperator,
+  TextCondition,
+  TextOperator,
+  UnsupportedFilter,
+  ValueFilter,
+};
 
 /** A filter can hold at most two conditions per column (§3.2). */
 export const MAX_CONDITIONS_PER_COLUMN = 2;
-
-/** The value checklist (§3.2): typed values plus the blank flag. */
-export interface ValueFilter {
-  readonly kind: 'values';
-  /** Selected typed values; a blank entry is ignored because `includeBlanks` owns blanks. */
-  readonly selected: readonly CellValue[];
-  readonly includeBlanks: boolean;
-}
-
-/** Up to two conditions joined by AND or OR (§3.2). */
-export interface ConditionsFilter {
-  readonly kind: 'conditions';
-  readonly join: 'and' | 'or';
-  readonly conditions: readonly Condition[];
-}
-
-/** An imported colour, icon, Top 10, dynamic or unknown criterion (§3.7). */
-export interface UnsupportedFilter {
-  readonly kind: 'unsupported';
-  readonly raw: unknown;
-}
-
-export type ColumnFilter = ValueFilter | ConditionsFilter | UnsupportedFilter;
-
-export type TextOperator =
-  'equals' | 'not-equals' | 'begins-with' | 'ends-with' | 'contains' | 'does-not-contain';
-
-export type NumberComparisonOperator = '=' | '<>' | '>' | '>=' | '<' | '<=';
-export type NumberOperator = NumberComparisonOperator | 'between' | 'not-between';
-
-export type DateComparisonOperator = 'equals' | 'not-equals' | 'before' | 'after';
-export type DateOperator = DateComparisonOperator | 'between' | 'not-between';
-
-/** Text conditions apply to text cells only, case-insensitively, with `*`, `?` and `~`. */
-export interface TextCondition {
-  readonly kind: 'text';
-  readonly operator: TextOperator;
-  readonly value: string;
-}
-
-/**
- * Number conditions apply to numeric cells only. `between` is inclusive; the
- * operand order of `between`/`not-between` is normalised, so `from > to` means
- * the same interval.
- */
-export type NumberCondition =
-  | {
-      readonly kind: 'number';
-      readonly operator: NumberComparisonOperator;
-      readonly value: number;
-    }
-  | {
-      readonly kind: 'number';
-      readonly operator: 'between' | 'not-between';
-      readonly from: number;
-      readonly to: number;
-    };
-
-/**
- * Date conditions compare serial numbers. The caller converts a calendar date
- * to its serial; the 1900/1904 flag never reaches this module. `between` is
- * inclusive and normalises its operand order.
- */
-export type DateCondition =
-  | {
-      readonly kind: 'date';
-      readonly operator: DateComparisonOperator;
-      readonly value: number;
-    }
-  | {
-      readonly kind: 'date';
-      readonly operator: 'between' | 'not-between';
-      readonly from: number;
-      readonly to: number;
-    };
-
-export type Condition = TextCondition | NumberCondition | DateCondition;
 
 /**
  * Build an AutoFilter, copying the range and column entries. `raw` is kept by

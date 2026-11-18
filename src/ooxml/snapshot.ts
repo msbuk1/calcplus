@@ -1,4 +1,5 @@
 import type {
+  AutoFilter,
   BorderStyle,
   Cell,
   ColumnDimension,
@@ -18,6 +19,7 @@ import type {
   Workbook,
   WorkbookProtectionRecord,
 } from '@model/types';
+import { cloneAutoFilter } from '@model/autofilter';
 import type { SharedStringsTable, WorkbookPackage } from './types';
 import {
   DEFAULT_ALIGNMENT,
@@ -47,6 +49,7 @@ export interface SnapshotSheet {
   readonly hyperlinks: [string, HyperlinkRecord][];
   readonly validation: ValidationRecord[];
   readonly conditionalFormats: ConditionalFormatRecord[];
+  readonly autoFilter: AutoFilter | null;
   readonly protection: { readonly rawXml: string } | null;
   readonly view: Sheet['view'];
   readonly defaultRowHeight?: number | null;
@@ -243,6 +246,7 @@ function snapshotSheet(sheet: Sheet): SnapshotSheet {
       range: { ...record.range },
       rawXml: record.rawXml,
     })),
+    autoFilter: sheet.autoFilter === null ? null : cloneAutoFilter(sheet.autoFilter),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight,
@@ -273,6 +277,7 @@ function restoreSheet(sheet: SnapshotSheet, parts: ReadonlyMap<string, Uint8Arra
       range: { ...record.range },
       rawXml: record.rawXml,
     })),
+    autoFilter: sheet.autoFilter === null ? null : cloneAutoFilter(sheet.autoFilter),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight ?? null,
