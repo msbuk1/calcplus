@@ -4,7 +4,7 @@ Captured from the maintainer's Excel 365 (UK build) on 2026-11-18 and transcribe
 here as the visual/behavioural reference for the M5 chrome pass. Labels are
 verbatim from the captures, including this build's sentence-case button labels
 ("Find next") and mixed "Custom Sort" / "Customised Sort" wording. Where the
-captures and a contract disagree, the disagreement is listed in §7 and awaits a
+captures and a contract disagree, the disagreement is listed in §9 and awaits a
 ruling; until ruled, the contract wins.
 
 ## 1. Sort dialog (menu entry "Custom Sort"; dialog title "Customised Sort")
@@ -19,7 +19,7 @@ ruling; until ruled, the contract wins.
 - Capture shows one key row; Add/Delete/Copy/↑↓ operate on the selected level.
 - v1 notes: sort-on type is Cell Values only (colour/icon sorts are v2 — the
   Sort On dropdown ships with one option); `Options` holds left-to-right
-  orientation and case sensitivity, both v2 — see §7 on whether to render it.
+  orientation and case sensitivity, both v2 — see §9 on whether to render it.
 - Contract adds one thing the capture lacks: the target range as a read-only
   label (sort-autofilter §2.1). Keep it.
 
@@ -47,7 +47,7 @@ Top to bottom:
 - separator
 - **Filter** (funnel) · **Clear** (funnel with red x) · **Reapply**
 - Note: contract §3.8 places Reapply and Clear All on the Data tab; the capture
-  shows them here too (see §7).
+  shows them here too (see §9).
 
 ## 4. Find & Select menu (Home → Editing → Find & Select)
 
@@ -75,10 +75,71 @@ Top to bottom:
 - Primary buttons are solid accent green; secondary buttons are white with a
   thin border; dialog titles are accent green, not body colour.
 - Menus show section headings in bold; disabled entries are shown greyed in the
-  oracle (but see §7 on calcplus's hidden-not-greyed rule).
+  oracle (but see §9 on calcplus's hidden-not-greyed rule).
 - Dropdown/menu icons are leading; shortcuts are trailing, grey.
 
-## 7. Deltas awaiting a ruling
+## 7. Ribbon sub-menus (second capture, 2026-11-18)
+
+Item scope mapped against the feature matrix; per ticket 28 D2, out-of-scope
+entries are not rendered at all (the capture shows them greyed).
+
+**Paste menu** (Clipboard → Paste dropdown):
+- **Paste** `Ctrl+V` — IN.
+- Bold heading **Paste Special**, then: **Values only** `Ctrl+Shift+V`,
+  **Formulae only**, **Formatting only**, **Link to source**, **Keep Source
+  Column Widths**, **Transpose Rows and Columns** — all Paste Special, out of
+  v1 (matrix never-list) → hidden.
+
+**Fill Colour menu** (Font → Fill Colour): **Theme Colours** grid (10 columns:
+white/black then the 10 theme accents, each with lighter/darker tint rows;
+hover tooltip reads "Green, Accent 6, Li…"), **Standard Colours** row of 10
+swatches, then **No Fill**, ~~Highlight when…~~ (CF authoring, V2),
+**More Colours…**, ~~Eyedropper~~ (out of scope). Theme swatch naming comes
+from the workbook theme (`ThemeRecord`).
+
+**Font Colour menu**: **Automatic** at top (black swatch), then the same Theme
+Colours grid and Standard Colours row, **More Colours…**, ~~Eyedropper~~.
+
+**Borders menu** (Font → Borders): a grid of border preset icons (bottom, top,
+left, right, none, all, outside, thick box, bottom double, bottom thick…), then
+**Draw Border**, **Draw Border Grid**, ~~Erase Border~~, **Border Colour ›**,
+**Border Style ›**, **More Border Styles**. Draw/Erase pen modes are out of
+matrix → hidden; presets, colour and style flyouts are IN ("Borders: all line
+styles, weights and colours; outline and inside").
+
+**Format menu** (Cells → Format):
+- **Cell Size**: **Row Height…**, **Auto-fit Row Height**, **Column Width…**,
+  **Auto-fit Column Width** — IN (`dimension.set`).
+- **Visibility**: ~~Hide & Unhide ›~~ — matrix never-list → hidden.
+- **Organise Sheets**: **Rename Sheet…** (IN), ~~Reorder Sheet…~~,
+  ~~Copy Sheet~~, ~~Paste Sheet~~ — matrix never-list → hidden.
+- **Format Cells** at the bottom — IN (`format.cellsDialog`).
+
+**Insert menu** (Cells → Insert; the Delete menu mirrors it):
+- ~~Insert Copied Cells…~~ — pending ruling, see below.
+- **Insert Rows Above** `Ctrl+Shift+=`, **Insert Columns to the Left**
+  `Ctrl+Shift+=`, **Insert Cells & Shift Right** `Ctrl+Shift+=`, **Insert
+  Cells & Shift Down** `Ctrl+Shift+=`, **Insert Sheet** — IN (matrix row
+  "insert/delete rows, columns and cells" + sheet insert; the M5 structural
+  lane implements them).
+- ~~Insert Table Rows Above~~, ~~Insert Table Columns to the Left~~ — tables
+  are NEVER → hidden.
+
+Open capture question: the Delete dropdown itself and the exact scope of
+"Insert Copied Cells…" (clipboard insert vs the IN Shift-drag insert row).
+
+## 8. Conditional Formatting menu (context for ticket 27)
+
+The second capture shows the Styles group (Conditional Formatting, Format As
+Table, Cell Styles) and the Conditional Formatting menu in full: bold heading
+**Conditional Formatting**, then **Highlight Cell Rules ›**, **Top/Bottom
+Rules ›**, **Data Bars ›**, **Colour Scales ›**, **Icon Sets ›**, **New
+Rule…**, **Clear Rules ›**, **Manage Rules…**. Every entry is rule AUTHORING,
+which is matrix V2. Whatever ticket 27 rules for the button, none of this menu
+ships in v1; the capture is stored as the v2 reference.
+
+
+## 9. Deltas awaiting a ruling
 
 All ruled 2026-11-18; see [ticket 28](../../.scratch/calcplus/issues/28-m5-dialog-parity.md).
 D1/D5/D6/D7 follow the capture (§3.8 amended), D2 keeps the hidden-not-greyed
