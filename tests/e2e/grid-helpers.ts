@@ -17,8 +17,12 @@ export interface DebugApi {
     focusZone: string;
     status: string;
     canUndo: boolean;
+    /** The document session version; it advances once per dispatched transaction. */
+    version: number;
   };
   getCellDisplay(row: number, col: number): string | null;
+  /** The manual and derived-filter hidden rows of the active sheet. */
+  getHiddenRows(): number[];
   getCellRect(row: number, col: number): CellRect | null;
   getScroll(): { x: number; y: number };
   getFreeze(): { rows: number; cols: number };
