@@ -23,6 +23,8 @@ export interface MenuProps {
   readonly style?: CSSProperties;
   /** A click on this element (the trigger) must not count as an outside click. */
   readonly anchorRef?: RefObject<HTMLElement | null>;
+  /** The rendered menu element, for owners that must measure it before positioning. */
+  readonly rootRef?: RefObject<HTMLDivElement | null>;
 }
 
 /**
@@ -38,9 +40,14 @@ export function Menu({
   className,
   style,
   anchorRef,
+  rootRef,
 }: MenuProps): JSX.Element {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const setRoot = (node: HTMLDivElement | null): void => {
+    menuRef.current = node;
+    if (rootRef !== undefined) rootRef.current = node;
+  };
 
   useEffect(() => {
     const first = items.findIndex((item) => item.disabled !== true);
@@ -138,7 +145,7 @@ export function Menu({
 
   return (
     <div
-      ref={menuRef}
+      ref={setRoot}
       className={className === undefined ? 'menu' : `menu ${className}`}
       role="menu"
       aria-label={label}
