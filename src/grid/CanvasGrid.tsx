@@ -1678,7 +1678,7 @@ function updateScrollbarThumbs(
     const trackTop = layout.headerHeight;
     const trackHeight = Math.max(1, viewport.height - layout.headerHeight - layout.scrollbarSize);
     const ratio = Math.min(1, layout.scrollRegionHeight / Math.max(1, layout.contentHeight));
-    const thumbHeight = Math.max(24, Math.round(trackHeight * ratio));
+    const thumbHeight = Math.max(48, Math.round(trackHeight * ratio));
     const span = Math.max(1, layout.maxScrollY - layout.minScrollY);
     const progress = (scroll.y - layout.minScrollY) / span;
     const top = trackTop + progress * Math.max(0, trackHeight - thumbHeight);
@@ -1689,7 +1689,7 @@ function updateScrollbarThumbs(
     const trackLeft = layout.headerWidth;
     const trackWidth = Math.max(1, viewport.width - layout.headerWidth - layout.scrollbarSize);
     const ratio = Math.min(1, layout.scrollRegionWidth / Math.max(1, layout.contentWidth));
-    const thumbWidth = Math.max(24, Math.round(trackWidth * ratio));
+    const thumbWidth = Math.max(48, Math.round(trackWidth * ratio));
     const span = Math.max(1, layout.maxScrollX - layout.minScrollX);
     const progress = (scroll.x - layout.minScrollX) / span;
     const left = trackLeft + progress * Math.max(0, trackWidth - thumbWidth);
