@@ -100,6 +100,13 @@ export interface CanvasGridProps {
    */
   readonly onZoomChange?: (zoomPercent: number) => void;
   /**
+   * Format Painter mode. The grid paints the live target and turns a click or
+   * drag into one apply gesture; the application owns the source snapshot and
+   * dispatches the command.
+   */
+  readonly painterActive?: boolean;
+  readonly onPainterApply?: (range: GridRange) => void;
+  /**
    * The focus owner hands the grid shell to the focus manager.
    */
   readonly shellRef?: RefObject<HTMLDivElement | null>;
@@ -131,6 +138,8 @@ export function CanvasGrid({
   onResizePreview,
   onResizeCommit,
   onZoomChange,
+  painterActive,
+  onPainterApply,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -153,6 +162,13 @@ export function CanvasGrid({
   } | null>(null);
   const zoomWheelRef = useRef(0);
   const selectionDragRef = useRef<{
+    readonly pointerId: number;
+    readonly anchor: GridCellAddress;
+    focus: GridCellAddress;
+  } | null>(null);
+  const painterTargetRef = useRef<GridRange | null>(null);
+  const painterCleanupRef = useRef<(() => void) | null>(null);
+  const painterDragRef = useRef<{
     readonly pointerId: number;
     readonly anchor: GridCellAddress;
     focus: GridCellAddress;
@@ -184,6 +200,7 @@ export function CanvasGrid({
       projection: current.projection,
       selection: current.selection,
       pointing: pointingRangeRef.current,
+      painter: painterTargetRef.current,
       scrollX: scroll.x,
       scrollY: scroll.y,
       width: viewport.width,
@@ -244,6 +261,27 @@ export function CanvasGrid({
     stateRef.current = { projection, selection };
     schedulePaint();
   }, [projection, selection, schedulePaint]);
+
+  // Leaving Format Painter mode drops the live target without a document
+  // change. Esc is handled by the application, which flips this prop.
+  useEffect(() => {
+    if (painterActive === true) return;
+    // Esc can end the mode while a drag is in flight; detach its window
+    // listeners so the release cannot still apply the old target.
+    painterCleanupRef.current?.();
+    painterCleanupRef.current = null;
+    painterDragRef.current = null;
+    if (painterTargetRef.current === null) return;
+    painterTargetRef.current = null;
+    schedulePaint();
+  }, [painterActive, schedulePaint]);
+
+  useEffect(() => {
+    return () => {
+      painterCleanupRef.current?.();
+      painterCleanupRef.current = null;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const frame = frameRef.current;
@@ -468,6 +506,23 @@ export function CanvasGrid({
       scrollRef.current.y,
     );
   };
+
+  /** The rectangle a painter gesture covers between its first and current cell. */
+  const painterRange = (anchor: GridCellAddress, focus: GridCellAddress): GridRange => ({
+    startRow: Math.min(anchor.row, focus.row),
+    startCol: Math.min(anchor.col, focus.col),
+    endRow: Math.max(anchor.row, focus.row),
+    endCol: Math.max(anchor.col, focus.col),
+  });
+
+  const samePainterRange = (left: GridRange | null, right: GridRange | null): boolean =>
+    left === right ||
+    (left !== null &&
+      right !== null &&
+      left.startRow === right.startRow &&
+      left.startCol === right.startCol &&
+      left.endRow === right.endRow &&
+      left.endCol === right.endCol);
 
   /** Extend the ordinary selection from the press cell as the pointer moves. */
   const beginSelectionDrag = (
@@ -758,6 +813,22 @@ export function CanvasGrid({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
+    if (painterActive === true) {
+      setCanvasCursor(null);
+      if (painterDragRef.current !== null) return;
+      const address = cellAtClientPoint(event.clientX, event.clientY);
+      const next =
+        address === null
+          ? null
+          : (() => {
+              const target = mergeAnchor(stateRef.current.projection, address);
+              return painterRange(target, target);
+            })();
+      if (samePainterRange(painterTargetRef.current, next)) return;
+      painterTargetRef.current = next;
+      schedulePaint();
+      return;
+    }
     if (resizeDragRef.current !== null) return;
     const layout = layoutRef.current;
     if (layout === null) return;
@@ -774,6 +845,13 @@ export function CanvasGrid({
   };
 
   const handlePointerLeave = (): void => {
+    if (painterActive === true) {
+      setCanvasCursor(null);
+      if (painterDragRef.current !== null || painterTargetRef.current === null) return;
+      painterTargetRef.current = null;
+      schedulePaint();
+      return;
+    }
     if (resizeDragRef.current === null) setCanvasCursor(null);
   };
 
@@ -786,6 +864,68 @@ export function CanvasGrid({
     const current = stateRef.current.projection;
     const scroll = scrollRef.current;
     const session = editorSessionRef.current;
+
+    // Format Painter: a press starts one target range, a drag extends it and
+    // the release submits a single apply command. It never changes the
+    // document selection or opens the in-cell editor.
+    if (painterActive === true && event.button === 0) {
+      const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
+      if (address === null) return;
+      event.preventDefault();
+      const anchor = mergeAnchor(current, address);
+      const drag = { pointerId: event.pointerId, anchor, focus: anchor };
+      painterDragRef.current = drag;
+      painterTargetRef.current = painterRange(anchor, anchor);
+      schedulePaint();
+
+      const move = (moveEvent: PointerEvent): void => {
+        if (moveEvent.pointerId !== drag.pointerId) return;
+        const nextAddress = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+        if (nextAddress === null) return;
+        const focus = mergeAnchor(stateRef.current.projection, nextAddress);
+        if (focus.row === drag.focus.row && focus.col === drag.focus.col) return;
+        drag.focus = focus;
+        painterTargetRef.current = painterRange(drag.anchor, focus);
+        schedulePaint();
+      };
+      const end = (upEvent: PointerEvent): void => {
+        if (upEvent.pointerId !== drag.pointerId) return;
+        stopTracking();
+        const range = painterRange(drag.anchor, drag.focus);
+        painterDragRef.current = null;
+        painterCleanupRef.current = null;
+        painterTargetRef.current = null;
+        schedulePaint();
+        onPainterApply?.(range);
+      };
+      const cancel = (cancelEvent: PointerEvent): void => {
+        if (cancelEvent.pointerId !== drag.pointerId) return;
+        stopTracking();
+        painterDragRef.current = null;
+        painterCleanupRef.current = null;
+        painterTargetRef.current = null;
+        schedulePaint();
+      };
+      const stopTracking = (): void => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', end);
+        window.removeEventListener('pointercancel', cancel);
+        window.removeEventListener('blur', onWindowBlur);
+      };
+      const onWindowBlur = (): void => {
+        stopTracking();
+        painterDragRef.current = null;
+        painterCleanupRef.current = null;
+        painterTargetRef.current = null;
+        schedulePaint();
+      };
+      painterCleanupRef.current = stopTracking;
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', cancel);
+      window.addEventListener('blur', onWindowBlur);
+      return;
+    }
 
     // A formula edit points at cells: a press inserts a reference and a drag
     // extends it. The textarea keeps the focus, so the edit is not committed.
@@ -889,6 +1029,9 @@ export function CanvasGrid({
   };
 
   const handleDoubleClick = (event: ReactPointerEvent<HTMLCanvasElement>): void => {
+    // Format Painter applies on a single click; a second click must not open
+    // the editor or apply twice.
+    if (painterActive === true) return;
     // A double-click while pointing must not abandon the formula edit.
     if (editorSessionRef.current !== null) return;
     if (formulaBarPointing !== null && formulaBarPointing !== undefined) return;
@@ -1233,7 +1376,7 @@ export function CanvasGrid({
     >
       <canvas
         ref={canvasRef}
-        className="grid-canvas"
+        className={painterActive === true ? 'grid-canvas painter-active' : 'grid-canvas'}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}

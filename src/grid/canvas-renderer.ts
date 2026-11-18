@@ -40,6 +40,8 @@ const COLORS = Object.freeze({
   selectionFill: 'rgba(26, 115, 232, 0.10)',
   selectionBorder: '#1a73e8',
   fillHandle: '#1a73e8',
+  painterFill: 'rgba(237, 125, 49, 0.18)',
+  painterBorder: '#c55a11',
 });
 
 /** Excel's default automatic border colour. */
@@ -125,6 +127,7 @@ export class CanvasRenderFrame implements RenderFrame {
       this.paintPane(pane, projection, layout, scrollX, scrollY);
     }
     this.paintPointing(state, layout, panes, scrollX, scrollY);
+    this.paintPainter(state, layout, panes, scrollX, scrollY);
     this.paintSelection(state, layout, panes, scrollX, scrollY);
     this.paintHeaders(state, layout, panes, scrollX, scrollY);
   }
@@ -142,8 +145,56 @@ export class CanvasRenderFrame implements RenderFrame {
   ): void {
     const range = state.pointing ?? null;
     if (range === null) return;
+    this.paintRangeHighlight(
+      state,
+      range,
+      layout,
+      panes,
+      scrollX,
+      scrollY,
+      COLORS.selectionFill,
+      COLORS.selectionBorder,
+      false,
+    );
+  }
+
+  /** The Format Painter target follows the pointer before a single apply. */
+  private paintPainter(
+    state: GridRenderState,
+    layout: PaneLayout,
+    panes: readonly Pane[],
+    scrollX: number,
+    scrollY: number,
+  ): void {
+    const range = state.painter ?? null;
+    if (range === null) return;
+    this.paintRangeHighlight(
+      state,
+      range,
+      layout,
+      panes,
+      scrollX,
+      scrollY,
+      COLORS.painterFill,
+      COLORS.painterBorder,
+      true,
+    );
+  }
+
+  private paintRangeHighlight(
+    state: GridRenderState,
+    range: NonNullable<GridRenderState['pointing']>,
+    layout: PaneLayout,
+    panes: readonly Pane[],
+    scrollX: number,
+    scrollY: number,
+    fill: string,
+    stroke: string,
+    dashed: boolean,
+  ): void {
     const { context } = this;
-    context.fillStyle = COLORS.selectionFill;
+    context.save();
+    context.fillStyle = fill;
     for (const pane of panes) {
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
@@ -159,8 +210,9 @@ export class CanvasRenderFrame implements RenderFrame {
         bottomRight.y + bottomRight.height - topLeft.y,
       );
     }
-    context.strokeStyle = COLORS.selectionBorder;
+    context.strokeStyle = stroke;
     context.lineWidth = 2;
+    context.setLineDash(dashed ? [6, 3] : []);
     for (const pane of panes) {
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
@@ -176,6 +228,7 @@ export class CanvasRenderFrame implements RenderFrame {
         Math.max(0, bottomRight.y + bottomRight.height - topLeft.y - 2),
       );
     }
+    context.restore();
   }
 
   private paintPane(
@@ -231,10 +284,20 @@ export class CanvasRenderFrame implements RenderFrame {
 
   private paintFill(rect: CellRect, fill: ProjectedStyle['fill']): void {
     const { x, y, width, height } = rect;
-    if (fill.color === null) return;
     if (fill.pattern === 'none') return;
     if (fill.pattern === 'solid' || fill.pattern === '') {
+      if (fill.color === null) return;
       this.context.fillStyle = fill.color;
+      this.context.fillRect(x, y, width, height);
+      return;
+    }
+    if (fill.color === null) {
+      // A pattern fill with no foreground colour still paints its background.
+      // The dialog allows that combination; omitting it would make the cell
+      // look unfilled even though the style carries a colour.
+      const background = fill.backgroundColor;
+      if (background === null || background === undefined) return;
+      this.context.fillStyle = background;
       this.context.fillRect(x, y, width, height);
       return;
     }

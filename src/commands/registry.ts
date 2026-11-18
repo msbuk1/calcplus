@@ -8,6 +8,7 @@ import { dimensionSetCommand } from './dimension';
 import { findReplaceAllCommand, findReplaceOneCommand, findSearchCommand } from './find';
 import { formatCommands } from './format';
 import { goToCommand } from './goto';
+import { painterCommands } from './painter';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { workbookDateSystemCommand } from './workbook';
 
@@ -78,6 +79,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(goToCommand);
   for (const command of clipboardCommands()) registry.register(command);
   for (const command of formatCommands()) registry.register(command);
+  for (const command of painterCommands()) registry.register(command);
   for (const command of chromeCommands()) registry.register(command);
   registry.register(undoCommand);
   registry.register(redoCommand);

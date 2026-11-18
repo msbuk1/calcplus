@@ -805,14 +805,14 @@
     "shortcut": []
   },
   {
-    "id": "edit.formatPainter",
+    "id": "painter.pickup",
     "matrixSection": "3. Formatting",
     "matrixFeature": "Format Painter",
     "label": "Format Painter",
-    "category": "edit",
-    "enablement": "A sheet is active",
-    "implemented": false,
-    "shortcut": ["Esc"],
+    "category": "format",
+    "enablement": "A sheet is active and a cell is selected",
+    "implemented": true,
+    "shortcut": [],
     "ribbon": [
       {
         "tab": "Home",
@@ -822,7 +822,18 @@
         "label": "Painter",
         "title": "Format Painter"
       }
-    ]
+    ],
+    "contextMenu": { "order": 35 }
+  },
+  {
+    "id": "painter.apply",
+    "matrixSection": "3. Formatting",
+    "matrixFeature": "Format Painter",
+    "label": "Apply picked-up format",
+    "category": "format",
+    "enablement": "A format is picked up and a target range is selected",
+    "implemented": true,
+    "shortcut": []
   },
   {
     "id": "format.cellsDialog",
@@ -831,7 +842,7 @@
     "label": "Format Cells",
     "category": "format",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+1"],
     "ribbon": [
       {
@@ -842,7 +853,8 @@
         "label": "Format…",
         "title": "Format Cells"
       }
-    ]
+    ],
+    "contextMenu": { "order": 55 }
   },
   {
     "id": "format.numberFormat",
