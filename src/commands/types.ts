@@ -1,5 +1,6 @@
 import type { ClipboardSnapshot } from '@model/clipboard';
 import type { FindMatch } from '@model/find';
+import type { StructuralEdit } from '@model/range-transform';
 import type { SortBlockCode, SortStopReason, SortWarning } from '@model/sort';
 import type {
   AutoFilter,
@@ -7,6 +8,7 @@ import type {
   CellAddress,
   ColumnDimension,
   CommentRecord,
+  ConditionalFormatRecord,
   GridRange,
   HyperlinkRecord,
   RowDimension,
@@ -14,6 +16,7 @@ import type {
   SheetId,
   StyleId,
   StyleRecord,
+  ValidationRecord,
   Workbook,
 } from '@model/types';
 
@@ -111,10 +114,31 @@ export interface SortPayload {
   readonly hiddenRowCount?: number;
 }
 
+/**
+ * What a `structure.*` command reports back to its surface (feature matrix
+ * "Insert/delete rows, columns and cells"). A blocked edit creates no
+ * transaction; an applied edit is one transaction whose shape is
+ * `StructureApplyChange`.
+ */
+export interface StructurePayload {
+  readonly state: 'applied' | 'blocked' | 'none';
+  readonly sheetId: SheetId;
+  readonly edit: StructuralEdit | null;
+  readonly message?: string;
+  /** Cells moved, removed or with a rewritten formula. */
+  readonly cellCount: number;
+  readonly formulaRewrites: number;
+  /** Row and column dimension records that moved or renumbered. */
+  readonly dimensionCount: number;
+  /** `true` when deleting the header row cleared the AutoFilter (§3.5). */
+  readonly filterCleared: boolean;
+}
+
 export interface CommandResult {
   readonly changes: readonly CommandChange[];
   readonly selectionAfter?: GridRange;
-  /**
+  /** The structural-edit outcome: the applied edit or Excel's block message. */
+  readonly structure?: StructurePayload; /**
    * A view-state hint, never a document change: the sheet the caller should
    * activate after this command or undo. Undo of an insert names the fallback
    * tab; a sheet delete is terminal, so it names the neighbouring tab.
@@ -309,6 +333,69 @@ export interface NameSetChange {
   readonly after: string;
 }
 
+/**
+ * One cell moved, removed or rewritten by a structural edit. `from` is `null`
+ * only when a caller materialises a cell, `to` is `null` when the edit deletes
+ * it. `before` and `after` are the exact cell states at each address.
+ */
+export interface StructureCellRecord {
+  readonly sheetId: SheetId;
+  readonly from: CellAddress | null;
+  readonly to: CellAddress | null;
+  readonly before: Cell | null;
+  readonly after: Cell | null;
+}
+
+export interface StructureRowsChange {
+  readonly before: readonly (readonly [number, RowDimension])[];
+  readonly after: readonly (readonly [number, RowDimension])[];
+}
+
+export interface StructureColumnsChange {
+  readonly before: readonly (readonly [number, ColumnDimension])[];
+  readonly after: readonly (readonly [number, ColumnDimension])[];
+}
+
+export interface StructureListsChange<T> {
+  readonly before: readonly T[];
+  readonly after: readonly T[];
+}
+
+export interface StructureFilterChange {
+  readonly before: AutoFilter | null;
+  readonly after: AutoFilter | null;
+}
+
+/**
+ * One structural edit as one transaction (feature matrix §1; command-system
+ * §2 and §4; sort-autofilter §3.5; CF §7).
+ *
+ * The change carries every consequence of the edit: the moved, deleted and
+ * formula-rewritten cells across every sheet, the renumbered row and column
+ * dimensions, merged ranges, comments and hyperlinks, CF and validation
+ * records, the AutoFilter, and the renumbered workbook-part baseline the next
+ * save patches against. Undo restores every side exactly, so no reference
+ * rewrite is ever recomputed.
+ */
+export interface StructureApplyChange {
+  readonly type: 'structure.apply';
+  readonly sheetId: SheetId;
+  readonly partPath: string;
+  readonly edit: StructuralEdit;
+  readonly cells: readonly StructureCellRecord[];
+  readonly rows: StructureRowsChange;
+  readonly columns: StructureColumnsChange;
+  readonly merges: StructureListsChange<GridRange>;
+  readonly comments: SortAttachmentChange<CommentRecord>;
+  readonly hyperlinks: SortAttachmentChange<HyperlinkRecord>;
+  readonly validation: StructureListsChange<ValidationRecord>;
+  readonly conditionalFormats: StructureListsChange<ConditionalFormatRecord>;
+  readonly autoFilter: StructureFilterChange;
+  /** The source part bytes before and after renumbering, or `null` when absent. */
+  readonly sourceBefore: Uint8Array | null;
+  readonly sourceAfter: Uint8Array | null;
+}
+
 export type CommandChange =
   | CellSetChange
   | StyleSetChange
@@ -320,7 +407,8 @@ export type CommandChange =
   | SheetRenameChange
   | NameSetChange
   | SortApplyChange
-  | FilterSetChange;
+  | FilterSetChange
+  | StructureApplyChange;
 
 /**
  * The calculation layer observes committed changes. It never participates in
@@ -398,6 +486,30 @@ export function inverseChange(change: CommandChange): CommandChange {
           before: row.after,
           after: row.before,
         })),
+      };
+    case 'structure.apply':
+      return {
+        ...change,
+        cells: change.cells.map((cell) => ({
+          sheetId: cell.sheetId,
+          from: cell.to,
+          to: cell.from,
+          before: cell.after,
+          after: cell.before,
+        })),
+        rows: { before: change.rows.after, after: change.rows.before },
+        columns: { before: change.columns.after, after: change.columns.before },
+        merges: { before: change.merges.after, after: change.merges.before },
+        comments: { before: change.comments.after, after: change.comments.before },
+        hyperlinks: { before: change.hyperlinks.after, after: change.hyperlinks.before },
+        validation: { before: change.validation.after, after: change.validation.before },
+        conditionalFormats: {
+          before: change.conditionalFormats.after,
+          after: change.conditionalFormats.before,
+        },
+        autoFilter: { before: change.autoFilter.after, after: change.autoFilter.before },
+        sourceBefore: change.sourceAfter,
+        sourceAfter: change.sourceBefore,
       };
   }
 }

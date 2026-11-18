@@ -251,7 +251,8 @@ export function changesRequireRebuild(changes: readonly CommandChange[]): boolea
       change.type === 'name.set' ||
       change.type === 'sheet.add' ||
       change.type === 'sheet.delete' ||
-      change.type === 'sheet.rename',
+      change.type === 'sheet.rename' ||
+      change.type === 'structure.apply',
   );
 }
 

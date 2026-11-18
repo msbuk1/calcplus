@@ -161,8 +161,8 @@
     "label": "Insert rows",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+Shift+="]
   },
   {
     "id": "structure.insertColumns",
@@ -171,8 +171,8 @@
     "label": "Insert columns",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+Shift+="]
   },
   {
     "id": "structure.insertCells",
@@ -181,8 +181,8 @@
     "label": "Insert cells",
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+Shift+="]
   },
   {
     "id": "structure.deleteRows",
@@ -191,8 +191,8 @@
     "label": "Delete rows",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+-"]
   },
   {
     "id": "structure.deleteColumns",
@@ -201,8 +201,8 @@
     "label": "Delete columns",
     "category": "edit",
     "enablement": "A sheet is active",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+-"]
   },
   {
     "id": "structure.deleteCells",
@@ -211,8 +211,34 @@
     "label": "Delete cells",
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": ["Ctrl+-"],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Cells",
+        "kind": "menu",
+        "order": 20,
+        "row": 1,
+        "label": "Delete",
+        "title": "Delete",
+        "menu": [
+          { "label": "Delete Rows", "commandId": "structure.deleteRows" },
+          { "label": "Delete Columns", "commandId": "structure.deleteColumns" },
+          {
+            "label": "Delete Cells & Shift Up",
+            "commandId": "structure.deleteCells",
+            "args": { "shift": "up" }
+          },
+          {
+            "label": "Delete Cells & Shift Left",
+            "commandId": "structure.deleteCells",
+            "args": { "shift": "left" }
+          },
+          { "label": "Delete Sheet", "commandId": "sheet.delete" }
+        ]
+      }
+    ]
   },
   {
     "id": "dimension.set",
@@ -1208,6 +1234,16 @@
     "shortcut": []
   },
   {
+    "id": "formula.insertFunction",
+    "matrixSection": "4. Formulas and names",
+    "matrixFeature": "Insert Function dialog (search, category, signature and description)",
+    "label": "Insert Function",
+    "category": "formula",
+    "enablement": "A sheet is active",
+    "implemented": false,
+    "shortcut": []
+  },
+  {
     "id": "formula.evaluate",
     "matrixSection": "4. Formulas and names",
     "matrixFeature": "Formula semantics, function coverage, errors, arrays, dates, references",
@@ -1301,16 +1337,26 @@
         "label": "Insert",
         "title": "Insert",
         "menu": [
-          { "label": "Insert Rows Above", "commandId": "structure.insertRows" },
-          { "label": "Insert Columns to the Left", "commandId": "structure.insertColumns" },
+          {
+            "label": "Insert Rows Above",
+            "commandId": "structure.insertRows",
+            "shortcut": "Ctrl+Shift+="
+          },
+          {
+            "label": "Insert Columns to the Left",
+            "commandId": "structure.insertColumns",
+            "shortcut": "Ctrl+Shift+="
+          },
           {
             "label": "Insert Cells & Shift Right",
             "commandId": "structure.insertCells",
+            "shortcut": "Ctrl+Shift+=",
             "args": { "shift": "right" }
           },
           {
             "label": "Insert Cells & Shift Down",
             "commandId": "structure.insertCells",
+            "shortcut": "Ctrl+Shift+=",
             "args": { "shift": "down" }
           },
           { "label": "Insert Sheet", "commandId": "sheet.insert" }

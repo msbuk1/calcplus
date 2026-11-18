@@ -18,6 +18,7 @@ import { goToCommand } from './goto';
 import { painterCommands } from './painter';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { sortCommand } from './sort';
+import { structureCommands } from './structure';
 import { workbookDateSystemCommand } from './workbook';
 
 export class CommandRegistry {
@@ -79,6 +80,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(sheetInsertCommand);
   registry.register(sheetDeleteCommand);
   registry.register(sheetRenameCommand);
+  for (const command of structureCommands()) registry.register(command);
   registry.register(clearContentsCommand);
   registry.register(autoSumCommand);
   registry.register(sortCommand);

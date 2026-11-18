@@ -22,6 +22,7 @@ import type {
   CommandResult,
   SheetAttachmentEntry,
   SortApplyChange,
+  StructureApplyChange,
 } from './types';
 import { changeCells, inverseChange } from './types';
 import { createCommandRegistry } from './registry';
@@ -574,6 +575,10 @@ export class DocumentSession {
         sheet.autoFilter = filter === null ? null : cloneAutoFilter(filter);
         continue;
       }
+      if (change.type === 'structure.apply') {
+        this.applyStructureChange(sheet, change, direction);
+        continue;
+      }
       if (change.type === 'merge.set') {
         const merged = direction === 'after' ? change.after : change.before;
         sheet.merges.splice(
@@ -688,6 +693,76 @@ export class DocumentSession {
     );
   }
 
+  /**
+   * Apply one structural edit. Every side of the change is an exact snapshot,
+   * so undo needs no second transform: the inverse record carries the prior
+   * cells, dimensions, merges, records, filter and source-part baseline.
+   */
+  private applyStructureChange(
+    sheet: ReturnType<typeof getSheetById>,
+    change: StructureApplyChange,
+    direction: 'before' | 'after',
+  ): void {
+    const source = direction === 'after' ? change.sourceAfter : change.sourceBefore;
+    if (source === null) this.workbook.sourceParts.delete(change.partPath);
+    else this.workbook.sourceParts.set(change.partPath, source);
+
+    const rows = direction === 'after' ? change.rows.after : change.rows.before;
+    sheet.rowDimensions.clear();
+    for (const [index, dimension] of rows) sheet.rowDimensions.set(index, { ...dimension });
+
+    const columns = direction === 'after' ? change.columns.after : change.columns.before;
+    sheet.columnDimensions.clear();
+    for (const [index, dimension] of columns) sheet.columnDimensions.set(index, { ...dimension });
+
+    const merges = direction === 'after' ? change.merges.after : change.merges.before;
+    sheet.merges.splice(
+      0,
+      sheet.merges.length,
+      ...merges.map((range) => ({ range: { ...range } })),
+    );
+
+    replaceAttachments(
+      sheet.comments,
+      direction === 'after' ? change.comments.after : change.comments.before,
+    );
+    replaceAttachments(
+      sheet.hyperlinks,
+      direction === 'after' ? change.hyperlinks.after : change.hyperlinks.before,
+    );
+
+    const validation = direction === 'after' ? change.validation.after : change.validation.before;
+    sheet.validation.splice(
+      0,
+      sheet.validation.length,
+      ...validation.map((record) => ({ ...record })),
+    );
+    const conditionalFormats =
+      direction === 'after' ? change.conditionalFormats.after : change.conditionalFormats.before;
+    sheet.conditionalFormats.splice(
+      0,
+      sheet.conditionalFormats.length,
+      ...conditionalFormats.map((record) => ({ ...record })),
+    );
+
+    const filter = direction === 'after' ? change.autoFilter.after : change.autoFilter.before;
+    sheet.autoFilter = filter === null ? null : cloneAutoFilter(filter);
+
+    for (const cell of change.cells) {
+      if (cell.from === null) continue;
+      if (cell.to !== null && cell.to.row === cell.from.row && cell.to.col === cell.from.col) {
+        continue;
+      }
+      const owner = getSheetById(this.workbook, cell.sheetId);
+      setCellSnapshot(owner, cell.from.row, cell.from.col, null);
+    }
+    for (const cell of change.cells) {
+      if (cell.to === null) continue;
+      const owner = getSheetById(this.workbook, cell.sheetId);
+      setCellSnapshot(owner, cell.to.row, cell.to.col, cloneCell(cell.after));
+    }
+  }
+
   private applyStyleSnapshots(
     sheet: ReturnType<typeof getSheetById>,
     range: GridRange,
@@ -758,6 +833,40 @@ export class DocumentSession {
         this.dirtyWorkbook = true;
         this.structuralVersionCounter += 1;
         if (change.type === 'sort.apply') this.dirtyMerges.add(change.sheetId);
+        continue;
+      }
+      if (change.type === 'structure.apply') {
+        // A structural edit rewrites the sheet's source-part baseline and every
+        // reference-bearing record, so the whole workbook (and the names,
+        // filter database and calc chain derived from it) goes through a save.
+        this.dirtyWorkbook = true;
+        this.structuralVersionCounter += 1;
+        // This is also what makes the save visit the sheet: a pure move leaves
+        // no dirty cell (the renumbered baseline already holds it), so the
+        // merge marker is the structural "write this part" signal.
+        this.dirtyMerges.add(change.sheetId);
+        for (const cell of change.cells) {
+          if (cell.to === null) continue;
+          // A pure move is already in the renumbered source-part baseline; only
+          // a cell whose content changed needs a patch. This keeps an inline
+          // string, rich text or an unmodelled attribute byte-identical when
+          // the structural edit merely moves its cell.
+          if (cell.before === cell.after) continue;
+          const cells = this.dirtyCells.get(cell.sheetId) ?? new Set<string>();
+          cells.add(`${cell.to.row}:${cell.to.col}`);
+          this.dirtyCells.set(cell.sheetId, cells);
+        }
+        const dimensions = this.dirtyDimensions.get(change.sheetId) ?? {
+          rows: new Set<number>(),
+          columns: new Set<number>(),
+        };
+        if (!dimensionEntriesEqual(change.rows.before, change.rows.after)) {
+          for (const [index] of change.rows.after) dimensions.rows.add(index);
+        }
+        if (!dimensionEntriesEqual(change.columns.before, change.columns.after)) {
+          for (const [index] of change.columns.after) dimensions.columns.add(index);
+        }
+        this.dirtyDimensions.set(change.sheetId, dimensions);
         continue;
       }
       if (change.type === 'merge.set') {
@@ -851,6 +960,22 @@ function mergeRangeListsEqual(left: readonly GridRange[], right: readonly GridRa
   );
 }
 
+/** `true` when a structural edit left a dimension map's keys and values alone. */
+function dimensionEntriesEqual<T>(
+  left: readonly (readonly [number, T])[],
+  right: readonly (readonly [number, T])[],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((entry, index) => {
+    const other = right[index];
+    if (other === undefined || entry[0] !== other[0]) return false;
+    return dimensionEquals(
+      entry[1] as unknown as RowDimension | ColumnDimension | null,
+      other[1] as unknown as RowDimension | ColumnDimension | null,
+    );
+  });
+}
+
 function estimateBytes(changes: readonly CommandChange[]): number {
   let total = 0;
   for (const change of changes) {
@@ -884,6 +1009,25 @@ function estimateBytes(changes: readonly CommandChange[]): number {
       total += (change.merges.before.length + change.merges.after.length) * 32;
       total += (change.comments.before.length + change.comments.after.length) * 48;
       total += (change.hyperlinks.before.length + change.hyperlinks.after.length) * 48;
+      continue;
+    }
+    if (change.type === 'structure.apply') {
+      total += 128;
+      for (const cell of change.cells) {
+        total += 96 + estimateCell(cell.before) + estimateCell(cell.after);
+      }
+      total += (change.rows.before.length + change.rows.after.length) * 48;
+      total += (change.columns.before.length + change.columns.after.length) * 48;
+      total += (change.merges.before.length + change.merges.after.length) * 32;
+      total += (change.comments.before.length + change.comments.after.length) * 48;
+      total += (change.hyperlinks.before.length + change.hyperlinks.after.length) * 48;
+      total += (change.validation.before.length + change.validation.after.length) * 96;
+      total +=
+        (change.conditionalFormats.before.length + change.conditionalFormats.after.length) * 96;
+      total += estimateAutoFilter(change.autoFilter.before);
+      total += estimateAutoFilter(change.autoFilter.after);
+      total += change.sourceBefore?.byteLength ?? 0;
+      total += change.sourceAfter?.byteLength ?? 0;
       continue;
     }
     if (change.type === 'sheet.add' || change.type === 'sheet.delete') {

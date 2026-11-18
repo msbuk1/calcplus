@@ -192,12 +192,10 @@ describe('Styles group (ticket 27 carve-out)', () => {
 });
 
 describe('Cells and Editing groups', () => {
-  it('offers the Insert menu shell, rendering only the implemented entries', () => {
+  it('renders the Insert and Delete menus now that the structural commands are implemented', () => {
     const cells = group('Home', 'Cells');
-    expect(cells.controls.map((entry) => entry.label)).toEqual(['Insert']);
+    expect(cells.controls.map((entry) => entry.label)).toEqual(['Insert', 'Delete']);
     expect(control(cells, 'sheet.insert').kind).toBe('menu');
-    // The map reserves the capture's Insert menu; the structural commands are
-    // still planned, so only Insert Sheet reaches the rendered menu.
     const menu = control(cells, 'sheet.insert').menu ?? [];
     expect(menu.map((item) => item.label)).toEqual([
       'Insert Rows Above',
@@ -207,7 +205,29 @@ describe('Cells and Editing groups', () => {
       'Insert Sheet',
     ]);
     expect(ribbonMenuItems(menu, alwaysEnabled).map((item) => item.label)).toEqual([
+      'Insert Rows Above',
+      'Insert Columns to the Left',
+      'Insert Cells & Shift Right',
+      'Insert Cells & Shift Down',
       'Insert Sheet',
+    ]);
+
+    // The Delete menu mirrors the Insert menu (ticket 28's open capture
+    // question): Delete Rows / Columns / Cells & Shift Up / Shift Left / Sheet.
+    const deleteMenu = control(cells, 'structure.deleteCells').menu ?? [];
+    expect(deleteMenu.map((item) => item.label)).toEqual([
+      'Delete Rows',
+      'Delete Columns',
+      'Delete Cells & Shift Up',
+      'Delete Cells & Shift Left',
+      'Delete Sheet',
+    ]);
+    expect(ribbonMenuItems(deleteMenu, alwaysEnabled).map((item) => item.label)).toEqual([
+      'Delete Rows',
+      'Delete Columns',
+      'Delete Cells & Shift Up',
+      'Delete Cells & Shift Left',
+      'Delete Sheet',
     ]);
   });
 

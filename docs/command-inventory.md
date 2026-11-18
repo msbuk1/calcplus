@@ -9,11 +9,11 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 
 ## Summary
 
-- Feature-matrix IN rows: 56
-- Inventory commands: 100
-- Implemented in this build: 48
-- Planned for a later slice: 52
-- Out-of-scope rows (V2 or NEVER): 29
+- Feature-matrix IN rows: 57
+- Inventory commands: 101
+- Implemented in this build: 54
+- Planned for a later slice: 47
+- Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
 that the command exists.
@@ -36,12 +36,12 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | A sheet is active and the fill handle is visible | Planned |
 | `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | A sheet is active and a range is selected | Planned |
 | `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | A sheet is active and a range is selected | Planned |
-| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | — | — | — | A sheet is active and a range is selected | Planned |
-| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | — | — | A sheet is active | Planned |
-| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | — | — | A sheet is active | Planned |
-| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | — | — | A sheet is active and a range is selected | Planned |
-| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | — | — | A sheet is active | Planned |
-| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | — | — | A sheet is active | Planned |
+| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | Home → Cells | — | Ctrl+- | A sheet is active and a range is selected | Implemented |
+| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | — | Ctrl+- | A sheet is active | Implemented |
+| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | — | Ctrl+- | A sheet is active | Implemented |
+| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | — | Ctrl+Shift+= | A sheet is active and a range is selected | Implemented |
+| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | — | Ctrl+Shift+= | A sheet is active | Implemented |
+| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | — | Ctrl+Shift+= | A sheet is active | Implemented |
 | `dimension.set` | 1. Grid and editing — Row/column resize by drag; autofit by double-click and menu | Row height and column width | — | — | — | A sheet is active | Implemented |
 | `merge.across` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Across | — | — | — | A sheet is active and a range is selected | Planned |
 | `merge.cells` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Cells | — | — | — | A sheet is active and a range is selected | Planned |
@@ -83,6 +83,7 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `formula.autosum` | 4. Formulas and names — AutoSum (`Alt+=`, command `formula.autosum`) | AutoSum | Home → Editing<br>Formulas → Function Library | — | Alt+= | A sheet is active and a cell is selected | Implemented |
 | `formula.autocomplete` | 4. Formulas and names — Function autocomplete and signature hints | Function autocomplete and signature hints | — | — | — | The formula editor is open | Planned |
 | `name.resolve` | 4. Formulas and names — Defined names: evaluate, preserve, use in formulas and Go To | Use defined names | — | — | — | A sheet is active and a defined name exists | Planned |
+| `formula.insertFunction` | 4. Formulas and names — Insert Function dialog (search, category, signature and description) | Insert Function | — | — | — | A sheet is active | Planned |
 | `formula.evaluate` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Evaluate formulas | — | — | — | A sheet is active | Planned |
 | `workbook.dateSystem` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Use 1904 date system | — | — | — | A sheet is active | Implemented |
 | `file.new` | 5. Workbook and sheets — New blank workbook | New | — | File | — | No file operation is in progress | Implemented |
@@ -150,7 +151,6 @@ These rows stay hidden in v1. The generator rejects an inventory entry that name
 | 3. Formatting | Named cell styles and theme colours/fonts (authoring) | V2 | Hidden; no control rendered |
 | 3. Formatting | Conditional-formatting authoring, rule manager, formula-based custom rules, stop-if-true UI | V2 | Hidden; no control rendered |
 | 4. Formulas and names | Name Manager / name creation and editing | V2 | Hidden; no control rendered |
-| 4. Formulas and names | Insert Function dialog | V2 | Hidden; no control rendered |
 | 4. Formulas and names | Formula auditing: trace precedents/dependents, watch window, error checking, show formulas | V2 | Hidden; no control rendered |
 | 4. Formulas and names | Manual calculation mode / calculation options | V2 | Hidden; no control rendered |
 | 5. Workbook and sheets | Reorder, move/copy, hide/unhide sheets, tab colours | V2 | Hidden; no control rendered |
