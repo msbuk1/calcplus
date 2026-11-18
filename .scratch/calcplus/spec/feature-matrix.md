@@ -70,7 +70,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | Function autocomplete and signature hints | IN | Typing `=` and a function name suggests matching functions; choosing one shows argument signatures; keyboard navigation works. |
 | Defined names: evaluate, preserve, use in formulas and Go To | IN | Names in imported workbooks resolve and round-trip; no editor in v1. |
 | Name Manager / name creation and editing | V2 | — |
-| Insert Function dialog | V2 | — |
+| Insert Function dialog (search, category, signature and description) | IN | Matches the Excel layout; choosing a function inserts its skeleton with the cursor on the first argument. The argument wizard is V2. |
 | Formula auditing: trace precedents/dependents, watch window, error checking, show formulas | V2 | — |
 | Manual calculation mode / calculation options | V2 | — |
 | Formula semantics, function coverage, errors, arrays, dates, references | IN | Owned by [02 — Formula semantics and function coverage](../issues/02-formula-semantics.md). |
@@ -133,7 +133,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 
 ## 9. Deferred to v2
 
-Paste Special · fill series · discontiguous selection · entry AutoComplete · hide/unhide rows and columns · reorder/move/copy/hide sheets · tab colours · grouping/outline · tables · data validation · filter by colour/Top 10/advanced filter · conditional-formatting authoring · theme and named-style authoring · Name Manager · Insert Function · formula auditing · manual calculation · split view · page-break preview · custom views · full page setup · hyperlink authoring · comment authoring · protection authoring and enforcement · charts/images/shapes/sparklines · assistive-technology support and WCAG conformance · localization · dark mode/theming.
+Paste Special · fill series · discontiguous selection · entry AutoComplete · hide/unhide rows and columns · reorder/move/copy/hide sheets · tab colours · grouping/outline · tables · data validation · filter by colour/Top 10/advanced filter · conditional-formatting authoring · theme and named-style authoring · Name Manager · Insert Function argument wizard · formula auditing · manual calculation · split view · page-break preview · custom views · full page setup · hyperlink authoring · comment authoring · protection authoring and enforcement · charts/images/shapes/sparklines · assistive-technology support and WCAG conformance · localization · dark mode/theming.
 
 ## 10. Never / out of scope
 
