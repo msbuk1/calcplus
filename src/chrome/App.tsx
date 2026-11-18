@@ -121,6 +121,7 @@ export function App(): JSX.Element {
     null,
   );
   const [dialog, setDialog] = useState<AppDialog | null>(null);
+  const [formatCellsTab, setFormatCellsTab] = useState<string | null>(null);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
   const ribbonRef = useRef<HTMLElement | null>(null);
@@ -1765,11 +1766,16 @@ export function App(): JSX.Element {
         changeZoom(100);
         focusGrid();
         return null;
-      case 'format.cellsDialog':
+      case 'format.cellsDialog': {
         if (document === null || busy) return null;
         clearPainter();
+        // A group launcher names its tab (ticket 28); without one the dialog
+        // keeps the last tab, like Excel's Ctrl+1.
+        const tab = (args as { readonly tab?: unknown } | undefined)?.tab;
+        if (typeof tab === 'string') setFormatCellsTab(tab);
         setDialog('format');
         return null;
+      }
       case 'painter.pickup':
         if (busy) return null;
         startPainter();
@@ -2052,6 +2058,7 @@ export function App(): JSX.Element {
         <FormatCellsDialog
           initial={activeCell?.style}
           targetLabel={formatRangeAddress(selectionRange(selection), false, false)}
+          initialTab={formatCellsTab ?? undefined}
           onClose={closeDialog}
           onApply={applyFormatCells}
         />

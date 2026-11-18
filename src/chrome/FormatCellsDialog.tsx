@@ -84,6 +84,8 @@ export interface FormatCellsDialogProps {
   readonly initial?: FormatCellsInitial;
   /** The range the formatting will apply to, shown as a hint. */
   readonly targetLabel?: string;
+  /** The tab to open on, from a group's dialog launcher (ticket 28). */
+  readonly initialTab?: string;
   readonly onClose: (reason: DialogCloseReason) => void;
   readonly onApply: (payload: FormatCellsPayload) => FormatCellsOutcome;
 }
@@ -728,12 +730,15 @@ function ColorField({
 export function FormatCellsDialog({
   initial = DEFAULT_INITIAL,
   targetLabel,
+  initialTab,
   onClose,
   onApply,
 }: FormatCellsDialogProps): JSX.Element {
   const [draft, setDraft] = useState<Draft>(() => draftFromInitial(initial));
   const [committed, setCommitted] = useState<Draft>(() => draftFromInitial(initial));
-  const [activeTab, setActiveTab] = useState('font');
+  const [activeTab, setActiveTab] = useState(() =>
+    FORMAT_TABS.some((tab) => tab.id === initialTab) ? (initialTab as string) : 'font',
+  );
   const [errors, setErrors] = useState<DraftErrors>({});
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [appliedMessage, setAppliedMessage] = useState<string | null>(null);

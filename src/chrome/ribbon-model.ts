@@ -25,6 +25,7 @@ export interface RibbonTabDefinition {
 export interface RibbonLauncher {
   readonly commandId: string;
   readonly title: string;
+  readonly args?: Readonly<Record<string, unknown>>;
 }
 
 export interface ResolvedRibbonControl {
@@ -66,6 +67,13 @@ export interface ResolvedCompactControl {
   readonly title: string;
   readonly args?: Readonly<Record<string, unknown>>;
 }
+
+/** The Format Cells tab each group's dialog launcher opens. */
+const FORMAT_TAB_BY_GROUP: Readonly<Record<string, string>> = {
+  Font: 'font',
+  Alignment: 'alignment',
+  Number: 'number',
+};
 
 export const RIBBON_TABS: readonly RibbonTabDefinition[] = [
   { id: 'Home', label: 'Home' },
@@ -114,6 +122,9 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
           launchers.set(placement.group, {
             commandId: entry.id,
             title: placement.title ?? entry.label,
+            // Excel's group launcher opens the Format Cells dialog on its own
+            // tab (ticket 28 captures); the tab follows the group name.
+            args: { tab: FORMAT_TAB_BY_GROUP[placement.group] ?? 'font' },
           });
         }
         continue;

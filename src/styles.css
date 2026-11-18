@@ -806,15 +806,15 @@ a:focus-visible,
 .grid-scrollbar-vertical {
   top: 24px;
   right: 0;
-  bottom: 12px;
-  width: 12px;
+  bottom: 16px;
+  width: 16px;
 }
 
 .grid-scrollbar-horizontal {
   left: 48px;
-  right: 12px;
+  right: 16px;
   bottom: 0;
-  height: 12px;
+  height: 16px;
 }
 
 .grid-scrollbar-thumb {
@@ -831,12 +831,12 @@ a:focus-visible,
 
 .grid-scrollbar-vertical .grid-scrollbar-thumb {
   left: 2px;
-  width: 8px;
+  width: 12px;
 }
 
 .grid-scrollbar-horizontal .grid-scrollbar-thumb {
   top: 2px;
-  height: 8px;
+  height: 12px;
 }
 
 .cell-editor {

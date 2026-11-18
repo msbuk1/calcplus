@@ -207,7 +207,7 @@ function RibbonGroup({
           aria-label={launcher.title}
           disabled={!resolveState(launcher.commandId).enabled}
           data-command={launcher.commandId}
-          onClick={() => onCommand(launcher.commandId)}
+          onClick={() => onCommand(launcher.commandId, launcher.args)}
         >
           <svg viewBox="0 0 8 8" aria-hidden="true" focusable="false">
             <path d="M1 1h2M1 1v2M7 7H5M7 7V5M1 7h2M1 7V5" />

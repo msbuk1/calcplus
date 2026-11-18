@@ -5,7 +5,7 @@ export const GRID_METRICS = Object.freeze({
   headerHeight: 24,
   rowHeight: 20,
   columnWidth: 64,
-  scrollbarSize: 12,
+  scrollbarSize: 16,
   scrollbarThumb: 8,
 });
 

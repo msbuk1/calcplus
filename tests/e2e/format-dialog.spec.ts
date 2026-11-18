@@ -52,6 +52,8 @@ test('Format Cells exposes every v1 tab and applies font, fill, border, alignmen
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
+  // The launcher opens on its own tab (ticket 28); this walk starts at Font.
+  await dialog.getByRole('tab', { name: 'Font' }).click();
   await expect(dialog.getByRole('tab', { name: 'Font' })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: 'Fill' })).toBeVisible();
   await expect(dialog.getByRole('tab', { name: 'Border' })).toBeVisible();
@@ -120,6 +122,8 @@ test('Format Cells commits every changed tab as one undo step', async ({ page })
   await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
+  // The launcher opens on its own tab (ticket 28); this walk starts at Font.
+  await dialog.getByRole('tab', { name: 'Font' }).click();
 
   await dialog.getByLabel('Font', { exact: true }).fill('Arial');
   await dialog.getByLabel('Bold').check();
@@ -153,6 +157,8 @@ test('Format Cells rejects an invalid colour and number code without dispatching
   await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
+  // The launcher opens on its own tab (ticket 28); this walk starts at Font.
+  await dialog.getByRole('tab', { name: 'Font' }).click();
 
   const colours = await openColours(dialog, 'format-font-color');
   await colours.getByRole('tab', { name: 'Custom' }).click();
@@ -202,6 +208,8 @@ test('Format Cells traps focus, closes on Esc and returns focus to the grid', as
   await page.getByRole('button', { name: 'Number Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   await expect(dialog).toBeVisible();
+  // The launcher opens on its own tab (ticket 28); this walk starts at Font.
+  await dialog.getByRole('tab', { name: 'Font' }).click();
 
   // The dialog owns the focus trap and its controls stay inside it.
   await dialog.getByLabel('Font', { exact: true }).focus();
@@ -284,4 +292,24 @@ test('Format Painter applies a dragged target range and is reachable from the co
   const context = page.getByRole('menu', { name: 'Context menu' });
   await expect(context.getByRole('menuitem', { name: 'Format Painter' })).toBeVisible();
   await expect(context.getByRole('menuitem', { name: 'Format Cells' })).toBeVisible();
+});
+
+test('group launchers open the dialog on their own tab', async ({ page }) => {
+  await openFixture(page, fixture);
+
+  await page.getByRole('button', { name: 'Alignment Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Format Cells' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: 'Alignment' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole('button', { name: 'Number Settings' }).click();
+  await expect(dialog.getByRole('tab', { name: 'Number' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 });

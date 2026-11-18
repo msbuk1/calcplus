@@ -318,3 +318,11 @@ describe('every rendered control maps to one command', () => {
     }
   });
 });
+
+describe('group dialog launchers', () => {
+  it('open the Format Cells dialog on their own tab (ticket 28)', () => {
+    expect(group('Home', 'Font').launcher?.args).toEqual({ tab: 'font' });
+    expect(group('Home', 'Alignment').launcher?.args).toEqual({ tab: 'alignment' });
+    expect(group('Home', 'Number').launcher?.args).toEqual({ tab: 'number' });
+  });
+});
