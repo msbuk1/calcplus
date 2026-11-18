@@ -10,6 +10,8 @@ export interface StatusBarProps {
   readonly staleCount: number;
   /** `null` when the selection holds no numeric cell. */
   readonly statistics: SelectionStatistics | null;
+  /** `X of Y records` while an AutoFilter is on (§3.8); `null` when it is off. */
+  readonly records: { readonly visible: number; readonly total: number } | null;
   readonly showGridLines: boolean;
   readonly showHeadings: boolean;
   readonly gridLinesEnabled: boolean;
@@ -35,6 +37,7 @@ export function StatusBar({
   stale,
   staleCount,
   statistics,
+  records,
   showGridLines,
   showHeadings,
   gridLinesEnabled,
@@ -72,6 +75,11 @@ export function StatusBar({
         </span>
       ) : null}
       <span className="status-spacer" />
+      {records === null ? null : (
+        <span className="filter-records" data-testid="filter-records">
+          {records.visible} of {records.total} records
+        </span>
+      )}
       {staleCount > 0 ? (
         <span
           className="stale-marker"

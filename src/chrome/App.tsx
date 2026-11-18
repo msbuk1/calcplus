@@ -2,19 +2,36 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { RibbonTabId } from '@commands/inventory';
 import { DocumentSession } from '@commands/session';
-import type { CommandResult, FindResultPayload, PainterSnapshot } from '@commands/types';
+import type {
+  CommandResult,
+  FilterPayload,
+  FindResultPayload,
+  PainterSnapshot,
+  SortPayload,
+} from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
 import { functionEntry, functionSkeleton } from '@engine/function-catalog';
 import type { PublishedFunction } from '@engine/function-registry';
 import type { EngineCellRef } from '@engine/port';
+import { collectValueChecklist, computeHiddenLayers } from '@model/autofilter';
 import type { ClipboardMode, ClipboardSnapshot } from '@model/clipboard';
 import type { FindMatch } from '@model/find';
-import type { GridRange, SheetId, Workbook } from '@model/types';
+import type { SortDirection } from '@model/sort';
+import type {
+  AutoFilter,
+  Cell,
+  ColumnFilter,
+  GridRange,
+  Sheet,
+  SheetId,
+  Workbook,
+} from '@model/types';
 import { formatCellRef, cellKey, columnToLetters, createCell } from '@model/types';
 import { resolveReferenceText } from '@model/references';
 import type { StructuralEdit } from '@model/range-transform';
-import { parseUserValue, BLANK } from '@model/value';
+import { parseUserValue, BLANK, formatCellValue } from '@model/value';
+import type { CellValue } from '@model/value';
 import { openBlankWorkbook } from '@ooxml/blank';
 import type { CompatibilityInfo } from '@ooxml/open';
 import { openWorkbook } from '@ooxml/open';
@@ -51,6 +68,8 @@ import { ContextMenu } from '@chrome/ContextMenu';
 import type { DialogCloseReason } from '@chrome/Dialog';
 import { FindDialog } from '@chrome/FindDialog';
 import type { FindMatchView, FindOutcome, FindQuery, FindReplaceQuery } from '@chrome/FindDialog';
+import { FilterDropdown } from '@chrome/FilterDropdown';
+import type { FilterApplyOutcome } from '@chrome/FilterDropdown';
 import { FormatCellsDialog } from '@chrome/FormatCellsDialog';
 import type { FormatCellsOutcome, FormatCellsPayload } from '@chrome/FormatCellsDialog';
 import { FormulaBar } from '@chrome/FormulaBar';
@@ -61,7 +80,15 @@ import { InsertFunctionDialog } from '@chrome/InsertFunctionDialog';
 import { NameBox } from '@chrome/NameBox';
 import { Ribbon } from '@chrome/Ribbon';
 import { SheetTabs } from '@chrome/SheetTabs';
+import { SortDialog } from '@chrome/SortDialog';
+import type { SortDialogOutcome, SortSubmit } from '@chrome/SortDialog';
 import { StatusBar } from '@chrome/StatusBar';
+import {
+  detectFilterColumnType,
+  filterRecordCount,
+  isDateFormatCode,
+} from '@chrome/filter-dropdown-state';
+import type { SortDialogColumn } from '@chrome/sort-dialog-state';
 import { resolveCommandState } from '@chrome/command-state';
 import type { ChromeCommandContext } from '@chrome/command-state';
 import { nextFocusZone, type FocusZone } from '@chrome/focus';
@@ -85,7 +112,7 @@ interface LoadedDocument {
   readonly calculation: CalculationController;
 }
 
-type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format' | 'insert-function';
+type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format' | 'insert-function' | 'sort';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -125,6 +152,15 @@ export function App(): JSX.Element {
   );
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [formatCellsTab, setFormatCellsTab] = useState<string | null>(null);
+  // The Sort dialog's prefill: the range, the header guess and the sheet the
+  // command resolved when the menu asked for keys (sort-autofilter §2).
+  const [sortRequest, setSortRequest] = useState<SortPayload | null>(null);
+  // The AutoFilter dropdown's open column and viewport anchor. View state only:
+  // opening it and typing in its search box never create a transaction (§3.8).
+  const [filterDropdown, setFilterDropdown] = useState<{
+    readonly column: number;
+    readonly anchor: { readonly top: number; readonly left: number };
+  } | null>(null);
   // Functions inserted this session, most recent first. View state only: it
   // feeds the dialog's "Recently used" category and never enters the workbook.
   const [recentFunctions, setRecentFunctions] = useState<readonly PublishedFunction[]>([]);
@@ -478,6 +514,7 @@ export function App(): JSX.Element {
    */
   const closeDialog = (reason: DialogCloseReason): void => {
     setDialog(null);
+    setSortRequest(null);
     if (reason === 'escape') {
       focusGrid();
       return;
@@ -707,8 +744,16 @@ export function App(): JSX.Element {
     const listener = (event: KeyboardEvent): void => {
       // The dialog owns Esc and Tab; do not let global shortcuts move a zone
       // behind the modal while it is open. Keep the browser's own Find/History
-      // shortcuts from opening over an in-app dialog.
-      if (dialog !== null) {
+      // shortcuts from opening over an in-app dialog. The AutoFilter dropdown
+      // is not modal, but it owns the keyboard while it is open for the same
+      // reason: its search box and Esc must not trigger a ribbon shortcut.
+      if (dialog !== null || filterDropdown !== null) {
+        if (filterDropdown !== null && event.key === 'Escape') {
+          event.preventDefault();
+          setFilterDropdown(null);
+          focusGrid();
+          return;
+        }
         if (
           (event.ctrlKey || event.metaKey) &&
           !event.shiftKey &&
@@ -745,6 +790,15 @@ export function App(): JSX.Element {
         runCommandRef.current?.('formula.autosum');
         return;
       }
+      // Alt+Down opens the AutoFilter dropdown for the active column (§3.8).
+      // The grid's navigation resolver leaves Alt combinations alone, so the
+      // event reaches this listener even with the grid focused. The dropdown
+      // focuses its own first item, so the focus zone is left untouched here.
+      if (event.altKey && event.key === 'ArrowDown') {
+        event.preventDefault();
+        openFilterDropdown(selection.focus.col);
+        return;
+      }
       if (event.shiftKey && event.key === 'F11') {
         event.preventDefault();
         runCommandRef.current?.('sheet.insert');
@@ -770,6 +824,10 @@ export function App(): JSX.Element {
         if (document === null) return;
         event.preventDefault();
         runCommandRef.current?.('format.cellsDialog');
+      } else if (!inTextInput && event.shiftKey && (event.key === 'l' || event.key === 'L')) {
+        // Ctrl+Shift+L toggles AutoFilter on the selection (§3.8).
+        event.preventDefault();
+        runCommandRef.current?.('data.filter');
       } else if (event.key === 's' || event.key === 'S') {
         event.preventDefault();
         runCommandRef.current?.(event.shiftKey ? 'file.saveAs' : 'file.save');
@@ -1392,6 +1450,24 @@ export function App(): JSX.Element {
             };
       },
       getSelectionStatistics: () => selectionStatistics,
+      /**
+       * The effective hidden rows of the active sheet: the imported manual
+       * layer unioned with the filter layer (sort-autofilter §3.3). The grid
+       * paints manual rows only until the renderer consumes the filter layer.
+       */
+      getHiddenRows: () => {
+        if (document === null) return [];
+        const sheet = document.session.workbook.sheets.find(
+          (candidate) => candidate.id === document.sheetId,
+        );
+        if (sheet === undefined) return [];
+        const manual = new Set<number>();
+        for (const [row, dimension] of sheet.rowDimensions) {
+          if (dimension.hidden === true) manual.add(row);
+        }
+        const layers = computeHiddenLayers(sheet, sheet.autoFilter, manual);
+        return [...layers.effectiveHidden].sort((left, right) => left - right);
+      },
       setZoom: changeZoom,
       toggleGridLines,
       toggleHeadings,
@@ -1759,6 +1835,239 @@ export function App(): JSX.Element {
     }
   };
 
+  /**
+   * The Sort dialog's columns: every column of the target range with its header
+   * text when the first-row cell is text, so the labels match the labels the
+   * command reports for the applied sort (§2.2).
+   */
+  const sortColumns = useMemo<readonly SortDialogColumn[]>(() => {
+    if (sortRequest === null || projection === null) return [];
+    const columns: SortDialogColumn[] = [];
+    for (let col = sortRequest.range.startCol; col <= sortRequest.range.endCol; col += 1) {
+      const cell = projection.cellAt(sortRequest.range.startRow, col);
+      columns.push({
+        column: col,
+        letter: projection.columnLabel(col),
+        header: cell !== null && cell.value.type === 'text' ? cell.displayText : '',
+      });
+    }
+    return columns;
+  }, [sortRequest, projection]);
+
+  /** Open the Sort dialog from a `needs-keys` command result. */
+  const openSortDialog = (request: SortPayload): void => {
+    clearPainter();
+    setSortRequest(request);
+    setDialog('sort');
+  };
+
+  /**
+   * Confirming the dialog dispatches `data.sort` with the collected keys. The
+   * command owns the transaction, so the whole sort is one undo step (§2.7).
+   * A blocked sort keeps the dialog open with Excel's message.
+   */
+  const submitSort = (request: SortSubmit): SortDialogOutcome => {
+    if (document === null || sortRequest === null) {
+      return { ok: false, message: 'Open a workbook first.' };
+    }
+    try {
+      const result = document.session.dispatch(
+        'data.sort',
+        {
+          sheetId: sortRequest.sheetId,
+          range: sortRequest.range,
+          keys: request.keys,
+          hasHeaders: request.hasHeaders,
+        },
+        {
+          activeSheetId: document.sheetId,
+          selection: selectionRange(selection),
+          activeCell: selection.focus,
+        },
+      );
+      if (result.changes.length > 0) setVersion((value) => value + 1);
+      const payload = result.sort;
+      if (payload === undefined) {
+        const message = result.ui?.message ?? 'The sort did not run.';
+        setStatus(message);
+        return { ok: false, message };
+      }
+      setStatus(sortStatusMessage(payload));
+      if (payload.state === 'blocked') {
+        return { ok: false, message: payload.message ?? 'The sort was blocked.' };
+      }
+      return { ok: true, message: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+      return { ok: false, message };
+    }
+  };
+
+  /** Open the column dropdown under the active filter's header cell. */
+  const openFilterDropdown = (column: number): void => {
+    if (document === null || projection === null) return;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === document.sheetId,
+    );
+    const filter = sheet?.autoFilter ?? null;
+    if (filter === null) {
+      setStatus('Turn on AutoFilter (Ctrl+Shift+L) before opening a column filter.');
+      return;
+    }
+    if (column < filter.range.startCol || column > filter.range.endCol) {
+      setStatus('That column is outside the AutoFilter range.');
+      return;
+    }
+    const anchor = filterDropdownAnchor(projection, column);
+    if (anchor === null) return;
+    setFilterDropdown({ column, anchor });
+  };
+
+  const closeFilterDropdown = (): void => {
+    setFilterDropdown(null);
+    focusGrid();
+  };
+
+  /**
+   * Submit one filter command for the dropdown. The dropdown never touches the
+   * model: Apply, Clear and the conditions window all land here, and each one
+   * is the command's single transaction (§3.9).
+   */
+  const dispatchFilterCommand = (
+    commandId: string,
+    args: Record<string, unknown>,
+  ): CommandResult | null => {
+    if (document === null) return null;
+    try {
+      const result = document.session.dispatch(
+        commandId,
+        { sheetId: document.sheetId, ...args },
+        {
+          activeSheetId: document.sheetId,
+          selection: selectionRange(selection),
+          activeCell: selection.focus,
+        },
+      );
+      setVersion((value) => value + 1);
+      if (result.ui?.message !== undefined) setStatus(result.ui.message);
+      else if (result.filter !== undefined) setStatus(filterStatusMessage(result.filter));
+      return result;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  };
+
+  /**
+   * Apply or clear one column's criterion. An imported criterion calcplus cannot
+   * edit is replaced only after its confirmation (§3.7), the same way the sheet
+   * delete asks before its terminal edit.
+   */
+  const applyFilterCriterion = (
+    column: number,
+    criterion: ColumnFilter | null,
+  ): FilterApplyOutcome => {
+    const commandId = criterion === null ? 'data.filterClearColumn' : 'data.filterColumn';
+    const first = dispatchFilterCommand(
+      commandId,
+      criterion === null ? { column } : { column, criterion },
+    );
+    if (first === null) return { ok: false, message: 'The filter could not be applied.' };
+    if (first.ui?.type === 'dialog') {
+      const confirmed =
+        typeof window === 'undefined' ||
+        window.confirm(first.ui.message ?? 'Replace the existing filter?');
+      if (!confirmed) {
+        setStatus('Filter replacement cancelled.');
+        return { ok: false, message: 'The existing filter was kept.' };
+      }
+      const second = dispatchFilterCommand('data.filterColumn', {
+        column,
+        criterion,
+        confirm: true,
+      });
+      if (second === null) return { ok: false, message: 'The filter could not be applied.' };
+    }
+    return { ok: true, message: null };
+  };
+
+  /**
+   * The dropdown's Sort A to Z / Sort Z to A. The AutoFilter's first row is
+   * always the header (§3.1), so the sort keeps it and reorders the whole
+   * filter range, not just the current region.
+   */
+  const sortFilterColumn = (column: number, direction: SortDirection): void => {
+    if (document === null) return;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === document.sheetId,
+    );
+    const filter = sheet?.autoFilter ?? null;
+    if (filter === null) return;
+    setFilterDropdown(null);
+    runCommand('data.sort', {
+      sheetId: document.sheetId,
+      range: filter.range,
+      keys: [{ column, direction }],
+      hasHeaders: true,
+    });
+  };
+
+  /**
+   * The dropdown's checklist, criterion and type. The model groups, orders and
+   * formats the values; the chrome only ticks entries and builds the criterion.
+   */
+  const filterPanel = useMemo(() => {
+    if (document === null || projection === null || filterDropdown === null) return null;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === document.sheetId,
+    );
+    if (sheet === undefined) return null;
+    const filter = sheet.autoFilter;
+    if (filter === null) return null;
+    const column = filterDropdown.column;
+    if (column < filter.range.startCol || column > filter.range.endCol) return null;
+    const offset = column - filter.range.startCol;
+    const checklist = collectValueChecklist(sheet, filter, offset, {
+      displayText: filterChecklistDisplay(sheet, filter, column, projection),
+    });
+    const headerFormat =
+      projection.cellAt(filter.range.startRow, column)?.style.numberFormat ?? null;
+    const bodyFormat =
+      projection.cellAt(filter.range.startRow + 1, column)?.style.numberFormat ?? null;
+    return {
+      column,
+      columnLabel: filterColumnLabel(projection, filter, column),
+      range: filter.range,
+      checklist,
+      criterion: filter.columns.get(offset) ?? null,
+      filterType: detectFilterColumnType(
+        checklist,
+        isDateFormatCode(headerFormat) || isDateFormatCode(bodyFormat),
+      ),
+      date1904: document.session.workbook.date1904,
+    };
+  }, [document, projection, filterDropdown]);
+
+  /** The status bar's record count, derived from the same layers as the payload. */
+  const filterRecords = useMemo(() => {
+    if (document === null) return null;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === document.sheetId,
+    );
+    if (sheet === undefined) return null;
+    const filter = sheet.autoFilter;
+    if (filter === null) return null;
+    return filterRecordCount(sheet, filter);
+  }, [document, version]);
+
+  // Undo, a sheet switch or AutoFilter being switched off can remove the column
+  // the dropdown was opened on. The overlay closes rather than describing a
+  // filter that no longer exists.
+  useEffect(() => {
+    if (filterDropdown !== null && filterPanel === null) setFilterDropdown(null);
+  }, [filterDropdown, filterPanel]);
+
   const runCommand = (commandId: string, args?: unknown): string | null => {
     switch (commandId) {
       case 'file.new':
@@ -1815,6 +2124,20 @@ export function App(): JSX.Element {
         const tab = (args as { readonly tab?: unknown } | undefined)?.tab;
         if (typeof tab === 'string') setFormatCellsTab(tab);
         setDialog('format');
+        return null;
+      }
+      case 'data.sort': {
+        if (document === null) return null;
+        const result = dispatchSheetCommand('data.sort', args);
+        if (result === null) return null;
+        if (result.sort?.state === 'needs-keys') {
+          // The menu and the ribbon ask the dialog for keys; the dialog then
+          // submits this command again with them.
+          openSortDialog(result.sort);
+          return null;
+        }
+        if (result.sort !== undefined) setStatus(sortStatusMessage(result.sort));
+        focusGrid();
         return null;
       }
       case 'painter.pickup':
@@ -2062,6 +2385,7 @@ export function App(): JSX.Element {
         stale={activeCell?.stale === true}
         staleCount={staleCount}
         statistics={selectionStatistics}
+        records={filterRecords}
         showGridLines={resolveState('view.gridlines').checked}
         showHeadings={resolveState('view.headings').checked}
         gridLinesEnabled={resolveState('view.gridlines').enabled}
@@ -2115,6 +2439,37 @@ export function App(): JSX.Element {
       ) : null}
 
       {dialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+
+      {dialog === 'sort' && sortRequest !== null ? (
+        <SortDialog
+          targetLabel={formatRangeAddress(sortRequest.range, false, false)}
+          columns={sortColumns}
+          initialHasHeaders={sortRequest.hasHeaders ?? false}
+          onClose={closeDialog}
+          onSubmit={submitSort}
+        />
+      ) : null}
+
+      {filterPanel !== null ? (
+        <FilterDropdown
+          columnLabel={filterPanel.columnLabel}
+          checklist={filterPanel.checklist}
+          criterion={filterPanel.criterion}
+          filterType={filterPanel.filterType}
+          date1904={filterPanel.date1904}
+          anchor={filterDropdown?.anchor ?? { top: 0, left: 0 }}
+          onSort={(direction) => sortFilterColumn(filterPanel.column, direction)}
+          onCustomSort={() => {
+            setFilterDropdown(null);
+            runCommand('data.sort', { range: filterPanel.range });
+          }}
+          onClearColumn={() => {
+            applyFilterCriterion(filterPanel.column, null);
+          }}
+          onApply={(criterion) => applyFilterCriterion(filterPanel.column, criterion)}
+          onClose={closeFilterDropdown}
+        />
+      ) : null}
 
       {dialog === 'insert-function' ? (
         <InsertFunctionDialog
@@ -2308,4 +2663,101 @@ function circularWarningMessage(
   const remainder =
     circular.length > labels.length ? ` and ${circular.length - labels.length} more` : '';
   return `Circular reference detected: ${labels.join(', ')}${remainder}. Affected cells show #CIRC!; the file keeps the authored text and cached result.`;
+}
+
+/** The status-bar summary of a sort's outcome; the dialog shows blocks inline. */
+function sortStatusMessage(payload: SortPayload): string {
+  if (payload.state === 'sorted') {
+    const keys = payload.keyLabels ?? [];
+    const range = formatRangeAddress(payload.range, false, false);
+    const by = keys.length === 0 ? '' : ` by ${keys.join(', ')}`;
+    const warning = payload.warnings[0];
+    return `Sorted ${range}${by}.${warning === undefined ? '' : ` ${warning.message}`}`;
+  }
+  if (payload.state === 'blocked') return payload.message ?? 'The sort was blocked.';
+  switch (payload.reason) {
+    case 'no-keys':
+      return 'Choose at least one sort key.';
+    case 'too-few-rows':
+      return 'That range has fewer than two data rows; there is nothing to sort.';
+    case 'nothing-to-order':
+      return 'The sort made no change.';
+    default:
+      return 'The sort made no change.';
+  }
+}
+
+/** The status-bar summary of an AutoFilter command, including `X of Y records`. */
+function filterStatusMessage(payload: FilterPayload): string {
+  if (!payload.changed) return 'The filter made no change.';
+  const records = `${payload.rowsVisible} of ${payload.rowsTotal} records`;
+  switch (payload.state) {
+    case 'cleared':
+      return `Filter cleared. Showing ${records}.`;
+    case 'reapplied':
+      return `Filter reapplied. Showing ${records}.`;
+    case 'none':
+      return 'AutoFilter is off.';
+    default:
+      return `Filter applied. Showing ${records}.`;
+  }
+}
+
+/**
+ * The AutoFilter's own label for a column: the header text, or `Column1`,
+ * `Column2`, … when the first row looks like data (§3.1).
+ */
+function filterColumnLabel(view: SheetProjection, filter: AutoFilter, column: number): string {
+  const header = view.cellAt(filter.range.startRow, column);
+  if (header !== null && header.value.type === 'text' && header.displayText.trim() !== '') {
+    return header.displayText;
+  }
+  return `Column${column - filter.range.startCol + 1}`;
+}
+
+/**
+ * The checklist's display seam. The model groups values by their formatted
+ * display; the projection owns that formatting, so each cell's painted text is
+ * looked up by identity and the model's plain formatting is the fallback for a
+ * cell the projection does not hold.
+ */
+function filterChecklistDisplay(
+  sheet: Sheet,
+  filter: AutoFilter,
+  column: number,
+  view: SheetProjection,
+): (cell: Cell, value: CellValue) => string {
+  const displays = new WeakMap<Cell, string>();
+  for (let row = filter.range.startRow + 1; row <= filter.range.endRow; row += 1) {
+    const cell = sheet.cells.get(cellKey(row, column));
+    if (cell === undefined) continue;
+    const display = view.cellAt(row, column)?.displayText;
+    if (display !== undefined) displays.set(cell, display);
+  }
+  return (cell, value) => displays.get(cell) ?? formatCellValue(value);
+}
+
+/**
+ * Anchor the dropdown under a column's header cell. The header buttons are
+ * painted by the grid canvas, which the chrome cannot hit-test yet, so the
+ * overlay is placed from the same published geometry the grid paints with
+ * (`gridDebugState` plus `cellRect`). It is measured when it opens; a scroll
+ * dismisses it rather than leaving it detached from its column.
+ */
+function filterDropdownAnchor(
+  view: SheetProjection,
+  column: number,
+): { readonly top: number; readonly left: number } | null {
+  const canvas = window.document.querySelector<HTMLElement>('[data-testid="grid-canvas"]');
+  const layout = gridDebugState.layout;
+  if (canvas === null || layout === null) return null;
+  const rect = cellRect(view, layout, gridDebugState.scrollX, gridDebugState.scrollY, 0, column);
+  const box = canvas.getBoundingClientRect();
+  const width = 248;
+  const edge = 8;
+  const left = Math.min(
+    Math.max(box.left + rect.x, edge),
+    Math.max(edge, window.innerWidth - width - edge),
+  );
+  return { top: box.top + layout.headerHeight + 1, left };
 }
