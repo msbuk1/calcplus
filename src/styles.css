@@ -284,11 +284,13 @@ a:focus-visible,
   padding-right: 12px;
 }
 
-/* The band packs its controls into a two-row grid (a large control may span). */
+/* The band packs its controls into a two-row grid (a large control may span).
+   Row flow keeps every row left-aligned: each row packs from the first free
+   column past any tall control, instead of continuing the previous row. */
 .ribbon-group-body {
   display: grid;
   flex: 1;
-  grid-auto-flow: column;
+  grid-auto-flow: row;
   grid-auto-columns: max-content;
   align-items: stretch;
   gap: 1px 2px;

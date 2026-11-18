@@ -66,7 +66,13 @@ test('right click outside the selection moves it', async ({ page }) => {
   await expect(nameBox).toHaveValue('A1:E10');
 
   const canvas = page.getByTestId('grid-canvas');
-  await canvas.click({ button: 'right', position: { x: 900, y: 400 } });
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  // Far bottom-right of the canvas: outside A1:E10 whatever the exact geometry.
+  await canvas.click({
+    button: 'right',
+    position: { x: box!.width * 0.75, y: box!.height * 0.7 },
+  });
   // A single cell far from the old range replaces it.
   await expect(nameBox).toHaveValue(/^[A-Z]+[0-9]+$/);
   await expect(nameBox).not.toHaveValue('A1:E10');
