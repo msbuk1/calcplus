@@ -15,6 +15,7 @@ import {
 } from './filter';
 import { formatCommands } from './format';
 import { goToCommand } from './goto';
+import { insertFunctionCommand } from './insert-function';
 import { painterCommands } from './painter';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { sortCommand } from './sort';
@@ -93,6 +94,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(findReplaceOneCommand);
   registry.register(findReplaceAllCommand);
   registry.register(goToCommand);
+  registry.register(insertFunctionCommand);
   for (const command of clipboardCommands()) registry.register(command);
   for (const command of formatCommands()) registry.register(command);
   for (const command of painterCommands()) registry.register(command);

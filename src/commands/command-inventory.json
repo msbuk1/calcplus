@@ -1240,7 +1240,7 @@
     "label": "Insert Function",
     "category": "formula",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {

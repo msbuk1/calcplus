@@ -11,8 +11,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 
 - Feature-matrix IN rows: 57
 - Inventory commands: 101
-- Implemented in this build: 54
-- Planned for a later slice: 47
+- Implemented in this build: 55
+- Planned for a later slice: 46
 - Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -83,7 +83,7 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `formula.autosum` | 4. Formulas and names — AutoSum (`Alt+=`, command `formula.autosum`) | AutoSum | Home → Editing<br>Formulas → Function Library | — | Alt+= | A sheet is active and a cell is selected | Implemented |
 | `formula.autocomplete` | 4. Formulas and names — Function autocomplete and signature hints | Function autocomplete and signature hints | — | — | — | The formula editor is open | Planned |
 | `name.resolve` | 4. Formulas and names — Defined names: evaluate, preserve, use in formulas and Go To | Use defined names | — | — | — | A sheet is active and a defined name exists | Planned |
-| `formula.insertFunction` | 4. Formulas and names — Insert Function dialog (search, category, signature and description) | Insert Function | — | — | — | A sheet is active | Planned |
+| `formula.insertFunction` | 4. Formulas and names — Insert Function dialog (search, category, signature and description) | Insert Function | — | — | — | A sheet is active | Implemented |
 | `formula.evaluate` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Evaluate formulas | — | — | — | A sheet is active | Planned |
 | `workbook.dateSystem` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Use 1904 date system | — | — | — | A sheet is active | Implemented |
 | `file.new` | 5. Workbook and sheets — New blank workbook | New | — | File | — | No file operation is in progress | Implemented |

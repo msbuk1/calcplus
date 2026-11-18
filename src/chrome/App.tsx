@@ -5,6 +5,8 @@ import { DocumentSession } from '@commands/session';
 import type { CommandResult, FindResultPayload, PainterSnapshot } from '@commands/types';
 import { dateSystemLabel } from '@commands/workbook';
 import { CalculationController } from '@engine/calculation-controller';
+import { functionEntry, functionSkeleton } from '@engine/function-catalog';
+import type { PublishedFunction } from '@engine/function-registry';
 import type { EngineCellRef } from '@engine/port';
 import type { ClipboardMode, ClipboardSnapshot } from '@model/clipboard';
 import type { FindMatch } from '@model/find';
@@ -55,6 +57,7 @@ import { FormulaBar } from '@chrome/FormulaBar';
 import type { FormulaBarKeyModifiers } from '@chrome/FormulaBar';
 import { GoToDialog } from '@chrome/GoToDialog';
 import type { GoToOutcome } from '@chrome/GoToDialog';
+import { InsertFunctionDialog } from '@chrome/InsertFunctionDialog';
 import { NameBox } from '@chrome/NameBox';
 import { Ribbon } from '@chrome/Ribbon';
 import { SheetTabs } from '@chrome/SheetTabs';
@@ -82,7 +85,7 @@ interface LoadedDocument {
   readonly calculation: CalculationController;
 }
 
-type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format';
+type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format' | 'insert-function';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -122,6 +125,9 @@ export function App(): JSX.Element {
   );
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [formatCellsTab, setFormatCellsTab] = useState<string | null>(null);
+  // Functions inserted this session, most recent first. View state only: it
+  // feeds the dialog's "Recently used" category and never enters the workbook.
+  const [recentFunctions, setRecentFunctions] = useState<readonly PublishedFunction[]>([]);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
   const ribbonRef = useRef<HTMLElement | null>(null);
@@ -1488,13 +1494,18 @@ export function App(): JSX.Element {
 
   const startFormulaBarEdit = (text: string): void => {
     barEditAddressRef.current = active;
-    // The fx button may have queued a new formula draft just before focus; keep
-    // it instead of replacing it with the text the focus event saw.
+    // The Insert Function dialog may have queued a new formula draft just
+    // before focus; keep it instead of replacing it with the text the focus
+    // event saw.
     setBarDraft((draft) => draft ?? text);
     setFocusZone('formula-bar');
   };
 
   const stopFormulaBarEdit = (): void => {
+    // Insert Function moves the keyboard into the dialog. The bar keeps its
+    // draft and edit address until the dialog inserts a skeleton or closes, so
+    // opening and cancelling the dialog never loses typed formula text.
+    if (dialog === 'insert-function') return;
     barEditAddressRef.current = null;
     barPointingRef.current = null;
     setBarDraft(null);
@@ -1573,6 +1584,36 @@ export function App(): JSX.Element {
       setSelection(collapseSelection(target));
     }
     setFocusZone('grid');
+  };
+
+  /**
+   * Insert Function places the chosen skeleton in the formula bar and leaves
+   * the caret after the opening parenthesis (ticket 30). This is one editing
+   * action: the draft belongs to the active cell but no `cell.set` runs until
+   * the user commits the bar, so it is not an undo step of its own.
+   */
+  const insertFunctionByName = (name: PublishedFunction): void => {
+    const entry = functionEntry(name);
+    if (entry === undefined) return;
+    const skeleton = functionSkeleton(entry.name);
+    barEditAddressRef.current = active;
+    barPointingRef.current = null;
+    setBarDraft(skeleton);
+    setBarCaretRequest({ offset: skeleton.length });
+    setRecentFunctions((current) => [
+      entry.name,
+      ...current.filter((candidate) => candidate !== entry.name),
+    ]);
+    setDialog(null);
+    // The shell restores its invoker as it unmounts; hand the keyboard to the
+    // bar afterwards so the user types the first argument straight away.
+    requestAnimationFrame(() => {
+      const input = formulaBarRef.current;
+      if (input === null) return;
+      input.focus();
+      input.setSelectionRange(skeleton.length, skeleton.length);
+      setFocusZone('formula-bar');
+    });
   };
 
   /**
@@ -1813,6 +1854,14 @@ export function App(): JSX.Element {
         runFindCommand('find.replaceAll', query);
         return null;
       }
+      case 'formula.insertFunction': {
+        if (document === null || busy) return null;
+        clearPainter();
+        // The command requests the dialog; the chrome owns the surface.
+        const result = dispatchSheetCommand('formula.insertFunction', undefined);
+        if (result?.ui?.type === 'dialog') setDialog('insert-function');
+        return null;
+      }
       case 'goto.goto': {
         if (document === null) return null;
         const target = goToTargetArgument(args);
@@ -1904,6 +1953,7 @@ export function App(): JSX.Element {
           onPointKey={pointFormulaBarFromKey}
           caretRequest={barCaretRequest}
           inputRef={formulaBarRef}
+          onInsertFunction={() => runCommand('formula.insertFunction')}
         />
       </div>
 
@@ -2065,6 +2115,14 @@ export function App(): JSX.Element {
       ) : null}
 
       {dialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+
+      {dialog === 'insert-function' ? (
+        <InsertFunctionDialog
+          recentlyUsed={recentFunctions}
+          onClose={closeDialog}
+          onInsert={insertFunctionByName}
+        />
+      ) : null}
     </div>
   );
 }

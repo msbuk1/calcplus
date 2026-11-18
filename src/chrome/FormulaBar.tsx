@@ -37,6 +37,8 @@ export interface FormulaBarProps {
    */
   readonly caretRequest?: { readonly offset: number } | null;
   readonly inputRef?: RefObject<HTMLInputElement | null>;
+  /** Opens the Insert Function dialog; the `fx` button never edits text itself. */
+  readonly onInsertFunction: () => void;
 }
 
 /**
@@ -53,19 +55,9 @@ export function FormulaBar({
   onPointKey,
   caretRequest = null,
   inputRef,
+  onInsertFunction,
 }: FormulaBarProps): JSX.Element {
-  const editingRef = useRef(false);
   const localInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingCaretRef = useRef<number | null>(null);
-
-  // The `=` is inserted before the draft render, so the caret follows the new
-  // value instead of being clamped to the old one.
-  useLayoutEffect(() => {
-    const caret = pendingCaretRef.current;
-    if (caret === null) return;
-    pendingCaretRef.current = null;
-    localInputRef.current?.setSelectionRange(caret, caret);
-  }, [text]);
 
   // A reference insertion rewrites the draft, so the caret follows the text
   // that was just inserted or replaced.
@@ -83,40 +75,21 @@ export function FormulaBar({
   );
 
   /**
-   * The Insert Function dialog is a V2 feature. In v1 the `fx` control starts
-   * or continues formula entry in the bar: it inserts the leading `=` when the
-   * current text is not already a formula, then leaves the keyboard there.
+   * `fx` opens the Insert Function dialog (ticket 30). It no longer starts
+   * formula entry itself: typing `=` in the grid or the bar still does, and the
+   * dialog's Insert places the chosen skeleton in this bar.
    */
-  const startFormula = (): void => {
-    const element = localInputRef.current;
-    const wasEditing = editingRef.current;
-    const current = text;
-    const formulaText = current.startsWith('=') ? current : `=${current}`;
-    const inserted = formulaText !== current;
-    editingRef.current = true;
-    onTextChange(formulaText);
-    element?.focus();
-    // A fresh formula entry starts at the end; continuing one keeps the caret
-    // where the user left it.
-    if (element !== null && (!wasEditing || inserted)) {
-      if (inserted) pendingCaretRef.current = formulaText.length;
-      else element.setSelectionRange(formulaText.length, formulaText.length);
-    }
-  };
-
   return (
     <div className="formula-bar-group">
       <button
         type="button"
         className="fx-button"
-        aria-label="Formula entry"
-        title="Start or continue formula entry"
+        aria-label="Insert Function"
+        title="Insert a function"
         data-testid="fx-button"
-        // Keep the bar's in-progress draft and caret when it already owns the
-        // keyboard; the click handler below starts the formula instead of a
-        // blur resetting the draft first.
+        // Keep the bar's in-progress draft and caret until the dialog opens.
         onMouseDown={(event) => event.preventDefault()}
-        onClick={startFormula}
+        onClick={onInsertFunction}
       >
         fx
       </button>
@@ -129,24 +102,20 @@ export function FormulaBar({
         aria-label="Formula bar"
         data-testid="formula-bar"
         onFocus={() => {
-          editingRef.current = true;
           onFocused?.(text);
         }}
         onChange={(event) => onTextChange(event.target.value)}
         onBlur={() => {
-          editingRef.current = false;
           onStopEditing?.();
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
-            editingRef.current = false;
             onCommit(text, { moveDown: !event.ctrlKey });
             return;
           }
           if (event.key === 'Escape') {
             event.preventDefault();
-            editingRef.current = false;
             onCancel();
             return;
           }
@@ -171,7 +140,6 @@ export function FormulaBar({
         // input and reset the draft before the click runs.
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
-          editingRef.current = false;
           onCancel();
         }}
       >
@@ -185,7 +153,6 @@ export function FormulaBar({
         data-testid="formula-commit"
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
-          editingRef.current = false;
           onCommit(text, { moveDown: true });
         }}
       >
