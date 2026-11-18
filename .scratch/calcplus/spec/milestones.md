@@ -219,6 +219,17 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 6. `.xlsm` macros survive; `.xlsm` → `.xlsx` requires confirmation.
 7. Hostile inputs fail safely within the caps.
 
+**Handover entry notes (added 2026-11-18).** M6 is taken by a second engineer
+once M5 closes. Fixture authoring (F1–F24) may start before the M5 exit — the
+gate only requires M5 to have exited before the M6 exit gate runs. Read
+[docs/m6-kickoff.md](../../../docs/m6-kickoff.md) before building: it lists
+the work already banked by the M5 lanes (byte-identical saves, unknown-XML
+preservation, the patch writer with row/column renumbering, the range-transform
+module and the reporting hooks), the governing contracts, and the process
+rules. The risk-register row that owns this milestone — structural transforms
+corrupting references or anchors — is governed by one rule: transform or block,
+never leave a silently stale anchor.
+
 ### M7 — Output and hardening (8-12 pw)
 
 **Build**
