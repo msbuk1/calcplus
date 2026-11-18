@@ -267,7 +267,7 @@ describe('clipboard commands', () => {
     });
     expect(session.transactionCount).toBe(0);
     expect(result.changes).toHaveLength(0);
-    expect(result.ui?.message).toContain('100,000 cells');
+    expect(result.ui?.message).toContain('250,000 cells');
     expect(getCell(sheet, 1, 0)).toBeNull();
   });
 

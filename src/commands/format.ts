@@ -89,7 +89,7 @@ type NormalizedColor =
 const BORDER_EDGE_NAMES: readonly BorderEdgeName[] = ['left', 'right', 'top', 'bottom', 'diagonal'];
 
 /** A formatting command is one transaction; keep the before/after patch bounded. */
-const MAX_FORMAT_CELLS = 100_000;
+const MAX_FORMAT_CELLS = 250_000;
 
 export const formatBoldCommand: CommandDefinition<FormatTargetArgs> = toggleCommand(
   'format.bold',
@@ -200,7 +200,7 @@ export const formatBorderCommand: CommandDefinition<BorderFormatArgs> = {
   isEnabled: workbookHasSheet,
   run(context, args = {}) {
     const target = resolveFormatTarget(context, args);
-    if (target === null) return noTarget();
+    if (target === null) return targetError(context, args, 'formatting');
     if (args.preset === 'none') {
       return applyPatch(context, args, {
         border: {
@@ -398,7 +398,7 @@ function decimalCommand(
     isEnabled: workbookHasSheet,
     run(context, args = {}) {
       const target = resolveFormatTarget(context, args);
-      if (target === null) return noTarget();
+      if (target === null) return targetError(context, args, 'formatting');
       const current = styleRecordForCell(target, activeCellOf(target, context)).numFmtCode;
       const next = adjustDecimalPlaces(current, delta);
       if (next === null) return { changes: [] };
@@ -491,7 +491,7 @@ function applyPatchForCell(
   patchFor: (cell: Cell | null, row: number, col: number) => StylePatch | null,
 ): CommandResult {
   const target = resolveFormatTarget(context, args);
-  if (target === null) return noTarget();
+  if (target === null) return targetError(context, args, 'formatting');
   const change = buildChange(target, (cell, row, col) => {
     const patch = patchFor(cell, row, col);
     if (patch === null || Object.keys(patch).length === 0) return null;
@@ -566,7 +566,7 @@ export function applyStyleIdToTarget(
   styleId: StyleId,
 ): CommandResult {
   const target = resolveFormatTarget(context, args);
-  if (target === null) return noTarget();
+  if (target === null) return targetError(context, args, 'formatting');
   const change = buildChange(target, () => styleId, true);
   return change === null ? { changes: [] } : { changes: [change] };
 }
@@ -683,8 +683,30 @@ function toast(message: string): CommandResult {
   return { changes: [], ui: { type: 'toast', message } };
 }
 
-function noTarget(): CommandResult {
-  return toast('Select a cell or a range of at most 100,000 cells before formatting.');
+/**
+ * Why a formatting target could not be resolved, as distinct toasts: an empty
+ * selection and a selection over the command budget are different problems
+ * (ticket 29). The budget is the performance contract's guaranteed envelope.
+ */
+export function targetError(
+  context: CommandContext,
+  args: FormatTargetArgs,
+  action: 'formatting' | 'painting',
+): CommandResult {
+  const range = args.range ?? context.selection ?? activeRange(context);
+  if (range === null) {
+    return toast(
+      action === 'formatting'
+        ? 'Select a cell or range before formatting.'
+        : 'Select a cell or range before painting.',
+    );
+  }
+  const limit = MAX_FORMAT_CELLS.toLocaleString('en-US');
+  return toast(
+    action === 'formatting'
+      ? `Formatting is limited to ${limit} cells at a time. Select a smaller range.`
+      : `Painting is limited to ${limit} cells at a time. Select a smaller range.`,
+  );
 }
 
 /** Shared by the registry and tests; typed as the narrow formatting surface. */

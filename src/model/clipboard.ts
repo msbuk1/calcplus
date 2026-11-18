@@ -40,7 +40,7 @@ export interface ClipboardSnapshot {
 }
 
 /** The paste budget keeps one transaction inside the performance envelope. */
-export const MAX_CLIPBOARD_CELLS = 100_000;
+export const MAX_CLIPBOARD_CELLS = 250_000;
 
 export function clipboardCellCount(range: GridRange): number {
   return (range.endRow - range.startRow + 1) * (range.endCol - range.startCol + 1);

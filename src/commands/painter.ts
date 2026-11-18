@@ -5,6 +5,7 @@ import {
   applyStyleIdToTarget,
   resolveFormatTarget,
   styleRecordById,
+  targetError,
   type FormatTargetArgs,
   type ResolvedTarget,
 } from './format';
@@ -69,7 +70,7 @@ export const painterApplyCommand: CommandDefinition<PainterApplyArgs> = {
       return toast('Pick up formatting with the Format Painter before applying it.');
     }
     if (resolveFormatTarget(context, args) === null) {
-      return toast('Select a cell or range of at most 100,000 cells to paint.');
+      return targetError(context, args, 'painting');
     }
     let styleId: number;
     try {

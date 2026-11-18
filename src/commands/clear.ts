@@ -9,7 +9,7 @@ export interface ClearArgs {
 }
 
 /** Clearing a huge selection is one bounded patch; larger targets ask for a smaller range. */
-const MAX_CLEAR_CELLS = 100_000;
+const MAX_CLEAR_CELLS = 250_000;
 
 export const clearContentsCommand: CommandDefinition<ClearArgs> = {
   id: 'edit.clearContents',

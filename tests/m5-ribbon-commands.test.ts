@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCommandRegistry } from '@commands/registry';
 import { DocumentSession } from '@commands/session';
-import { adjustDecimalPlaces } from '@commands/format';
+import { adjustDecimalPlaces, resolveFormatTarget } from '@commands/format';
 import { getCell, setCellSnapshot, createCell } from '@model/types';
 import { numberValue, textValue } from '@model/value';
 import { createEmptyWorkbook, createSheet } from '@model/workbook';
@@ -144,5 +144,43 @@ describe('data.sort quick keys from the Sort & Filter menu', () => {
     expect(getCell(sheet, 2, 0)?.value).toEqual(textValue('Carol'));
     expect(getCell(sheet, 3, 0)?.value).toEqual(textValue('Alice'));
     expect(session.transactionCount).toBe(1);
+  });
+});
+
+describe('formatting budget messages (ticket 29)', () => {
+  it('separates an empty selection from a selection over the budget', () => {
+    const { session, sheet } = sessionWithValue();
+
+    const empty = session.dispatch(
+      'format.bold',
+      { sheetId: sheet.id },
+      { activeSheetId: sheet.id, selection: null, activeCell: null },
+    );
+    expect(empty.ui?.message).toBe('Select a cell or range before formatting.');
+
+    const over = { startRow: 0, startCol: 0, endRow: 500, endCol: 499 }; // 250,500 cells
+    const rejected = session.dispatch(
+      'format.bold',
+      { sheetId: sheet.id, range: over },
+      { activeSheetId: sheet.id, selection: over, activeCell: { row: 0, col: 0 } },
+    );
+    expect(rejected.ui?.message).toBe(
+      'Formatting is limited to 250,000 cells at a time. Select a smaller range.',
+    );
+    expect(session.transactionCount).toBe(0);
+  });
+
+  it('accepts the 250,000-cell envelope boundary and rejects one row more', () => {
+    const { session, sheet } = sessionWithValue();
+    const envelope = { startRow: 0, startCol: 0, endRow: 499, endCol: 499 }; // 250,000 cells
+    const context = {
+      workbook: session.workbook,
+      activeSheetId: sheet.id,
+      selection: envelope,
+      activeCell: { row: 0, col: 0 },
+    };
+    expect(resolveFormatTarget(context, { sheetId: sheet.id, range: envelope })).not.toBeNull();
+    const over = { startRow: 0, startCol: 0, endRow: 500, endCol: 499 };
+    expect(resolveFormatTarget(context, { sheetId: sheet.id, range: over })).toBeNull();
   });
 });
