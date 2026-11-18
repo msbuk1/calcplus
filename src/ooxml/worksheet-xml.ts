@@ -272,7 +272,7 @@ export function parseWorksheetXml(
           const hidden = attributeValue(tag, 'hidden');
           if (hidden !== undefined) {
             const dimension = sheet.rowDimensions.get(number) ?? {};
-            dimension.hidden = hidden === '1';
+            dimension.hidden = xsdTrue(hidden);
             sheet.rowDimensions.set(number, dimension);
           }
           return;
@@ -409,8 +409,8 @@ export function parseWorksheetXml(
             const gridLines = attributeValue(tag, 'showGridLines');
             const headings = attributeValue(tag, 'showHeadings');
             const zoom = attributeValue(tag, 'zoomScale');
-            if (gridLines !== undefined) sheet.view.showGridLines = gridLines !== '0';
-            if (headings !== undefined) sheet.view.showHeadings = headings !== '0';
+            if (gridLines !== undefined) sheet.view.showGridLines = xsdTrue(gridLines);
+            if (headings !== undefined) sheet.view.showHeadings = xsdTrue(headings);
             if (zoom !== undefined) {
               const value = Number(zoom);
               if (Number.isFinite(value) && value > 0) sheet.view.zoom = value;
@@ -747,7 +747,7 @@ function applyRowAttributes(sheet: Sheet, tag: SaxesTagNS, row: number): void {
   const styleText = attributeValue(tag, 's');
   const outlineText = attributeValue(tag, 'outlineLevel');
   const dimension = sheet.rowDimensions.get(row) ?? {};
-  const hasCustomHeight = customHeight !== undefined && customHeight !== '0';
+  const hasCustomHeight = xsdTrue(customHeight);
   if (heightText !== undefined) {
     const height = Number(heightText);
     if (Number.isFinite(height) && height >= 0) dimension.height = height;
@@ -779,16 +779,21 @@ function applyColumnAttributes(sheet: Sheet, tag: SaxesTagNS): void {
     const index = column - 1;
     const dimension = sheet.columnDimensions.get(index) ?? {};
     if (width !== undefined && Number.isFinite(width) && width >= 0) dimension.width = width;
-    if (hidden !== undefined && hidden !== '0') dimension.hidden = true;
+    if (xsdTrue(hidden)) dimension.hidden = true;
     if (styleText !== undefined) dimension.styleId = Number(styleText) || 0;
-    if (customWidth !== undefined && customWidth !== '0') dimension.customWidth = true;
-    if (bestFit !== undefined && bestFit !== '0') dimension.bestFit = true;
+    if (xsdTrue(customWidth)) dimension.customWidth = true;
+    if (xsdTrue(bestFit)) dimension.bestFit = true;
     if (outlineText !== undefined) {
       const level = Number(outlineText);
       if (Number.isFinite(level) && level > 0) dimension.outlineLevel = level;
     }
     if (Object.keys(dimension).length > 0) sheet.columnDimensions.set(index, dimension);
   }
+}
+
+/** OOXML xsd:boolean accepts `0`, `1`, `true` and `false`; Java writers spell out `true`/`false`. */
+function xsdTrue(value: string | undefined): boolean {
+  return value === '1' || value === 'true';
 }
 
 function attributesOf(tag: SaxesTagNS): RawAttribute[] {
