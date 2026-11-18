@@ -8,6 +8,38 @@ import type {
   GridRange,
   RowDimension,
 } from '@model/types';
+import type {
+  CfCalendarDate,
+  CfCellEvaluation,
+  CfCellSubject,
+  CfDxfResolver,
+  ConditionalFormatRule,
+} from '@model/conditional-format';
+
+/**
+ * The conditional-formatting descriptors travel to the renderer through the
+ * projection (ADR 0007). They are the engine's paint-ready overlay shapes,
+ * pinned by the engine's own tests; the grid consumes them and never
+ * evaluates a rule.
+ */
+export type {
+  CfBorderEdgePatch,
+  CfBorderPatch,
+  CfCellEvaluation,
+  CfCellSubject,
+  CfColorScaleOverlay,
+  CfDataBarOverlay,
+  CfDifferentialFormat,
+  CfDxfResolver,
+  CfFillPatch,
+  CfFontPatch,
+  CfIconSetId,
+  CfIconSetOverlay,
+  CfNumberFormatPatch,
+  CfOverlay,
+  CfThreshold,
+  ConditionalFormatRule,
+} from '@model/conditional-format';
 
 export interface ProjectedStyle {
   readonly font: FontStyle;
@@ -63,6 +95,32 @@ export interface SelectionStatistics {
   readonly count: number;
   readonly sum: number;
   readonly average: number;
+}
+
+/**
+ * Conditional formatting resolved for painting (conditional formatting §2,
+ * §5 and §6). The projection owns the rule index and its caches, so the grid
+ * reads paint-ready overlays and never evaluates a rule or touches the model.
+ *
+ * The overlays are derived, never stored: evaluating a cell changes nothing,
+ * and the cell's own value and style stay exactly as authored (§2).
+ */
+export interface ProjectedConditionalFormatting {
+  /** How many rules the sheet carries; `0` means the projection omits the seam. */
+  readonly ruleCount: number;
+  /**
+   * Every true rule for a cell, in priority order, with the merged overlay and
+   * the colour-scale, data-bar and icon-set overlays. `subject` lets the
+   * renderer pass the value and display text it already resolved.
+   */
+  evaluate(row: number, col: number, subject?: CfCellSubject): CfCellEvaluation;
+  /** The display text under a CF number format code, for the painted cell. */
+  textFor(value: CellValue, code: string): string;
+  /**
+   * Drop cached results for one cell after a value edit. A projection is
+   * rebuilt per document version, so a fresh projection needs no invalidation.
+   */
+  invalidateCell(row: number, col: number): void;
 }
 
 export interface SheetProjection {
@@ -126,6 +184,12 @@ export interface SheetProjection {
   ): ProjectedTextLayout | null;
   /** Sum, average and numeric count for the cells inside a selection. */
   selectionStatistics(range: GridRange): SelectionStatistics;
+  /**
+   * Conditional formatting for painting, or `null` when the sheet carries no
+   * rendered rules. Built with the projection, so it is versioned with the
+   * document.
+   */
+  readonly conditionalFormatting: ProjectedConditionalFormatting | null;
 }
 
 /** A transient row or column size shown while the user drags a header edge. */
@@ -160,4 +224,21 @@ export interface ProjectionOptions {
    */
   readonly showGridLines?: boolean;
   readonly showHeadings?: boolean;
+  /**
+   * Conditional formatting inputs. Omitted, the projection rebuilds the rules
+   * from `sheet.conditionalFormats`; `null` disables CF painting entirely.
+   * The differential-format resolver is supplied by the caller because the
+   * `dxfs` table lives in the styles part, which the model does not yet carry.
+   */
+  readonly conditionalFormats?: ConditionalFormattingInputs | null;
+}
+
+/** Optional inputs that override or extend the projection's CF rules. */
+export interface ConditionalFormattingInputs {
+  /** Explicit rules; omitted, the rules are parsed from the sheet's records. */
+  readonly rules?: readonly ConditionalFormatRule[];
+  /** Resolve a rule's `dxfId` to fill, font, border and number format. */
+  readonly dxfResolver?: CfDxfResolver | null;
+  /** The local calendar date for the ten relative date presets; defaults to today. */
+  readonly today?: CfCalendarDate;
 }

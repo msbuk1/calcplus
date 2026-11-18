@@ -1,6 +1,7 @@
 import type { Cell, Workbook } from '@model/types';
 import { cellKey, columnToLetters } from '@model/types';
-import { formatCellValue } from '@model/value';
+import type { CfCellSource } from '@model/conditional-format';
+import { BLANK, formatCellValue } from '@model/value';
 import { DEFAULT_ALIGNMENT, DEFAULT_BORDER, DEFAULT_FILL, DEFAULT_FONT } from '@model/style';
 import { SparseAxisGeometry, columnWidthCharsToPixels, pointsToPixels } from './geometry';
 import {
@@ -11,9 +12,11 @@ import {
   numberFormatColorForValue,
 } from './number-format';
 import { buildSheetIndex, type SheetIndex } from './sheet-index';
+import { createSheetConditionalFormatting } from './cf-projection';
 import type {
   MergeSpan,
   ProjectedCell,
+  ProjectedConditionalFormatting,
   ProjectedStyle,
   ProjectedTextLayout,
   ProjectionOptions,
@@ -237,6 +240,32 @@ export function createSheetProjection(
     };
   };
 
+  /**
+   * Conditional formatting for painting (conditional formatting §5, §6). The
+   * engine's cell source reads the same values and display text the projection
+   * paints, so a text rule matches the text the user sees.
+   */
+  const cfCells: CfCellSource = {
+    valueAt(row, col) {
+      return sheet.cells.get(cellKey(row, col))?.value ?? BLANK;
+    },
+    displayTextAt(row, col) {
+      const cell = sheet.cells.get(cellKey(row, col));
+      if (cell === undefined) return '';
+      return displayTextFor(cell, styleForValue(cell, styleFor(cell.styleId)));
+    },
+  };
+  const conditionalFormatting: ProjectedConditionalFormatting | null =
+    createSheetConditionalFormatting({
+      sheet,
+      version: options.version,
+      date1904: workbook.date1904,
+      indexedPalette: workbook.indexedPalette,
+      cells: cfCells,
+      format: (value, code) => formatter.format(value, code, workbook.date1904),
+      inputs: options.conditionalFormats,
+    });
+
   return {
     sheetId,
     sheetName: sheet.name,
@@ -249,6 +278,7 @@ export function createSheetProjection(
     showHeadings: options.showHeadings ?? sheet.view.showHeadings,
     zoom,
     date1904: workbook.date1904,
+    conditionalFormatting,
     defaultRowHeightPoints: sheet.defaultRowHeight,
     defaultColumnWidthChars: sheet.defaultColumnWidth,
     cellAt(row, col) {

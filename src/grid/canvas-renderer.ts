@@ -1,5 +1,14 @@
 import type { ProjectedCell, ProjectedStyle, SheetProjection } from '@view/types';
 import type { GridCellAddress, GridRenderState, RenderFrame } from './frame';
+import {
+  cfFillColor,
+  cfPaintOps,
+  paintCfDataBar,
+  paintCfFill,
+  paintCfIcon,
+  type CfPaintOp,
+  type CfTextPaint,
+} from './cf-paint';
 import { gridDebugState } from './debug';
 import { mergedBorderStyle } from './merged-borders';
 import {
@@ -76,6 +85,13 @@ interface VisibleCell {
   readonly paintBorder: boolean;
   /** A covered cell of a merge paints the anchor's fill and nothing else. */
   readonly covered: boolean;
+  /**
+   * The conditional-formatting plan for this cell, in §5.1 order. Empty when
+   * no rule paints it; a covered cell never carries a plan.
+   */
+  readonly cf: readonly CfPaintOp[];
+  /** The anchor's CF fill colour, for a covered cell of a merged range. */
+  readonly cfFill: string | null;
 }
 
 /** A merged range that needs painting outside the pane that holds its anchor. */
@@ -83,6 +99,8 @@ interface MergedOverflow {
   readonly cell: ProjectedCell;
   readonly rect: CellRect;
   readonly clip: CellRect;
+  /** The anchor's CF plan, painted whole and clipped at the pane edge (§5.2). */
+  readonly cf: readonly CfPaintOp[];
 }
 
 export class CanvasRenderFrame implements RenderFrame {
@@ -283,6 +301,7 @@ export class CanvasRenderFrame implements RenderFrame {
           cell: visible.cell,
           rect: visible.rect,
           clip: intersectRects(panePaintRect(layout, pane), visible.rect),
+          cf: visible.cf,
         });
         continue;
       }
@@ -295,14 +314,41 @@ export class CanvasRenderFrame implements RenderFrame {
     if (projection.showGridLines) {
       this.paintGridlines(pane, projection, rowOf, colOf);
     }
+    // §5.1: the manual fill, then the CF fill or colour-scale fill. A CF fill
+    // covers the gridlines, so it paints after the gridline pass. A covered
+    // cell of a merge paints the anchor's CF fill in its own rectangle.
     for (const visible of owned) {
       if (visible.fill !== null) this.paintFill(visible.rect, visible.fill);
     }
     for (const visible of owned) {
-      if (visible.paintText && visible.cell.displayText !== '') {
+      if (visible.covered) {
+        if (visible.cfFill === null) continue;
+        paintCfFill(this.context, { kind: 'fill', rect: visible.rect, color: visible.cfFill });
+        continue;
+      }
+      const fill = opOfKind(visible.cf, 'fill');
+      if (fill !== undefined) paintCfFill(this.context, fill);
+    }
+    // §5.1: the data bar sits under the text and over the fill.
+    for (const visible of owned) {
+      const bar = opOfKind(visible.cf, 'dataBar');
+      if (bar !== undefined) paintCfDataBar(this.context, bar);
+    }
+    // §5.1: the cell text, shifted right when an icon is shown, in the CF font
+    // and CF number format when the rule sets one.
+    for (const visible of owned) {
+      if (!visible.paintText) continue;
+      const text = opOfKind(visible.cf, 'text');
+      if (text !== undefined) {
+        if (text.hidden || text.text === '') continue;
+        this.paintText(visible.cell, visible.rect, projection.zoom, text);
+        continue;
+      }
+      if (visible.cell.displayText !== '') {
         this.paintText(visible.cell, visible.rect, projection.zoom);
       }
     }
+    // §5.1: the manual border, then the CF border over it.
     for (const visible of owned) {
       if (!visible.paintBorder) continue;
       const merge = visible.cell.merge;
@@ -310,6 +356,15 @@ export class CanvasRenderFrame implements RenderFrame {
         merge === null ? visible.cell.style.border : this.mergedBorderFor(projection, merge),
         visible.rect,
       );
+    }
+    for (const visible of owned) {
+      const border = opOfKind(visible.cf, 'border');
+      if (border !== undefined) this.paintBorderRect(border.border, visible.rect);
+    }
+    // §5.1: the icon last, over the text baseline.
+    for (const visible of owned) {
+      const icon = opOfKind(visible.cf, 'icon');
+      if (icon !== undefined) paintCfIcon(this.context, icon);
     }
 
     context.restore();
@@ -329,18 +384,37 @@ export class CanvasRenderFrame implements RenderFrame {
     if (ranges.length === 0) return;
     const { context } = this;
     for (const range of ranges) {
-      const { cell, rect, clip } = range;
+      const { cell, rect, clip, cf } = range;
       if (clip.width <= 0 || clip.height <= 0) continue;
       context.save();
       context.beginPath();
       context.rect(clip.x, clip.y, clip.width, clip.height);
       context.clip();
+      // §5.1 order, evaluated once at the anchor and painted across the whole
+      // merged rectangle: manual fill, CF fill, data bar, manual border, CF
+      // border, text, icon. §5.3: the clip above keeps every stroke inside the
+      // pane's own edge on the axis it scrolls.
       if (cell.style.fill !== null) this.paintFill(rect, cell.style.fill);
-      if (cell.displayText !== '') this.paintText(cell, rect, projection.zoom);
+      const cfFill = opOfKind(cf, 'fill');
+      if (cfFill !== undefined) paintCfFill(context, cfFill);
+      const bar = opOfKind(cf, 'dataBar');
+      if (bar !== undefined) paintCfDataBar(context, bar);
       const merge = cell.merge;
       if (merge !== null) {
         this.paintBorderRect(this.mergedBorderFor(projection, merge), rect);
       }
+      const cfBorder = opOfKind(cf, 'border');
+      if (cfBorder !== undefined) this.paintBorderRect(cfBorder.border, rect);
+      const cfText = opOfKind(cf, 'text');
+      if (cfText !== undefined) {
+        if (!cfText.hidden && cfText.text !== '') {
+          this.paintText(cell, rect, projection.zoom, cfText);
+        }
+      } else if (cell.displayText !== '') {
+        this.paintText(cell, rect, projection.zoom);
+      }
+      const icon = opOfKind(cf, 'icon');
+      if (icon !== undefined) paintCfIcon(context, icon);
       context.restore();
     }
   }
@@ -569,28 +643,39 @@ export class CanvasRenderFrame implements RenderFrame {
     context.setLineDash([]);
   }
 
-  private paintText(cell: ProjectedCell, rect: CellRect, zoom: number): void {
-    const style = cell.style;
+  private paintText(cell: ProjectedCell, rect: CellRect, zoom: number, cf?: CfTextPaint): void {
+    // A CF dxf supplies the font and number format; the manual style supplies
+    // everything the dxf leaves unset (§3.1). An icon shifts the content box
+    // right, so the text never paints under the glyph (§5.1 step 6).
+    const style = cf?.style ?? cell.style;
+    const shift = cf?.shift ?? 0;
     const rotation = rotationFor(style);
     if (rotation.kind === 'stacked') {
-      this.paintStackedText(cell.displayText, style, rect, zoom);
+      this.paintStackedText(cf?.text ?? cell.displayText, style, rect, zoom);
       return;
     }
     if (rotation.kind === 'angle') {
-      this.paintRotatedText(cell, rect, rotation.radians, zoom);
+      this.paintRotatedText(cell, rect, rotation.radians, zoom, style, cf);
       return;
     }
 
     const { context } = this;
     const horizontal = horizontalFor(style, cell.value);
     const insets = textInsets(style, horizontal, zoom);
-    const maxWidth = Math.max(1, rect.width - insets.left - insets.right);
+    // The content box starts after the icon; alignment is computed inside it.
+    const contentX = rect.x + shift;
+    const contentWidth = Math.max(1, rect.width - shift);
+    const maxWidth = Math.max(1, contentWidth - insets.left - insets.right);
     const shrink = style.alignment.shrinkToFit && !style.alignment.wrapText;
     const baseSize = fontSizePixels(style, zoom);
     const baseFont = fontFor(style, baseSize);
     // The projection owns the width layout (`*` fill, `_` skip and the `#`
-    // overflow marker); the renderer supplies the paint width and metrics.
-    const laidOut = cell.layoutText(maxWidth, (value) => this.measure(value, baseFont));
+    // overflow marker); the renderer supplies the paint width and metrics. A
+    // CF number format already produced its text, so it paints as-is.
+    const laidOut =
+      cf === undefined || cf.layoutText
+        ? cell.layoutText(maxWidth, (value) => this.measure(value, baseFont))
+        : { text: cf.text, overflow: false };
     const size = shrink
       ? fitFontSize(
           style,
@@ -605,7 +690,7 @@ export class CanvasRenderFrame implements RenderFrame {
     // Shrinking changes the metrics, so lay the text out again at the painted
     // size to keep the fill and skip widths exact.
     const text =
-      size === baseSize
+      size === baseSize || (cf !== undefined && !cf.layoutText)
         ? laidOut.text
         : cell.layoutText(maxWidth, (value) => this.measure(value, font)).text;
     if (text === '') return;
@@ -633,10 +718,10 @@ export class CanvasRenderFrame implements RenderFrame {
 
     const x =
       horizontal === 'center'
-        ? rect.x + rect.width / 2
+        ? contentX + contentWidth / 2
         : horizontal === 'right'
           ? rect.x + rect.width - insets.right
-          : rect.x + insets.left;
+          : contentX + insets.left;
     this.ensureFont(font);
     context.save();
     context.beginPath();
@@ -660,8 +745,8 @@ export class CanvasRenderFrame implements RenderFrame {
         horizontal,
         size,
         font,
-        rect.x + insets.left,
-        Math.max(0, rect.width - insets.left - insets.right),
+        contentX + insets.left,
+        Math.max(0, contentWidth - insets.left - insets.right),
       );
     }
     context.restore();
@@ -672,16 +757,20 @@ export class CanvasRenderFrame implements RenderFrame {
     rect: CellRect,
     radians: number,
     zoom: number,
+    style: ProjectedStyle = cell.style,
+    cf?: CfTextPaint,
   ): void {
     const { context } = this;
-    const style = cell.style;
     const padding = horizontalPadding(zoom);
     // Rotation gives the cell's height to the text run.
     const available = Math.max(1, rect.height - padding * 2);
     const shrink = style.alignment.shrinkToFit;
     const baseSize = fontSizePixels(style, zoom);
     const baseFont = fontFor(style, baseSize);
-    const laidOut = cell.layoutText(available, (value) => this.measure(value, baseFont));
+    const laidOut =
+      cf === undefined || cf.layoutText
+        ? cell.layoutText(available, (value) => this.measure(value, baseFont))
+        : { text: cf.text, overflow: false };
     const size = shrink
       ? fitFontSize(
           style,
@@ -694,7 +783,7 @@ export class CanvasRenderFrame implements RenderFrame {
       : baseSize;
     const font = fontFor(style, size);
     const paint =
-      size === baseSize
+      size === baseSize || (cf !== undefined && !cf.layoutText)
         ? laidOut.text
         : cell.layoutText(available, (value) => this.measure(value, font)).text;
     if (paint === '') return;
@@ -1307,7 +1396,8 @@ function collectVisibleCells(
       const merge = cell.merge;
       if (merge !== null && (merge.anchorRow !== row || merge.anchorCol !== col)) {
         // Covered cells still paint the anchor's fill, so a merged range has
-        // no hole; they never paint text or an interior border.
+        // no hole; they never paint text, an interior border or a CF overlay.
+        // The anchor's CF fill is resolved once and painted per pane (§5.3).
         const anchor = projection.cellAt(merge.anchorRow, merge.anchorCol);
         cells.push({
           cell,
@@ -1316,6 +1406,11 @@ function collectVisibleCells(
           paintText: false,
           paintBorder: false,
           covered: true,
+          cf: [],
+          cfFill:
+            anchor === null || anchor === undefined
+              ? null
+              : cfFillAt(projection, anchor, merge.anchorRow, merge.anchorCol),
         });
         continue;
       }
@@ -1339,10 +1434,69 @@ function collectVisibleCells(
         paintText: true,
         paintBorder: true,
         covered: false,
+        // §5.2: a merged range evaluates at its anchor and its plan paints the
+        // whole merged rectangle — fills, bars, borders and the icon alike.
+        cf: cfPlanAt(projection, cell, row, col, rect),
+        cfFill: null,
       });
     }
   }
   return cells;
+}
+
+/** Evaluate one cell's rules and plan its conditional-formatting paint (§5.1). */
+function cfPlanAt(
+  projection: SheetProjection,
+  cell: ProjectedCell,
+  row: number,
+  col: number,
+  rect: CellRect,
+): readonly CfPaintOp[] {
+  const conditional = projection.conditionalFormatting;
+  if (conditional === null) return [];
+  const evaluation = conditional.evaluate(row, col, {
+    value: cell.value,
+    displayText: cell.displayText,
+  });
+  if (!evaluation.painted) return [];
+  // §5.1 step 7: a CF number format drives the text the cell paints, while
+  // the formula bar keeps showing the raw value.
+  const code = evaluation.overlay.numberFormat?.code;
+  return cfPaintOps({
+    evaluation,
+    rect,
+    zoom: projection.zoom,
+    style: cell.style,
+    displayText: cell.displayText,
+    cfDisplayText: code === undefined ? null : conditional.textFor(cell.value, code),
+  });
+}
+
+/** The CF fill colour for a cell, without planning the rest of its paint. */
+function cfFillAt(
+  projection: SheetProjection,
+  cell: ProjectedCell,
+  row: number,
+  col: number,
+): string | null {
+  const conditional = projection.conditionalFormatting;
+  if (conditional === null) return null;
+  const evaluation = conditional.evaluate(row, col, {
+    value: cell.value,
+    displayText: cell.displayText,
+  });
+  return cfFillColor(evaluation.overlay, evaluation.colorScale);
+}
+
+/** The first op of one kind: each kind appears at most once per cell plan. */
+function opOfKind<K extends CfPaintOp['kind']>(
+  ops: readonly CfPaintOp[],
+  kind: K,
+): Extract<CfPaintOp, { kind: K }> | undefined {
+  for (const op of ops) {
+    if (op.kind === kind) return op as Extract<CfPaintOp, { kind: K }>;
+  }
+  return undefined;
 }
 
 function buildPanes(
