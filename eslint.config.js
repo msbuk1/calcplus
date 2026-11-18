@@ -7,7 +7,7 @@ const modelImportMessage =
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'fixtures/**', '.scratch/**', 'docs/**'],
+    ignores: ['**/dist/**', 'node_modules/**', 'fixtures/**', '.scratch/**', 'docs/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
