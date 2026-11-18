@@ -1,4 +1,5 @@
 import type {
+  AutoFilter,
   Cell,
   CellAddress,
   ColumnDimension,
@@ -10,10 +11,18 @@ import type {
   Workbook,
 } from '@model/types';
 import { cellStateEquals, cloneCell, getSheetById, setCellSnapshot } from '@model/types';
+import { cloneAutoFilter } from '@model/autofilter';
 import { findSheet } from '@model/workbook';
 import { BLANK, cellValueEquals, errorValue, type CellValue } from '@model/value';
 import { isSheetVisible } from '@view/sheet-visibility';
-import type { CalculationScheduler, CommandChange, CommandContext, CommandResult } from './types';
+import type {
+  CalculationScheduler,
+  CommandChange,
+  CommandContext,
+  CommandResult,
+  SheetAttachmentEntry,
+  SortApplyChange,
+} from './types';
 import { changeCells, inverseChange } from './types';
 import { createCommandRegistry } from './registry';
 
@@ -554,6 +563,17 @@ export class DocumentSession {
         continue;
       }
       const sheet = getSheetById(this.workbook, change.sheetId);
+      if (change.type === 'sort.apply') {
+        this.applySortAttachments(sheet, change, direction);
+        continue;
+      }
+      if (change.type === 'filter.set') {
+        const filter = direction === 'after' ? change.after : change.before;
+        // Filter-hidden rows are derived from these criteria (§3.3), so this
+        // assignment restores the filter and the hidden rows together.
+        sheet.autoFilter = filter === null ? null : cloneAutoFilter(filter);
+        continue;
+      }
       if (change.type === 'merge.set') {
         const merged = direction === 'after' ? change.after : change.before;
         sheet.merges.splice(
@@ -647,6 +667,27 @@ export class DocumentSession {
     }
   }
 
+  private applySortAttachments(
+    sheet: ReturnType<typeof getSheetById>,
+    change: SortApplyChange,
+    direction: 'before' | 'after',
+  ): void {
+    const merges = direction === 'after' ? change.merges.after : change.merges.before;
+    sheet.merges.splice(
+      0,
+      sheet.merges.length,
+      ...merges.map((range) => ({ range: { ...range } })),
+    );
+    replaceAttachments(
+      sheet.comments,
+      direction === 'after' ? change.comments.after : change.comments.before,
+    );
+    replaceAttachments(
+      sheet.hyperlinks,
+      direction === 'after' ? change.hyperlinks.after : change.hyperlinks.before,
+    );
+  }
+
   private applyStyleSnapshots(
     sheet: ReturnType<typeof getSheetById>,
     range: GridRange,
@@ -709,6 +750,16 @@ export class DocumentSession {
         this.dirtyDimensions.set(change.sheetId, dimensions);
         continue;
       }
+      if (change.type === 'sort.apply' || change.type === 'filter.set') {
+        // No save snapshot covers comments, hyperlinks, merged ranges or the
+        // AutoFilter part, so these ride the workbook-level dirty flag and the
+        // concurrent-save guard. The moved cells travel as `cell.set` changes
+        // and keep their own markers.
+        this.dirtyWorkbook = true;
+        this.structuralVersionCounter += 1;
+        if (change.type === 'sort.apply') this.dirtyMerges.add(change.sheetId);
+        continue;
+      }
       if (change.type === 'merge.set') {
         this.dirtyMerges.add(change.sheetId);
         continue;
@@ -752,6 +803,23 @@ export class DocumentSession {
     cells.add(`${row}:${col}`);
     this.dirtyCells.set(sheetId, cells);
   }
+}
+
+/**
+ * Replace a sheet's comment or hyperlink map with one side of a sort record.
+ * Records are copied so the transaction keeps its own snapshot.
+ */
+function replaceAttachments<T>(
+  map: Map<string, T>,
+  entries: readonly SheetAttachmentEntry<T>[],
+): void {
+  map.clear();
+  for (const [key, record] of entries) map.set(key, { ...record });
+}
+
+function estimateAutoFilter(filter: AutoFilter | null): number {
+  if (filter === null) return 8;
+  return 96 + filter.columns.size * 64;
 }
 
 function dimensionEquals(
@@ -800,6 +868,22 @@ function estimateBytes(changes: readonly CommandChange[]): number {
     }
     if (change.type === 'name.set') {
       total += 64 + change.before.length * 2 + change.after.length * 2;
+      continue;
+    }
+    if (change.type === 'filter.set') {
+      total += 96 + change.hiddenChanges.length * 16;
+      total += estimateAutoFilter(change.before) + estimateAutoFilter(change.after);
+      continue;
+    }
+    if (change.type === 'sort.apply') {
+      total += 64 + change.rowPermutation.length * 8;
+      total += change.formulaRewrites.reduce(
+        (bytes, rewrite) => bytes + (rewrite.before.length + rewrite.after.length) * 2,
+        0,
+      );
+      total += (change.merges.before.length + change.merges.after.length) * 32;
+      total += (change.comments.before.length + change.comments.after.length) * 48;
+      total += (change.hyperlinks.before.length + change.hyperlinks.after.length) * 48;
       continue;
     }
     if (change.type === 'sheet.add' || change.type === 'sheet.delete') {

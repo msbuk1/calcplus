@@ -1,10 +1,14 @@
 import type { ClipboardSnapshot } from '@model/clipboard';
 import type { FindMatch } from '@model/find';
+import type { SortBlockCode, SortStopReason, SortWarning } from '@model/sort';
 import type {
+  AutoFilter,
   Cell,
   CellAddress,
   ColumnDimension,
+  CommentRecord,
   GridRange,
+  HyperlinkRecord,
   RowDimension,
   Sheet,
   SheetId,
@@ -53,6 +57,60 @@ export interface FindResultPayload {
   readonly replaced?: number;
 }
 
+/** One row whose effective hidden flag changes when the AutoFilter changes. */
+export interface FilterHiddenRowChange {
+  readonly row: number;
+  readonly before: boolean;
+  readonly after: boolean;
+}
+
+/**
+ * What an AutoFilter command reports back to its surface (sort-autofilter
+ * §3.8-§3.9). `changed` is `false` for a no-op, which creates no transaction.
+ * The criteria themselves live in the transaction's `filter.set` change.
+ */
+export interface FilterPayload {
+  readonly state: 'applied' | 'changed' | 'cleared' | 'reapplied' | 'none';
+  /** `false` when the command was a no-op and created no transaction (§3.9). */
+  readonly changed: boolean;
+  readonly sheetId: SheetId;
+  /** The filter range after the change, or the prior one when the filter is removed. */
+  readonly range: GridRange | null;
+  readonly before: AutoFilter | null;
+  readonly after: AutoFilter | null;
+  /** Effective hidden-row changes, the same record the transaction stores (§3.9). */
+  readonly hiddenChanges: readonly FilterHiddenRowChange[];
+  /** `X of Y records` for the status bar (§3.8), computed after the change. */
+  readonly rowsVisible: number;
+  readonly rowsTotal: number;
+  /** Columns whose imported criteria calcplus cannot edit (§3.7). */
+  readonly unsupportedColumns: readonly number[];
+}
+
+/**
+ * What `data.sort` reports back to its surface (sort-autofilter §2.1-§2.7):
+ * the dialog prefill, the applied plan, or Excel's block message. The two
+ * warnings — hidden rows crossed once (§2.6) and a sub-range sort (§2.1) —
+ * travel here as data; they never block, and the UI owns how to show them.
+ */
+export interface SortPayload {
+  readonly state: 'sorted' | 'unchanged' | 'blocked' | 'needs-keys';
+  readonly sheetId: SheetId;
+  readonly range: GridRange;
+  /** The guessed or overridden header state; absent when the sort was blocked. */
+  readonly hasHeaders?: boolean;
+  /** The labels the Sort dialog shows, in key order. */
+  readonly keyLabels?: readonly string[];
+  /** Why a sort was a no-op: no keys, too few rows, nothing to order (§2.1). */
+  readonly reason?: SortStopReason;
+  /** The blocking code and Excel's exact message (§2.5). */
+  readonly code?: SortBlockCode;
+  readonly message?: string;
+  readonly warnings: readonly SortWarning[];
+  readonly visibleRowCount?: number;
+  readonly hiddenRowCount?: number;
+}
+
 export interface CommandResult {
   readonly changes: readonly CommandChange[];
   readonly selectionAfter?: GridRange;
@@ -79,6 +137,10 @@ export interface CommandResult {
   readonly replaced?: number;
   /** The dialog payload for the find and replace commands. */
   readonly find?: FindResultPayload;
+  /** The sort outcome: dialog prefill, the applied plan, or Excel's block message. */
+  readonly sort?: SortPayload;
+  /** The AutoFilter outcome: criteria, hidden-row changes and the record count. */
+  readonly filter?: FilterPayload;
   readonly ui?: CommandUiRequest;
 }
 
@@ -133,6 +195,63 @@ export interface MergeSetChange {
   readonly sheetId: SheetId;
   readonly before: readonly GridRange[];
   readonly after: readonly GridRange[];
+}
+
+/** A formula the moved row rewrote, kept in the log for replay (§2.7). */
+export interface SortFormulaRewritePatch {
+  readonly address: CellAddress;
+  readonly before: string;
+  readonly after: string;
+}
+
+/** One keyed comment or hyperlink entry, keyed `row:col` like `Sheet.comments`. */
+export type SheetAttachmentEntry<T> = readonly [string, T];
+
+/** The sheet's whole comment or hyperlink map on both sides of a sort. */
+export interface SortAttachmentChange<T> {
+  readonly before: readonly SheetAttachmentEntry<T>[];
+  readonly after: readonly SheetAttachmentEntry<T>[];
+}
+
+/**
+ * A sort as one transaction (sort-autofilter §2.7). The moved cells travel as
+ * `cell.set` patches in the same transaction, so the calculation layer sees
+ * them; this record stores what only a sort changes: the row permutation, the
+ * formula rewrites for the log, the merged ranges and the comments and
+ * hyperlinks that move with their rows.
+ *
+ * Comments and hyperlinks are applied the way `src/model/sort.ts` documents:
+ * every attachment in a moved row (inside the sorted columns) is removed first
+ * and the moved records are inserted afterwards, because an incoming cell can
+ * leave its destination attachment empty.
+ */
+export interface SortApplyChange {
+  readonly type: 'sort.apply';
+  readonly sheetId: SheetId;
+  readonly range: GridRange;
+  /** Destination offset inside the range -> source row; the header maps to itself. */
+  readonly rowPermutation: readonly number[];
+  readonly formulaRewrites: readonly SortFormulaRewritePatch[];
+  /** The sheet's whole merged-range list on both sides of the sort. */
+  readonly merges: { readonly before: readonly GridRange[]; readonly after: readonly GridRange[] };
+  readonly comments: SortAttachmentChange<CommentRecord>;
+  readonly hyperlinks: SortAttachmentChange<HyperlinkRecord>;
+}
+
+/**
+ * One AutoFilter transaction (sort-autofilter §3.9): the criteria before and
+ * after. Filter-hidden rows are derived from the criteria (§3.3), so applying
+ * the change restores both visibility layers together; `hiddenChanges` records
+ * them for the log and the status bar and is never a second place the hidden
+ * flags live.
+ */
+export interface FilterSetChange {
+  readonly type: 'filter.set';
+  readonly sheetId: SheetId;
+  readonly range: GridRange;
+  readonly before: AutoFilter | null;
+  readonly after: AutoFilter | null;
+  readonly hiddenChanges: readonly FilterHiddenRowChange[];
 }
 
 /** A row or column dimension snapshot; `null` means the record did not exist. */
@@ -199,7 +318,9 @@ export type CommandChange =
   | SheetAddChange
   | SheetDeleteChange
   | SheetRenameChange
-  | NameSetChange;
+  | NameSetChange
+  | SortApplyChange
+  | FilterSetChange;
 
 /**
  * The calculation layer observes committed changes. It never participates in
@@ -258,5 +379,25 @@ export function inverseChange(change: CommandChange): CommandChange {
       return { ...change, before: change.after, after: change.before };
     case 'name.set':
       return { ...change, before: change.after, after: change.before };
+    case 'sort.apply':
+      // The permutation and the formula rewrites describe the operation, not a
+      // direction; redo reapplies them, and the attachments and merges swap.
+      return {
+        ...change,
+        merges: { before: change.merges.after, after: change.merges.before },
+        comments: { before: change.comments.after, after: change.comments.before },
+        hyperlinks: { before: change.hyperlinks.after, after: change.hyperlinks.before },
+      };
+    case 'filter.set':
+      return {
+        ...change,
+        before: change.after,
+        after: change.before,
+        hiddenChanges: change.hiddenChanges.map((row) => ({
+          row: row.row,
+          before: row.after,
+          after: row.before,
+        })),
+      };
   }
 }

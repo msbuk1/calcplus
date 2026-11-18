@@ -42,8 +42,10 @@ describe('command registry', () => {
       value: textValue('typed'),
     });
     expect(result.changes).toHaveLength(1);
-    expect(result.changes[0]!.type).toBe('cell.set');
-    expect(result.changes[0]!.before).toEqual([[before]]);
+    const change = result.changes[0]!;
+    expect(change.type).toBe('cell.set');
+    if (change.type !== 'cell.set') throw new Error('expected a cell.set change');
+    expect(change.before).toEqual([[before]]);
     expect(getCell(session.workbook.sheets[0]!, 0, 0)?.value).toEqual(textValue('typed'));
   });
 });
