@@ -193,13 +193,17 @@ Colour, icon, Top 10, dynamic date and unknown custom operators are read and pre
 
 - **Ctrl+Shift+L** toggles AutoFilter on the current range.
 - Each header cell gets a dropdown button when the filter is on.
-- The dropdown contains: Sort A→Z, Sort Z→A, Clear Filter, Text/Number/Date Filters, a search box, Select All, Blanks, the checklist, OK and Cancel.
+- The dropdown contains: Sort A→Z, Sort Z→A, Custom Sort, Clear Filter from '<column>', Text/Number/Date Filters, a search box, Select All, Blanks, the checklist and an **Apply** button. Out-of-scope entries Excel shows greyed (Sort By Colour, Filter By Colour, Sheet View) are not rendered at all, per [ui-chrome](ui-chrome.md) §4.1.
 - Filtered columns show a funnel icon in the header.
 - The status bar shows `X of Y records` while a filter is active.
 - **Alt+Down** opens the dropdown; Up/Down move, Space toggles, Enter applies, Esc cancels.
-- **Reapply** and **Clear All** live in the Data tab.
+- **Reapply** and **Clear All** live in the Sort & Filter menu (Home → Editing) and in the Data tab.
 - The dropdown is a DOM overlay; it is not drawn on the canvas.
 - Opening the dropdown and typing in the search box are view-only and create no transaction.
+
+> **Amended 2026-11-18:** the dropdown's Apply button, the Custom Sort entry and
+> the Clear Filter wording follow the maintainer's Excel 365 oracle captures;
+> see [28 — M5 dialog and menu parity rulings](../issues/28-m5-dialog-parity.md).
 
 ### 3.9 Transaction and undo
 

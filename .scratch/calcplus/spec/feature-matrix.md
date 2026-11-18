@@ -25,7 +25,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | Hide/unhide rows and columns (authoring) | V2 | Imported hidden state is respected and preserved. |
 | Merge & Center, Merge Across, Merge Cells, Unmerge | IN | Merged ranges render, select and edit through the anchor cell; merge/unmerge round-trips in `.xlsx`. |
 | Undo/redo for every user mutation | IN | Each mutation is undoable and redoable; history is bounded per ticket 09. |
-| Find & Replace (values and formulas; sheet or workbook; match case / whole cell) | IN | Finds and replaces in the chosen scope with the chosen options; the operation is undoable as one action. |
+| Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | IN | Finds and replaces in the chosen scope with the chosen options and direction; the operation is undoable as one action. |
 | Go To (Ctrl+G and name box) | IN | Accepts A1 addresses, ranges and defined names; invalid input shows an error and leaves selection unchanged. |
 | Clear contents / formats / all | IN | Delete clears contents; the Clear menu clears the chosen aspect; hyperlinks and comments are preserved unless "all" is chosen. |
 

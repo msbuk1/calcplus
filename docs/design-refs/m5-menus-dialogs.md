@@ -80,6 +80,11 @@ Top to bottom:
 
 ## 7. Deltas awaiting a ruling
 
+All ruled 2026-11-18; see [ticket 28](../../.scratch/calcplus/issues/28-m5-dialog-parity.md).
+D1/D5/D6/D7 follow the capture (§3.8 amended), D2 keeps the hidden-not-greyed
+rule, D3/D4 take full parity (matrix row gains search direction; labels are
+verbatim from the captures).
+
 | # | Capture | Contract / map today | Options |
 |---|---|---|---|
 | D1 | Filter dropdown ends with **Apply** | sort-autofilter §3.8 says "OK and Cancel" | adopt Apply (amend §3.8) or keep OK/Cancel |
