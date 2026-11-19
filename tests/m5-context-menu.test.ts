@@ -125,4 +125,89 @@ describe('the grid context menu', () => {
     // Delete stays available because its children are.
     expect(item(menu, 'Delete').disabled).toBe(false);
   });
+
+  it('shows flat row items on a row-header right-click', () => {
+    const menu = contextMenuItems(resolver(), 'rowHeader');
+    const labels = menu.map((entry) => entry.label);
+    // The pair sits where the flyouts sit for a cell: after Format Painter.
+    expect(labels.slice(0, 7)).toEqual([
+      'Cut',
+      'Copy',
+      'Paste',
+      'Format Painter',
+      'Insert Rows Above',
+      'Delete Rows',
+      'Clear contents',
+    ]);
+    // No flyout parents and no column or cell-shift items.
+    expect(labels).not.toContain('Insert');
+    expect(labels).not.toContain('Delete');
+    expect(labels).not.toContain('Insert Columns to the Left');
+    expect(labels).not.toContain('Delete Columns');
+    expect(labels).not.toContain('Insert Cells & Shift Right');
+    expect(labels).not.toContain('Delete Cells & Shift Up');
+    // The rest of the menu is unchanged in this region.
+    expect(labels).toEqual(expect.arrayContaining(['Format Cells', 'Find', 'Replace', 'Go to']));
+
+    const insertRow = item(menu, 'Insert Rows Above');
+    const deleteRows = item(menu, 'Delete Rows');
+    expect(insertRow.commandId).toBe('structure.insertRows');
+    expect(insertRow.shortcut).toBe('Ctrl+Shift+=');
+    expect(insertRow.items).toBeUndefined();
+    expect(deleteRows.commandId).toBe('structure.deleteRows');
+    expect(deleteRows.shortcut).toBe('Ctrl+-');
+    expect(deleteRows.items).toBeUndefined();
+  });
+
+  it('shows flat column items on a column-header right-click', () => {
+    const menu = contextMenuItems(resolver(), 'columnHeader');
+    const labels = menu.map((entry) => entry.label);
+    expect(labels.slice(0, 7)).toEqual([
+      'Cut',
+      'Copy',
+      'Paste',
+      'Format Painter',
+      'Insert Columns to the Left',
+      'Delete Columns',
+      'Clear contents',
+    ]);
+    expect(labels).not.toContain('Insert');
+    expect(labels).not.toContain('Delete');
+    expect(labels).not.toContain('Insert Rows Above');
+    expect(labels).not.toContain('Delete Rows');
+    expect(labels).not.toContain('Insert Cells & Shift Down');
+    expect(labels).not.toContain('Delete Cells & Shift Left');
+
+    const insertColumn = item(menu, 'Insert Columns to the Left');
+    const deleteColumns = item(menu, 'Delete Columns');
+    expect(insertColumn.commandId).toBe('structure.insertColumns');
+    expect(insertColumn.shortcut).toBe('Ctrl+Shift+=');
+    expect(insertColumn.items).toBeUndefined();
+    expect(deleteColumns.commandId).toBe('structure.deleteColumns');
+    expect(deleteColumns.shortcut).toBe('Ctrl+-');
+    expect(deleteColumns.items).toBeUndefined();
+  });
+
+  it('keeps the grouped flyouts for a cell right-click', () => {
+    const menu = contextMenuItems(resolver(), 'cell');
+    expect(item(menu, 'Insert').items).toHaveLength(4);
+    expect(item(menu, 'Delete').items).toHaveLength(4);
+    expect(menu.some((entry) => entry.label === 'Insert Rows Above')).toBe(false);
+  });
+
+  it('follows the registry for the flat header items', () => {
+    const menu = contextMenuItems(
+      resolver({ 'structure.insertRows': false, 'structure.deleteColumns': false }),
+      'rowHeader',
+    );
+    expect(item(menu, 'Insert Rows Above').disabled).toBe(true);
+    expect(item(menu, 'Delete Rows').disabled).toBe(false);
+
+    const columns = contextMenuItems(
+      resolver({ 'structure.insertRows': false, 'structure.deleteColumns': false }),
+      'columnHeader',
+    );
+    expect(item(columns, 'Insert Columns to the Left').disabled).toBe(false);
+    expect(item(columns, 'Delete Columns').disabled).toBe(true);
+  });
 });

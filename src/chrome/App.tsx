@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import type { RibbonTabId } from '@commands/inventory';
+import type { ContextMenuRegion, RibbonTabId } from '@commands/inventory';
 import { DocumentSession } from '@commands/session';
 import type {
   CommandResult,
@@ -153,9 +153,11 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [ribbonTab, setRibbonTab] = useState<RibbonTabId>('Home');
   const [ribbonExpanded, setRibbonExpanded] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ readonly x: number; readonly y: number } | null>(
-    null,
-  );
+  const [contextMenu, setContextMenu] = useState<{
+    readonly x: number;
+    readonly y: number;
+    readonly region: ContextMenuRegion;
+  } | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
   const [formatCellsTab, setFormatCellsTab] = useState<string | null>(null);
   // The Sort dialog's prefill: the range, the header guess and the sheet the
@@ -2404,7 +2406,13 @@ export function App(): JSX.Element {
         className="grid-area"
         onContextMenu={(event) => {
           event.preventDefault();
-          if (document !== null) setContextMenu({ x: event.clientX, y: event.clientY });
+          if (document !== null) {
+            setContextMenu({
+              x: event.clientX,
+              y: event.clientY,
+              region: contextMenuRegion(event, resolveState('view.headings').checked),
+            });
+          }
         }}
       >
         {document !== null && projection !== null ? (
@@ -2501,7 +2509,7 @@ export function App(): JSX.Element {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={contextMenuItems(resolveState)}
+          items={contextMenuItems(resolveState, contextMenu.region)}
           onSelect={(item) => {
             setContextMenu(null);
             if (item.commandId !== undefined) runCommand(item.commandId, item.args);
@@ -2836,6 +2844,30 @@ function filterChecklistDisplay(
     if (display !== undefined) displays.set(cell, display);
   }
   return (cell, value) => displays.get(cell) ?? formatCellValue(value);
+}
+
+/**
+ * Which strip of the grid a right-click landed on. The header strips are
+ * painted by the grid canvas, so the chrome measures the same published
+ * geometry the grid paints with (`gridDebugState.layout` plus the canvas
+ * bounding rect). With headings hidden there is no header region, and the
+ * corner above the row numbers counts as a cell: it has no row or column of
+ * its own, and Excel offers the cell menu there.
+ */
+function contextMenuRegion(
+  event: { readonly clientX: number; readonly clientY: number },
+  showHeadings: boolean,
+): ContextMenuRegion {
+  if (!showHeadings) return 'cell';
+  const canvas = window.document.querySelector<HTMLElement>('[data-testid="grid-canvas"]');
+  const layout = gridDebugState.layout;
+  if (canvas === null || layout === null) return 'cell';
+  const box = canvas.getBoundingClientRect();
+  const x = event.clientX - box.left;
+  const y = event.clientY - box.top;
+  if (x < layout.headerWidth && y >= layout.headerHeight) return 'rowHeader';
+  if (y < layout.headerHeight && x >= layout.headerWidth) return 'columnHeader';
+  return 'cell';
 }
 
 /**

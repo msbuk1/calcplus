@@ -189,6 +189,12 @@
         "group": { "id": "insert", "label": "Insert", "order": 36 },
         "label": "Insert Rows Above",
         "shortcut": "Ctrl+Shift+="
+      },
+      {
+        "order": 36,
+        "context": "rowHeader",
+        "label": "Insert Rows Above",
+        "shortcut": "Ctrl+Shift+="
       }
     ]
   },
@@ -205,6 +211,12 @@
       {
         "order": 2,
         "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Columns to the Left",
+        "shortcut": "Ctrl+Shift+="
+      },
+      {
+        "order": 36,
+        "context": "columnHeader",
         "label": "Insert Columns to the Left",
         "shortcut": "Ctrl+Shift+="
       }
@@ -251,6 +263,12 @@
         "group": { "id": "delete", "label": "Delete", "order": 37 },
         "label": "Delete Rows",
         "shortcut": "Ctrl+-"
+      },
+      {
+        "order": 37,
+        "context": "rowHeader",
+        "label": "Delete Rows",
+        "shortcut": "Ctrl+-"
       }
     ]
   },
@@ -267,6 +285,12 @@
       {
         "order": 2,
         "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Columns",
+        "shortcut": "Ctrl+-"
+      },
+      {
+        "order": 37,
+        "context": "columnHeader",
         "label": "Delete Columns",
         "shortcut": "Ctrl+-"
       }

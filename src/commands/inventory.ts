@@ -88,7 +88,16 @@ export interface ContextMenuGroup {
   readonly order: number;
 }
 
+/** The grid region a placement belongs to; header regions show flat row/column items. */
+export type ContextMenuRegion = 'cell' | 'rowHeader' | 'columnHeader';
+
 export interface ContextMenuPlacement {
+  /**
+   * Which grid region shows this placement. A grouped placement that omits it
+   * belongs to the cell menu's flyout; a flat placement that omits it is shared
+   * chrome, shown on every region's menu.
+   */
+  readonly context?: ContextMenuRegion;
   /** Sort order: among the flat items, or inside the flyout when grouped. */
   readonly order?: number;
   readonly label?: string;

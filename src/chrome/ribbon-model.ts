@@ -3,6 +3,8 @@ import type {
   CommandInventoryEntry,
   CompactPlacement,
   ContextMenuGroup,
+  ContextMenuPlacement,
+  ContextMenuRegion,
   ControlValueSource,
   RibbonMenuItem,
   RibbonPlacement,
@@ -252,8 +254,16 @@ export function menuItemsFor(
  * The grid context menu: flat items plus the one-level Insert/Delete flyouts,
  * in map order (ui-chrome §4.1). A flyout is disabled only when every item in
  * it is disabled, so the interaction stays possible whenever a direction is.
+ *
+ * The region picks the placements: a cell right-click gets the grouped Insert
+ * and Delete flyouts; a row or column header right-click gets the flat
+ * Insert/Delete pair for that header, as Excel shows. Flat items without a
+ * region are shared chrome and appear on every region's menu.
  */
-export function contextMenuItems(resolveState: CommandStateResolver): readonly MenuItemModel[] {
+export function contextMenuItems(
+  resolveState: CommandStateResolver,
+  region: ContextMenuRegion = 'cell',
+): readonly MenuItemModel[] {
   const flat: { readonly order: number; readonly item: MenuItemModel }[] = [];
   const groups = new Map<
     string,
@@ -266,6 +276,7 @@ export function contextMenuItems(resolveState: CommandStateResolver): readonly M
   for (const entry of COMMAND_INVENTORY) {
     if (!entry.implemented) continue;
     for (const placement of contextMenuPlacements(entry)) {
+      if (!placementAppliesTo(placement, region)) continue;
       const state = resolveState(entry.id);
       const group = placement.group;
       const item: MenuItemModel = {
@@ -302,6 +313,16 @@ export function contextMenuItems(resolveState: CommandStateResolver): readonly M
     });
   }
   return entries.sort((left, right) => left.order - right.order).map((entry) => entry.item);
+}
+
+/**
+ * A flat item with no region is shared chrome: it sits on every region's
+ * menu. A flyout with no region is the cell menu's Insert/Delete shape, and a
+ * placement that names a region belongs to that region alone.
+ */
+function placementAppliesTo(placement: ContextMenuPlacement, region: ContextMenuRegion): boolean {
+  if (placement.context !== undefined) return placement.context === region;
+  return region === 'cell' || placement.group === undefined;
 }
 
 function controlOrder(control: ResolvedRibbonControl): number | null {

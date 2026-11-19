@@ -29,6 +29,12 @@ const RIBBON_TABS = new Set([
   'View',
 ]);
 const CONTROL_KINDS = new Set(['button', 'toggle', 'select', 'split', 'menu', 'launcher']);
+const CONTEXT_REGIONS = new Set(['cell', 'rowHeader', 'columnHeader']);
+const CONTEXT_REGION_LABELS = {
+  cell: 'cell',
+  rowHeader: 'row header',
+  columnHeader: 'column header',
+};
 /** The only command allowed to use the ui-chrome pseudo-row instead of the feature matrix. */
 const UI_CHROME_COMMANDS = new Set(['help.about']);
 const ERROR_LIMIT = 40;
@@ -228,6 +234,9 @@ async function main() {
       }
     }
     for (const placement of contextMenuPlacements(entry)) {
+      if (placement.context !== undefined && !CONTEXT_REGIONS.has(placement.context)) {
+        fail(`${label}: unknown context-menu region ${placement.context}.`);
+      }
       if (
         placement.order !== undefined &&
         (!Number.isInteger(placement.order) || placement.order < 0)
@@ -373,8 +382,13 @@ async function main() {
       ].join('<br>') || '—';
     const menuParts = (entry.menu ?? []).map((placement) => placement.menu);
     for (const placement of contextMenuPlacements(entry)) {
+      const region = placement.context ?? 'cell';
       menuParts.push(
-        placement.group === undefined ? 'Context menu' : `Context menu (${placement.group.label})`,
+        region !== 'cell'
+          ? `Context menu (${CONTEXT_REGION_LABELS[region]})`
+          : placement.group === undefined
+            ? 'Context menu'
+            : `Context menu (${placement.group.label})`,
       );
     }
     const menu = [...new Set(menuParts)].join('<br>') || '—';
