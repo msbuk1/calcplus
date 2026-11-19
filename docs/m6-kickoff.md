@@ -156,7 +156,9 @@ lane 1.
   intact. Excel's macro prompt is its own security for downloaded files, not
   damage. The calcplus-saved file also reopens cleanly in Google Sheets and
   LibreOffice (exit criterion 3 evidence; the file is kept as
-  `fixtures/manual/sales-roundtrip-demo.xlsm`). Producer captures for F22
-  still need files written by Excel 365 and Google Sheets themselves; the
-  2026-11-19 Google download was a byte-identical pass-through and proves
-  nothing new.
+  `fixtures/manual/sales-roundtrip-demo.xlsm`). Producer captures for F22:
+  google-sheets captured 2026-11-19 (a genuine Google-written export after
+  editing in Google Sheets, `fixtures/compat/producers/google-sheets.xlsm`);
+  a LibreOffice save of the demo workbook is kept as
+  `fixtures/manual/sales-roundtrip-libre.xlsx` (chart kept, macro stripped by
+  the `.xlsx` format). The excel-365 and excel-2019 captures remain.
