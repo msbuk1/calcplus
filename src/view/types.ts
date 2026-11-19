@@ -3,9 +3,11 @@ import type {
   AlignmentStyle,
   BorderStyle,
   ColumnDimension,
+  CommentRecord,
   FillStyle,
   FontStyle,
   GridRange,
+  HyperlinkRecord,
   RowDimension,
 } from '@model/types';
 import type {
@@ -82,6 +84,12 @@ export interface ProjectedCell {
   readonly style: ProjectedStyle;
   /** The merged range this cell belongs to, or `null`. */
   readonly merge: MergeSpan | null;
+  /**
+   * The hyperlink anchored to this cell, or `null` (file-compat §9 F13). The
+   * grid paints the link styling from it; following the link is the surface's
+   * decision.
+   */
+  readonly hyperlink: HyperlinkRecord | null;
   /**
    * Number-format display for a content-box width. `displayText` is
    * width-agnostic; the grid uses this when it knows the paint width so `*`
@@ -167,9 +175,21 @@ export interface SheetProjection {
   /**
    * Cells that carry a legacy note or threaded comment, keyed `row:col`
    * (file-compat §9 F12). The renderer paints the corner indicator from this
-   * set; the grid never reads comment text, replies or authors.
+   * set; the comment popup reads the text and author through `commentAt`.
    */
   readonly commentCells?: ReadonlySet<string>;
+  /**
+   * The legacy note or threaded comment anchored to a cell, or `null`. A
+   * threaded record is one anchor of a thread, not the whole thread: the model
+   * keeps one record per cell.
+   */
+  commentAt(row: number, col: number): CommentRecord | null;
+  /**
+   * The hyperlink anchored to a cell, or `null` (file-compat §9 F13). It is
+   * available even when the cell has no value, because a link may be anchored
+   * to an empty cell.
+   */
+  hyperlinkAt(row: number, col: number): HyperlinkRecord | null;
   /** The used range of the sheet, or `null` when the sheet is empty. */
   usedRange(): { startRow: number; endRow: number; startCol: number; endCol: number } | null;
   /** The sorted columns that hold data in a row. */

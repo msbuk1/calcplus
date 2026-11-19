@@ -23,6 +23,7 @@ import type {
   Cell,
   ColumnFilter,
   GridRange,
+  HyperlinkRecord,
   Sheet,
   SheetId,
   Workbook,
@@ -46,8 +47,9 @@ import { listPreservedParts } from '@ooxml/part-policy';
 import { buildCompatibilityReport, buildExportReport } from '@ooxml/report';
 import type { CompatibilityReport, ExportReport } from '@ooxml/report';
 import { compatibilityReportSummary, exportReportSummary } from '@ooxml/report';
-import { confirmReplaceDocument, planMacroSave } from '@io/confirm';
+import { confirmReplaceDocument, planMacroSave, planSignatureSave } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
+import { checkExternalLink, internalLocationText, parseInternalLocation } from '@view/hyperlinks';
 import { firstVisibleSheetId, isSheetVisible, visibleSheetCount } from '@view/sheet-visibility';
 import {
   DEFAULT_SHEET_VIEW,
@@ -391,6 +393,19 @@ export function App(): JSX.Element {
     });
     if (macroPlan === null) {
       setStatus('Save As cancelled. The workbook was not written.');
+      return;
+    }
+    // File-compat §6.5: a signed package is preserved, but saving invalidates
+    // the signature, so the write is preceded by a confirmation. A save with
+    // nothing to write returns the original bytes and never asks, and an
+    // unsigned workbook has nothing to warn about. Declining writes nothing.
+    if (
+      !planSignatureSave({
+        hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
+        changed: document.session.hasUnsavedChanges,
+      })
+    ) {
+      setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
       return;
     }
     setBusy(true);
@@ -1141,6 +1156,45 @@ export function App(): JSX.Element {
       setFocusZone('grid');
       setStatus(`Selected ${target.sheetName}!${target.label}.`);
       return target.label;
+    },
+    [resolveNavigationTarget, selectNavigationTarget],
+  );
+
+  /**
+   * A Ctrl+click on a linked cell (feature matrix §8 "followable
+   * (Ctrl+click)"). An external address opens in a new tab only when its scheme
+   * is on the allowlist; an internal location resolves through the same path as
+   * the name box and Go To. Every refusal reports why instead of failing
+   * silently, and the app itself never navigates.
+   */
+  const followHyperlink = useCallback(
+    (link: HyperlinkRecord): void => {
+      if (link.target !== '') {
+        const check = checkExternalLink(link.target);
+        if (check.kind === 'refused') {
+          setStatus(check.message);
+          return;
+        }
+        window.open(check.url, '_blank', 'noopener,noreferrer');
+        setStatus('Opened the hyperlink in a new tab.');
+        return;
+      }
+      const location = link.location ?? '';
+      const parsed = parseInternalLocation(location);
+      if (parsed === null) {
+        setStatus(`The hyperlink target "${location}" could not be resolved.`);
+        return;
+      }
+      const resolution = resolveNavigationTarget(internalLocationText(parsed));
+      if (resolution.kind === 'invalid') {
+        setStatus(
+          `The hyperlink target "${location}" could not be resolved: ${resolution.message}`,
+        );
+        return;
+      }
+      selectNavigationTarget(resolution.target);
+      setFocusZone('grid');
+      setStatus(`Followed the link to ${resolution.target.sheetName}!${resolution.target.label}.`);
     },
     [resolveNavigationTarget, selectNavigationTarget],
   );
@@ -2575,6 +2629,7 @@ export function App(): JSX.Element {
             painterActive={painter !== null}
             onPainterApply={applyPainter}
             onFill={handleFill}
+            onFollowHyperlink={followHyperlink}
             marquee={
               copyMarquee === null
                 ? undefined

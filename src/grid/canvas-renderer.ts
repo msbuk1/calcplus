@@ -54,6 +54,8 @@ const COLORS = Object.freeze({
   fillHandle: '#1a73e8',
   painterFill: 'rgba(237, 125, 49, 0.18)',
   painterBorder: '#c55a11',
+  /** The CSS theme accent, read at paint time; this is the fallback. */
+  link: '#107c41',
 });
 
 /** Excel's default automatic border colour. */
@@ -118,6 +120,8 @@ export class CanvasRenderFrame implements RenderFrame {
   private height = 0;
   private dpr = 1;
   private lastFont = '';
+  /** The resolved theme accent for a hyperlink, cached after the first link. */
+  private linkColor: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     const context = canvas.getContext('2d');
@@ -693,9 +697,12 @@ export class CanvasRenderFrame implements RenderFrame {
     // right, so the text never paints under the glyph (§5.1 step 6).
     const style = cf?.style ?? cell.style;
     const shift = cf?.shift ?? 0;
+    // File-compat §9 F13: a linked cell paints in the theme accent with an
+    // underline, whether or not the imported style already carries them.
+    const link = cell.hyperlink !== null;
     const rotation = rotationFor(style);
     if (rotation.kind === 'stacked') {
-      this.paintStackedText(cf?.text ?? cell.displayText, style, rect, zoom);
+      this.paintStackedText(cf?.text ?? cell.displayText, style, rect, zoom, link);
       return;
     }
     if (rotation.kind === 'angle') {
@@ -771,7 +778,7 @@ export class CanvasRenderFrame implements RenderFrame {
     context.beginPath();
     context.rect(rect.x, rect.y, rect.width, rect.height);
     context.clip();
-    context.fillStyle = textColorFor(style);
+    context.fillStyle = link ? this.linkColorValue() : textColorFor(style);
     context.textAlign =
       horizontal === 'center' ? 'center' : horizontal === 'right' ? 'right' : 'left';
     context.textBaseline = 'alphabetic';
@@ -791,6 +798,7 @@ export class CanvasRenderFrame implements RenderFrame {
         font,
         contentX + insets.left,
         Math.max(0, contentWidth - insets.left - insets.right),
+        link,
       );
     }
     context.restore();
@@ -805,6 +813,7 @@ export class CanvasRenderFrame implements RenderFrame {
     cf?: CfTextPaint,
   ): void {
     const { context } = this;
+    const link = cell.hyperlink !== null;
     const padding = horizontalPadding(zoom);
     // Rotation gives the cell's height to the text run.
     const available = Math.max(1, rect.height - padding * 2);
@@ -839,17 +848,17 @@ export class CanvasRenderFrame implements RenderFrame {
     context.clip();
     context.translate(rect.x + rect.width / 2, rect.y + rect.height / 2);
     context.rotate(radians);
-    context.fillStyle = textColorFor(style);
+    context.fillStyle = link ? this.linkColorValue() : textColorFor(style);
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.setLineDash([]);
     context.fillText(paint, 0, 0);
     const underline = underlineKind(style);
-    if (underline !== 'none' || style.font.strike) {
-      context.strokeStyle = textColorFor(style);
+    if (underline !== 'none' || style.font.strike || link) {
+      context.strokeStyle = link ? this.linkColorValue() : textColorFor(style);
       context.lineWidth = Math.max(1, size / 14);
       const left = -width / 2;
-      if (underline !== 'none') {
+      if (underline !== 'none' || link) {
         context.beginPath();
         context.moveTo(left, size * 0.55);
         context.lineTo(left + width, size * 0.55);
@@ -876,6 +885,7 @@ export class CanvasRenderFrame implements RenderFrame {
     style: ProjectedStyle,
     rect: CellRect,
     zoom: number,
+    link = false,
   ): void {
     const { context } = this;
     const characters = Array.from(text);
@@ -897,7 +907,7 @@ export class CanvasRenderFrame implements RenderFrame {
     context.beginPath();
     context.rect(rect.x, rect.y, rect.width, rect.height);
     context.clip();
-    context.fillStyle = textColorFor(style);
+    context.fillStyle = link ? this.linkColorValue() : textColorFor(style);
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.setLineDash([]);
@@ -923,19 +933,21 @@ export class CanvasRenderFrame implements RenderFrame {
     font: string,
     cellLeft: number,
     cellWidth: number,
+    link = false,
   ): void {
     const underline = underlineKind(style);
-    if (underline === 'none' && !style.font.strike) return;
+    if (underline === 'none' && !style.font.strike && !link) return;
     const width = this.measure(line, font);
     const left = horizontal === 'center' ? x - width / 2 : horizontal === 'right' ? x - width : x;
     const accounting = isAccountingUnderline(style);
     const lineLeft = accounting ? cellLeft : left;
     const lineWidth = accounting ? cellWidth : width;
     const { context } = this;
-    context.strokeStyle = textColorFor(style);
+    const color = link ? this.linkColorValue() : textColorFor(style);
+    context.strokeStyle = color;
     context.lineWidth = Math.max(1, size / 14);
     context.setLineDash([]);
-    if (underline !== 'none') {
+    if (underline !== 'none' || link) {
       const y = baseline + Math.max(1, size * 0.08);
       context.beginPath();
       context.moveTo(lineLeft, y);
@@ -960,6 +972,21 @@ export class CanvasRenderFrame implements RenderFrame {
     if (font === this.lastFont) return;
     this.context.font = font;
     this.lastFont = font;
+  }
+
+  /**
+   * The hyperlink colour is the application's theme accent, so the grid never
+   * introduces a colour the chrome does not use. It is resolved lazily (the
+   * stylesheet may load after the canvas) and cached for the frame's lifetime.
+   */
+  private linkColorValue(): string {
+    if (this.linkColor !== null) return this.linkColor;
+    let resolved = '';
+    if (typeof getComputedStyle === 'function') {
+      resolved = getComputedStyle(this.canvas).getPropertyValue('--accent').trim();
+    }
+    this.linkColor = resolved === '' ? COLORS.link : resolved;
+    return this.linkColor;
   }
 
   private measure(text: string, font: string): number {

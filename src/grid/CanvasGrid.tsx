@@ -6,6 +6,7 @@ import type {
   RefObject,
 } from 'react';
 import { flushSync } from 'react-dom';
+import type { HyperlinkRecord } from '@model/types';
 import type { SheetProjection } from '@view/types';
 import { autofitColumnWidth, autofitRowHeight, type AutofitTarget } from './autofit';
 import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
@@ -42,6 +43,7 @@ import {
   mergedRect,
   rowAtHeader,
   scrollToReveal,
+  type CellRect,
   type PaneLayout,
 } from './panes';
 import { resizeDimension, type DimensionAxis, type DimensionResize } from './resize';
@@ -120,6 +122,13 @@ export interface CanvasGridProps {
    */
   readonly onFill?: (source: GridRange, destination: GridRange) => void;
   /**
+   * Ctrl+click on a cell that carries a hyperlink (file-compat §9 F13). The
+   * grid owns the gesture only: the application decides whether an external
+   * address may be opened, navigates an internal location and reports the
+   * outcome. A plain click selects the cell as usual.
+   */
+  readonly onFollowHyperlink?: (link: HyperlinkRecord, address: GridCellAddress) => void;
+  /**
    * Copy mode (ticket 31 B). The dashed marquee marks the copy's destination:
    * the arrow keys move it without moving the selection, Enter pastes there and
    * Esc — or any other key or pointer action that moves the selection — ends
@@ -170,6 +179,7 @@ export function CanvasGrid({
   painterActive,
   onPainterApply,
   onFill,
+  onFollowHyperlink,
   marquee,
   shellRef,
   onFocusZone,
@@ -212,6 +222,17 @@ export function CanvasGrid({
   const fillCleanupRef = useRef<(() => void) | null>(null);
   /** Time of the last fill-handle press, for Excel's double-click fill. */
   const fillPressRef = useRef(0);
+  /**
+   * The last fill-handle press point, in client coordinates, and its time. The
+   * browser's `dblclick` fires after the fill has already moved the handle, so
+   * the painted-handle hit test alone cannot recognise the gesture; the
+   * recorded press point lets the double-click handler consume it.
+   */
+  const fillPressOriginRef = useRef<{
+    readonly x: number;
+    readonly y: number;
+    readonly at: number;
+  } | null>(null);
   const formulaDragRef = useRef<{
     readonly pointerId: number;
     readonly anchor: GridCellAddress;
@@ -225,6 +246,18 @@ export function CanvasGrid({
   /** The copy marquee's overlay, kept over its range while the sheet scrolls. */
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const marqueeRangeRef = useRef<GridRange | null>(null);
+  /**
+   * The transient hover overlays: a comment popup over a noted cell and a plain
+   * tooltip over a linked cell. They are view-only and never touch the model or
+   * the selection.
+   */
+  const commentPopupRef = useRef<HTMLDivElement | null>(null);
+  const linkTooltipRef = useRef<HTMLDivElement | null>(null);
+  const hoverRef = useRef<{
+    readonly comment: GridCellAddress | null;
+    readonly link: GridCellAddress | null;
+  }>({ comment: null, link: null });
+  const [hover, setHover] = useState(hoverRef.current);
 
   const paint = useCallback((): void => {
     const frame = frameRef.current;
@@ -262,6 +295,26 @@ export function CanvasGrid({
       scroll,
       marqueeRangeRef.current,
     );
+    // The hover overlays are DOM elements too: the paint places them so they
+    // keep tracking the cell while the sheet scrolls.
+    positionHoverOverlay(
+      commentPopupRef.current,
+      current.projection,
+      layout,
+      scroll,
+      hoverRef.current.comment,
+      viewport,
+      'right',
+    );
+    positionHoverOverlay(
+      linkTooltipRef.current,
+      current.projection,
+      layout,
+      scroll,
+      hoverRef.current.link,
+      viewport,
+      'below',
+    );
     updateScrollbarThumbs(
       verticalThumbRef.current,
       horizontalThumbRef.current,
@@ -279,6 +332,27 @@ export function CanvasGrid({
       paint();
     });
   }, [paint]);
+
+  /**
+   * Replace the hover overlays. A pointer moves many times inside one cell, so
+   * an unchanged cell keeps the same state object and React never re-renders
+   * for it. The paint loop reads the ref, so the placement follows scrolling.
+   */
+  const setHoverOverlays = useCallback(
+    (comment: GridCellAddress | null, link: GridCellAddress | null): void => {
+      const current = hoverRef.current;
+      if (sameAddress(current.comment, comment) && sameAddress(current.link, link)) return;
+      const next = { comment, link };
+      hoverRef.current = next;
+      setHover(next);
+      schedulePaint();
+    },
+    [schedulePaint],
+  );
+
+  const clearHoverOverlays = useCallback((): void => {
+    setHoverOverlays(null, null);
+  }, [setHoverOverlays]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -312,6 +386,12 @@ export function CanvasGrid({
     stateRef.current = { projection, selection };
     schedulePaint();
   }, [projection, selection, schedulePaint]);
+
+  // Any gesture that changes the selection — a click, a key, a jump or a sheet
+  // switch — dismisses the hover overlays, as Excel does.
+  useEffect(() => {
+    clearHoverOverlays();
+  }, [projection, selection, clearHoverOverlays]);
 
   // Leaving Format Painter mode drops the live target without a document
   // change. Esc is handled by the application, which flips this prop.
@@ -582,6 +662,55 @@ export function CanvasGrid({
     );
   };
 
+  /**
+   * Update the hover overlays for a pointer position: the comment popup appears
+   * over the corner indicator (Excel's gesture) and the link tooltip over a
+   * linked cell. Returns `true` when the pointer is over a hyperlink, so the
+   * caller can show the hand cursor.
+   */
+  const hoverAtClientPoint = (clientX: number, clientY: number): boolean => {
+    const canvas = canvasRef.current;
+    const layout = layoutRef.current;
+    if (canvas === null || layout === null) return false;
+    const rect = canvas.getBoundingClientRect();
+    const pointX = clientX - rect.left;
+    const pointY = clientY - rect.top;
+    const projection = stateRef.current.projection;
+    if (pointX < layout.headerWidth || pointY < layout.headerHeight) {
+      setHoverOverlays(null, null);
+      return false;
+    }
+    const scroll = scrollRef.current;
+    const address = cellAtPoint(projection, layout, pointX, pointY, scroll.x, scroll.y);
+    if (address === null) {
+      setHoverOverlays(null, null);
+      return false;
+    }
+    if (projection.isRowHidden(address.row) || projection.isColumnHidden(address.col)) {
+      setHoverOverlays(null, null);
+      return false;
+    }
+    const cell = cellRect(projection, layout, scroll.x, scroll.y, address.row, address.col);
+    if (
+      projection.commentAt(address.row, address.col) !== null &&
+      overCommentIndicator(pointX, pointY, cell, projection.zoom)
+    ) {
+      setHoverOverlays(address, null);
+      return false;
+    }
+    const merge = projection.mergeAt(address.row, address.col);
+    const link =
+      projection.hyperlinkAt(address.row, address.col) ??
+      (merge === null ? null : projection.hyperlinkAt(merge.anchorRow, merge.anchorCol));
+    if (link === null) {
+      setHoverOverlays(null, null);
+      return false;
+    }
+    const tooltip = link.tooltip ?? '';
+    setHoverOverlays(null, tooltip === '' ? null : address);
+    return true;
+  };
+
   /** The rectangle a painter gesture covers between its first and current cell. */
   const painterRange = (anchor: GridCellAddress, focus: GridCellAddress): GridRange => ({
     startRow: Math.min(anchor.row, focus.row),
@@ -616,6 +745,32 @@ export function CanvasGrid({
       pointX <= handle.x + handle.width + FILL_HANDLE_HIT_MARGIN_PIXELS &&
       pointY >= handle.y - FILL_HANDLE_HIT_MARGIN_PIXELS &&
       pointY <= handle.y + handle.height + FILL_HANDLE_HIT_MARGIN_PIXELS
+    );
+  };
+
+  /**
+   * `true` when this point was a fill-handle press. The painted handle is the
+   * first test, but a double-click fill moves the handle before the browser
+   * delivers `dblclick`, so the recorded press point covers that gap. Anything
+   * that presses the handle therefore consumes the gesture and the in-cell
+   * editor never opens from it.
+   */
+  const fillPressedAt = (
+    pointX: number,
+    pointY: number,
+    clientX: number,
+    clientY: number,
+  ): boolean => {
+    if (fillHandleAt(pointX, pointY)) return true;
+    const press = fillPressOriginRef.current;
+    if (press === null) return false;
+    if (Date.now() - press.at > FILL_HANDLE_DOUBLE_CLICK_MS) return false;
+    // Client coordinates, not canvas coordinates: a transient layout shift
+    // (the open banner, a status row) can move the canvas between the press and
+    // the browser's `dblclick`, while the pointer itself has not moved.
+    return (
+      Math.abs(clientX - press.x) <= FILL_HANDLE_DOUBLE_CLICK_SLOP_PIXELS &&
+      Math.abs(clientY - press.y) <= FILL_HANDLE_DOUBLE_CLICK_SLOP_PIXELS
     );
   };
 
@@ -997,6 +1152,13 @@ export function CanvasGrid({
     if (resizeDragRef.current !== null) return;
     const layout = layoutRef.current;
     if (layout === null) return;
+    // A drag owns the pointer: no hover overlay appears mid-gesture.
+    const dragging =
+      selectionDragRef.current !== null ||
+      fillDragRef.current !== null ||
+      formulaDragRef.current !== null ||
+      painterDragRef.current !== null;
+    const overLink = dragging ? false : hoverAtClientPoint(event.clientX, event.clientY);
     const rect = event.currentTarget.getBoundingClientRect();
     const target = headerResizeTarget(
       stateRef.current.projection,
@@ -1007,9 +1169,12 @@ export function CanvasGrid({
       scrollRef.current.y,
     );
     setCanvasCursor(target === null ? null : target.axis);
+    if (target === null && overLink) event.currentTarget.style.cursor = 'pointer';
   };
 
   const handlePointerLeave = (): void => {
+    // Leaving the canvas is a mouse-away dismissal, exactly like Excel's note.
+    clearHoverOverlays();
     if (painterActive === true) {
       setCanvasCursor(null);
       if (painterDragRef.current !== null || painterTargetRef.current === null) return;
@@ -1029,6 +1194,10 @@ export function CanvasGrid({
     const current = stateRef.current.projection;
     const scroll = scrollRef.current;
     const session = editorSessionRef.current;
+    // A press supersedes the previous fill-handle record and closes any hover
+    // overlay, whatever gesture follows.
+    fillPressOriginRef.current = null;
+    clearHoverOverlays();
 
     // Format Painter: a press starts one target range, a drag extends it and
     // the release submits a single apply command. It never changes the
@@ -1139,6 +1308,31 @@ export function CanvasGrid({
 
     containerRef.current?.focus();
 
+    // Ctrl+click follows a hyperlink (feature matrix §8 "followable
+    // (Ctrl+click)"). It never moves the selection: the cell is only a target.
+    // A plain click falls through to the ordinary selection path below.
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.button === 0 &&
+      onFollowHyperlink !== undefined &&
+      pointX >= layout.headerWidth &&
+      pointY >= layout.headerHeight
+    ) {
+      const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
+      if (address !== null) {
+        const merge = current.mergeAt(address.row, address.col);
+        const anchor = merge === null ? address : { row: merge.anchorRow, col: merge.anchorCol };
+        const link =
+          current.hyperlinkAt(address.row, address.col) ??
+          current.hyperlinkAt(anchor.row, anchor.col);
+        if (link !== null) {
+          event.preventDefault();
+          onFollowHyperlink(link, address);
+          return;
+        }
+      }
+    }
+
     // The fill handle owns its press: it never moves the selection or opens
     // the editor. A second press inside the double-click window is Excel's
     // double-click fill down to the adjacent data edge; a drag fills the
@@ -1150,6 +1344,7 @@ export function CanvasGrid({
       // A fill re-draws the selection, so copy mode ends before it (ticket 31 B).
       endCopyMode();
       const now = Date.now();
+      fillPressOriginRef.current = { x: event.clientX, y: event.clientY, at: now };
       const doubleClick = now - fillPressRef.current <= FILL_HANDLE_DOUBLE_CLICK_MS;
       fillPressRef.current = doubleClick ? 0 : now;
       if (doubleClick) {
@@ -1267,9 +1462,11 @@ export function CanvasGrid({
     const pointY = event.clientY - rect.top;
     const current = stateRef.current.projection;
 
-    // The double-click fill already ran on the second press of the handle; the
-    // browser's `dblclick` must not also open the in-cell editor.
-    if (fillHandleAt(pointX, pointY) && onFill !== undefined) return;
+    // A fill-handle press consumes the whole gesture, so the browser's
+    // `dblclick` must not also open the in-cell editor. The second press may
+    // already have filled and moved the handle away from the point `dblclick`
+    // reports, so the painted hit test is backed by the recorded press point.
+    if (onFill !== undefined && fillPressedAt(pointX, pointY, event.clientX, event.clientY)) return;
 
     // A header double-click autofits every selected visible row or column to
     // its own content. One transaction stores the whole selection.
@@ -1327,6 +1524,15 @@ export function CanvasGrid({
     // While an input method composes, the keyboard belongs to it: Enter
     // confirms a candidate and must not move the active cell.
     if (event.nativeEvent.isComposing) return;
+    // Esc closes a hover overlay first; it makes no other change.
+    if (
+      event.key === 'Escape' &&
+      (hoverRef.current.comment !== null || hoverRef.current.link !== null)
+    ) {
+      event.preventDefault();
+      clearHoverOverlays();
+      return;
+    }
     const { key, ctrlKey, shiftKey, altKey, metaKey } = event;
     const current = stateRef.current;
     if ((ctrlKey || metaKey) && !shiftKey && !altKey) {
@@ -1629,6 +1835,29 @@ export function CanvasGrid({
           marqueeRange,
         );
 
+  // The comment popup and the link tooltip are anchored to their cells; the
+  // paint re-places them every frame so they track scrolling.
+  const hoveredComment =
+    hover.comment === null ? null : projection.commentAt(hover.comment.row, hover.comment.col);
+  const commentPopupRect =
+    hover.comment === null
+      ? null
+      : cellRect(
+          projection,
+          layout,
+          scrollRef.current.x,
+          scrollRef.current.y,
+          hover.comment.row,
+          hover.comment.col,
+        );
+  const hoveredLink =
+    hover.link === null ? null : projection.hyperlinkAt(hover.link.row, hover.link.col);
+  const linkTooltipText = hoveredLink?.tooltip ?? '';
+  const linkTooltipRect =
+    hover.link === null || linkTooltipText === ''
+      ? null
+      : overlayAnchorRect(projection, layout, scrollRef.current, hover.link);
+
   return (
     <div
       ref={setShellRef}
@@ -1732,6 +1961,46 @@ export function CanvasGrid({
           }}
         />
       ) : null}
+      {commentPopupRect !== null && hoveredComment !== null ? (
+        <div
+          ref={commentPopupRef}
+          className="comment-popup"
+          data-testid="comment-popup"
+          role="note"
+          style={{
+            position: 'absolute',
+            left: `${commentPopupRect.x + commentPopupRect.width + 6}px`,
+            top: `${commentPopupRect.y}px`,
+          }}
+        >
+          <div className="comment-popup-author" data-testid="comment-popup-author">
+            {hoveredComment.author ?? 'Unknown author'}
+          </div>
+          <div className="comment-popup-text" data-testid="comment-popup-text">
+            {hoveredComment.text === '' ? '(no text)' : hoveredComment.text}
+          </div>
+          {hoveredComment.threaded ? (
+            <div className="comment-popup-badge" data-testid="comment-popup-badge">
+              Threaded comment
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {linkTooltipRect !== null && linkTooltipText !== '' ? (
+        <div
+          ref={linkTooltipRef}
+          className="link-tooltip"
+          data-testid="link-tooltip"
+          role="tooltip"
+          style={{
+            position: 'absolute',
+            left: `${linkTooltipRect.x}px`,
+            top: `${linkTooltipRect.y + linkTooltipRect.height + 4}px`,
+          }}
+        >
+          {linkTooltipText}
+        </div>
+      ) : null}
       {editor !== null ? (
         <textarea
           ref={editorRef}
@@ -1769,6 +2038,9 @@ const FILL_HANDLE_HIT_MARGIN_PIXELS = 2;
 
 /** Two presses on the handle inside this window are a double-click fill. */
 const FILL_HANDLE_DOUBLE_CLICK_MS = 500;
+
+/** How far the browser's `dblclick` point may sit from the recorded press. */
+const FILL_HANDLE_DOUBLE_CLICK_SLOP_PIXELS = 6;
 
 /**
  * The last row a double-click on the fill handle fills to. Excel measures the
@@ -1932,6 +2204,78 @@ function positionMarquee(
   element.style.top = `${rect.y}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
+}
+
+/** The rectangle a hover overlay hangs from; a link uses its merged range. */
+function overlayAnchorRect(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  scroll: ScrollOffset,
+  address: GridCellAddress,
+): CellRect {
+  const merge = projection.mergeAt(address.row, address.col);
+  if (merge === null) {
+    return cellRect(projection, layout, scroll.x, scroll.y, address.row, address.col);
+  }
+  return mergedRect(
+    projection,
+    layout,
+    scroll.x,
+    scroll.y,
+    merge.anchorRow,
+    merge.anchorCol,
+    merge.rowSpan,
+    merge.colSpan,
+  );
+}
+
+/**
+ * Place a hover overlay next to its cell and keep it inside the viewport. The
+ * comment popup sits to the right of the cell, the link tooltip below it; both
+ * flip to the other side when the viewport runs out of room, then clamp.
+ */
+function positionHoverOverlay(
+  element: HTMLDivElement | null,
+  projection: SheetProjection,
+  layout: PaneLayout,
+  scroll: ScrollOffset,
+  address: GridCellAddress | null,
+  viewport: Viewport,
+  placement: 'right' | 'below',
+): void {
+  if (element === null || address === null) return;
+  const rect = overlayAnchorRect(projection, layout, scroll, address);
+  const width = element.offsetWidth || 240;
+  const height = element.offsetHeight || 60;
+  const gap = 6;
+  let left = placement === 'right' ? rect.x + rect.width + gap : rect.x;
+  let top = placement === 'right' ? rect.y : rect.y + rect.height + 4;
+  if (left + width > viewport.width - 4) {
+    left = placement === 'right' ? rect.x - width - gap : viewport.width - width - 4;
+  }
+  left = Math.max(4, Math.min(left, Math.max(4, viewport.width - width - 4)));
+  top = Math.max(4, Math.min(top, Math.max(4, viewport.height - height - 4)));
+  element.style.left = `${Math.round(left)}px`;
+  element.style.top = `${Math.round(top)}px`;
+}
+
+/** Whether a canvas point sits on a comment's corner indicator triangle. */
+function overCommentIndicator(
+  pointX: number,
+  pointY: number,
+  rect: CellRect,
+  zoom: number,
+): boolean {
+  // Two pixels of slack, matching the painted triangle plus the pointer's aim.
+  const size = Math.max(3, Math.min(8, Math.round(5 * zoom))) + 2;
+  const right = rect.x + rect.width;
+  return pointX >= right - size && pointX <= right && pointY >= rect.y && pointY <= rect.y + size;
+}
+
+function sameAddress(left: GridCellAddress | null, right: GridCellAddress | null): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return left.row === right.row && left.col === right.col;
 }
 
 /**

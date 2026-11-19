@@ -889,6 +889,54 @@ a:focus-visible,
   color: var(--text);
 }
 
+/*
+ * The comment popup and the link tooltip are hover overlays drawn over the
+ * canvas. They take no pointer events, so moving onto them is a mouse-away
+ * dismissal, and they never cover the cell they describe.
+ */
+.comment-popup,
+.link-tooltip {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  max-width: 280px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--shadow);
+  pointer-events: none;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-popup {
+  padding: 6px 8px;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.comment-popup-author {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.comment-popup-badge {
+  margin-top: 4px;
+  color: var(--warning);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.link-tooltip {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  background: var(--command-surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;

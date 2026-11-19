@@ -259,6 +259,7 @@ export function createSheetProjection(
       stale: cell.stale === true || (cell.formula !== null && cell.savedResult === null),
       style,
       merge: merges.get(cellKey(row, col)) ?? null,
+      hyperlink: sheet.hyperlinks.get(cellKey(row, col)) ?? null,
       layoutText: (widthPx, measure) => layoutTextFor(cell, style, widthPx, measure),
     };
   };
@@ -305,6 +306,14 @@ export function createSheetProjection(
     date1904: workbook.date1904,
     conditionalFormatting,
     commentCells: new Set(sheet.comments.keys()),
+    commentAt(row, col) {
+      if (row < 0 || col < 0 || row >= rowCount || col >= columnCount) return null;
+      return sheet.comments.get(cellKey(row, col)) ?? null;
+    },
+    hyperlinkAt(row, col) {
+      if (row < 0 || col < 0 || row >= rowCount || col >= columnCount) return null;
+      return sheet.hyperlinks.get(cellKey(row, col)) ?? null;
+    },
     defaultRowHeightPoints: sheet.defaultRowHeight,
     defaultColumnWidthChars: sheet.defaultColumnWidth,
     cellAt(row, col) {
