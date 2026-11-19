@@ -196,6 +196,23 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 4. Fill and insert/delete are one undo transaction each.
 5. 100k-row sort and filter meet the performance budgets.
 
+**Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 5, 6
+and 7 are proven by the local suites: the 24 fixtures, the identity harness
+(no-op byte identity, dirty-part preservation, semantic equality), the
+transform-or-block work including internal hyperlink locations, the macro
+preservation and confirmation flow, and the hostile-input caps with XXE-safe
+parsing. Criterion 3 was verified by the maintainer's demo run: a workbook
+with a chart, macro, hyperlinks and formulas round-tripped through calcplus
+and reopened intact in Excel 365, and the same output opens in Google Sheets
+and LibreOffice. Criterion 4: the producer matrix is green — openpyxl,
+LibreOffice, SheetJS and xlsx-populate generated; Google Sheets and Excel
+365 maintainer-captured on 2026-11-19; Excel 2019 recorded as not available
+(maintainer ruling). Two asterisks are recorded in
+[docs/m6-kickoff.md](../../../docs/m6-kickoff.md): the demo workbook carried
+no real PivotTable or external formula link (fixture F10 covers those), and
+ticket 32 replaces the cross-sheet-link refusal with the break-and-mark
+policy the research note recommends.
+
 **Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 4 and 5
 were proven by the local conformance and performance suites; criterion 3 was
 verified by the maintainer on Windows against Excel 365 with the clipboard

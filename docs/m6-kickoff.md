@@ -163,3 +163,6 @@ lane 1.
   `fixtures/manual/sales-roundtrip-libre.xlsx` (chart kept, macro stripped by
   the `.xlsx` format). Excel 2019 is recorded as not available (maintainer
   ruling 2026-11-19). The excel-365 capture remains.
+- 2026-11-19: the excel-365 capture landed (saved by Excel 365, never opened
+  in calcplus) and the M6 exit gate passed — see the exit note in the
+  milestone plan. Ticket 32 is next.

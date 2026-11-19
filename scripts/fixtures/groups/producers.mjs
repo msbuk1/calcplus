@@ -309,10 +309,10 @@ const MANIFEST = {
   producers: [
     {
       id: 'excel-365',
-      file: 'excel-365.xlsx',
+      file: 'excel-365.xlsm',
       kind: 'maintainer-capture',
-      status: 'absent',
-      note: 'Capture a workbook saved by Excel 365 itself (a file created in Excel and saved before calcplus touches it). The 2026-11-19 demo file is kept as fixtures/manual/sales-roundtrip-demo.xlsm: it is round-trip evidence, not a producer capture.',
+      status: 'captured',
+      note: 'Captured 2026-11-19: saved by Excel 365 (AppVersion 16.0300, calcChain present, Excel save stamp) and never opened in calcplus. The workbook family started as an openpyxl skeleton; Excel is the last writer, which is what the row claims.',
     },
     {
       id: 'excel-2019',
