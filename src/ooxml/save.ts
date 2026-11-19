@@ -144,8 +144,11 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   // compare every authored formula with its source part so the patch still
   // writes them.
   const dirtyCellsForSave = mergeDirtyCells(
-    input.dirtyCells,
-    sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+    mergeDirtyCells(
+      input.dirtyCells,
+      sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+    ),
+    recalculatedFormulaCells(input, input.dirtyCells, newSheetIds),
   );
   const dirtyCellSheetIds = [...dirtyCellsForSave.entries()]
     .filter(([, cells]) => cells.size > 0)
@@ -799,6 +802,73 @@ function structuralFormulaDirtyCells(
       if (cell.formula === null) continue;
       const original = parsed.sheet.cells.get(key) ?? null;
       if (cellFormulaKey(original) === cellFormulaKey(cell)) continue;
+      const keys = dirty.get(sheet.id) ?? new Set<string>();
+      keys.add(key);
+      dirty.set(sheet.id, keys);
+    }
+  }
+  return dirty;
+}
+
+/**
+ * File-compat §6.1 and §9 F6: a formula with no cached `<v>` is recalculated on
+ * open, and its evaluated result must reach the file even though no command
+ * touched the cell. This is the whole scope of the rewrite: a cell that already
+ * carried a cached result keeps those bytes, because the engine's own result is
+ * not a reason to replace what Excel saved (and the engine's precision is not
+ * Excel's). Any input change still sets `fullCalcOnLoad`, so Excel recomputes
+ * the dependants from evaluated inputs on load.
+ *
+ * A stale cell is excluded: it keeps its original `<v>` (or none) and the
+ * workbook asks Excel to recalculate, because a stale value must never be
+ * presented as current. Shared and array groups are excluded for the same
+ * reason: they are read-only and their cached result is preserved verbatim.
+ *
+ * The source part is parsed once per formula-bearing sheet to learn which cells
+ * carried no cache. A calculation-generation marker on the workbook would make
+ * that parse unnecessary; until the model carries one, a save pays one extra
+ * worksheet parse.
+ */
+function recalculatedFormulaCells(
+  input: SaveWorkbookInput,
+  alreadyDirty: ReadonlyMap<SheetId, ReadonlySet<string>>,
+  newSheetIds: ReadonlySet<SheetId>,
+): Map<SheetId, Set<string>> {
+  const dirty = new Map<SheetId, Set<string>>();
+  for (const sheet of input.workbook.sheets) {
+    if (newSheetIds.has(sheet.id)) continue;
+    let hasEvaluatedFormula = false;
+    for (const cell of sheet.cells.values()) {
+      if (cell.formula === null || cell.formulaSource !== undefined) continue;
+      if (cell.stale === true) continue;
+      if (cell.savedResult === null || cell.savedResult.type === 'blank') continue;
+      hasEvaluatedFormula = true;
+      break;
+    }
+    if (!hasEvaluatedFormula) continue;
+    const sourceBytes = input.workbook.sourceParts.get(sheet.partPath);
+    if (sourceBytes === undefined) continue;
+    const parsed = parseWorksheetXml(sourceBytes, {
+      sharedStrings: input.package.sharedStrings,
+      partPath: sheet.partPath,
+      name: sheet.name,
+    });
+    const sheetDirty = alreadyDirty.get(sheet.id);
+    for (const [key, cell] of sheet.cells) {
+      if (cell.formula === null || cell.formulaSource !== undefined) continue;
+      if (cell.stale === true) continue;
+      if (cell.savedResult === null || cell.savedResult.type === 'blank') continue;
+      if (sheetDirty?.has(key) === true) continue;
+      const original = parsed.sheet.cells.get(key) ?? null;
+      // Only a formula the source carried without a cached result is written.
+      if (
+        original !== null &&
+        original.formula !== null &&
+        original.savedResult !== null &&
+        original.savedResult.type !== 'blank'
+      ) {
+        continue;
+      }
       const keys = dirty.get(sheet.id) ?? new Set<string>();
       keys.add(key);
       dirty.set(sheet.id, keys);

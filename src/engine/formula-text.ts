@@ -344,13 +344,20 @@ function scanFormula(formula: string): FormulaScan {
       index += 1;
       while (index < formula.length && isIdentifierPart(formula[index] ?? '')) index += 1;
       const name = formula.slice(start, index);
-      if (hasUnsupportedPrefix(name)) issues.push('unsupported-construct');
-      // R1C1 notation is v2; never hand it to the engine as a defined name.
-      if (/^R\d+C\d+$/i.test(name)) issues.push('unsupported-construct');
 
       let openParen = index;
       while (openParen < formula.length && isWhitespace(formula[openParen] ?? '')) openParen += 1;
-      if (formula[openParen] === '(') {
+      const isCall = formula[openParen] === '(';
+      // File-compat §9 F7 / formula semantics §1: `_xlfn.XLOOKUP(...)` names a
+      // function outside the published 52. As a call it is an unsupported
+      // function (cached result shown stale, or `#NAME?` with no cache), not an
+      // unparseable construct. A `_xlfn.` name that is not called stays
+      // unparseable because nothing can say what it means.
+      if (hasUnsupportedPrefix(name) && !isCall) issues.push('unsupported-construct');
+      // R1C1 notation is v2; never hand it to the engine as a defined name.
+      if (/^R\d+C\d+$/i.test(name)) issues.push('unsupported-construct');
+
+      if (isCall) {
         if (!hasMatchingParen(formula, openParen)) issues.push('unbalanced');
         else {
           calls.push({ name, nameStart: start, openParen });

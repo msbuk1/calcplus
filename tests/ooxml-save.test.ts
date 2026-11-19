@@ -384,6 +384,95 @@ describe('dirty worksheet patch', () => {
   });
 });
 
+describe('formula results the engine evaluated without a command', () => {
+  const worksheet =
+    '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>21</v></c><c r="B1"><f>A1*2</f></c><c r="C1"><f>A1*2</f><v>42</v></c></row><row r="2"><c r="A2"><v>2</v></c></row></sheetData></worksheet>';
+
+  function openedWithFormula() {
+    const original = buildXlsx(worksheet);
+    const opened = openWorkbook(original);
+    const session = new DocumentSession(opened.workbook);
+    return { original, opened, session, sheet: opened.workbook.sheets[0]! };
+  }
+
+  it('writes the evaluated <v> for a formula the file did not cache', () => {
+    const { original, opened, session, sheet } = openedWithFormula();
+    // The load phase applies results without a command, as on open.
+    session.applyCalculationResults(
+      [
+        {
+          sheetId: sheet.id,
+          row: 0,
+          col: 1,
+          value: numberValue(42),
+          status: 'value',
+          stale: false,
+        },
+      ],
+      { markDirty: false },
+    );
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    expect(result.noOp).toBe(false);
+    const savedXml = unzipPart(result.bytes, 'xl/worksheets/sheet1.xml');
+    expect(savedXml).toContain('<c r="B1"><f>A1*2</f><v>42</v></c>');
+    // C1 already agreed with the engine, so its authored bytes are untouched.
+    expect(savedXml).toContain('<c r="C1"><f>A1*2</f><v>42</v></c>');
+    expect(unzipPart(result.bytes, 'xl/workbook.xml')).toContain('fullCalcOnLoad="1"');
+    expect(result.package.entries.get('xl/worksheets/sheet1.xml')).not.toBe(
+      opened.package.entries.get('xl/worksheets/sheet1.xml'),
+    );
+    expect(original.byteLength).toBeGreaterThan(0);
+  });
+
+  it('leaves the file byte-identical when the evaluated result equals the cache', () => {
+    const { original, opened, session, sheet } = openedWithFormula();
+    session.applyCalculationResults(
+      [
+        {
+          sheetId: sheet.id,
+          row: 0,
+          col: 2,
+          value: numberValue(42),
+          status: 'value',
+          stale: false,
+        },
+      ],
+      { markDirty: false },
+    );
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    expect(result.noOp).toBe(true);
+    expect(Buffer.compare(Buffer.from(result.bytes), Buffer.from(original))).toBe(0);
+  });
+
+  it('keeps the original <v> when the evaluated result is stale', () => {
+    const { opened, session, sheet } = openedWithFormula();
+    session.applyCalculationResults(
+      [{ sheetId: sheet.id, row: 0, col: 2, value: numberValue(7), status: 'value', stale: true }],
+      { markDirty: false },
+    );
+    expect(opened.workbook.sheets[0]!.cells.get('0:2')?.stale).toBe(true);
+    // Force a write elsewhere so the cell is not saved through the no-op path.
+    editCell(session, sheet.id, 1, 0, numberValue(3));
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    const savedXml = unzipPart(result.bytes, 'xl/worksheets/sheet1.xml');
+    expect(savedXml).toContain('<c r="C1"><f>A1*2</f><v>42</v></c>');
+    expect(savedXml).not.toContain('<v>7</v>');
+    expect(unzipPart(result.bytes, 'xl/workbook.xml')).toContain('fullCalcOnLoad="1"');
+  });
+});
+
 describe('property: edited saves are readable and no-op saves are byte-identical', () => {
   it('round-trips random single-cell edits', () => {
     const original = fixture('m1-chart-unknown.xlsx');

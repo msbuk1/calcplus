@@ -259,12 +259,21 @@ describe('M3B authored-formula pre-screen', () => {
       'SUM((A1:A2,B1:B2))',
       'A1 B1',
       '@A1',
-      '_xlfn.CONCAT("a")',
     ]) {
       const prepared = prepareFormula(formula);
       expect(prepared.text, formula).toBeNull();
       expect(prepared.skip, formula).toBe('unparseable');
     }
+  });
+
+  it('classifies an _xlfn. call as an unsupported function, not unparseable text', () => {
+    // File-compat §9 F7 / formula semantics §1: `_xlfn.XLOOKUP(...)` is a
+    // function outside the published set, so it takes the unsupported-function
+    // path (stale cache, or #NAME? with none), never the unparseable path.
+    const prepared = prepareFormula('_xlfn.CONCAT("a")');
+    expect(prepared.text).toBeNull();
+    expect(prepared.skip).toBe('unsupported-function');
+    expect(prepared.unsupportedFunctions).toContain('_XLFN.CONCAT');
   });
 
   it('still sends supported formulas and valid error literals', () => {
