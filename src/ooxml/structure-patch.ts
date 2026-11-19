@@ -3,6 +3,7 @@ import { formatCellRef } from '@model/types';
 import {
   planOpaquePartTransforms,
   transformCellAddress,
+  transformHyperlinkLocation,
   transformMergeRange,
   transformRange,
   transformRangeBearingXml,
@@ -22,8 +23,9 @@ import { WorkbookSaveError } from './errors';
  * After a structural edit the model's cells sit at new addresses but the last
  * saved part still carries the old ones. A later save patches by address, so
  * the part must be renumbered first: `<row r>`, every cell `r`, `<col min/max>`
- * spans, `<dimension ref>`, merged ranges, hyperlinks, CF/validation `sqref`
- * and rule formulas and the AutoFilter rectangle.
+ * spans, `<dimension ref>`, merged ranges, hyperlink `ref` and internal
+ * `location`, CF/validation `sqref` and rule formulas and the AutoFilter
+ * rectangle.
  *
  * The transform is textual: only modelled attributes are rewritten, so every
  * unmodelled attribute, child element and byte the edit does not touch stays
@@ -87,7 +89,7 @@ export function renumberWorksheetPart(input: StructurePartInput): StructurePartR
   appendColumnEdits(xml, parsed, input.edit, edits);
   appendDimensionEdit(xml, parsed, input.edit, edits);
   appendMergeEdits(xml, parsed, input.edit, edits);
-  appendHyperlinkEdits(xml, parsed, input.edit, edits);
+  appendHyperlinkEdits(xml, parsed, input, edits);
   appendConditionalFormatEdits(xml, parsed, input, edits);
   appendValidationEdits(xml, parsed, input, edits);
   appendAutoFilterEdits(xml, parsed, input.edit, edits);
@@ -386,11 +388,12 @@ function appendMergeEdits(
 function appendHyperlinkEdits(
   xml: string,
   parsed: ParsedWorksheet,
-  edit: StructuralEdit,
+  input: StructurePartInput,
   edits: TextEdit[],
 ): void {
   const container = parsed.rootChildren.find((child) => child.local === 'hyperlinks');
   if (container === undefined) return;
+  const edit = input.edit;
   const slice = xml.slice(container.start, container.end);
   const patched = patchElements(slice, scanElements(slice, 'hyperlink'), (text) => {
     const match = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(text);
@@ -398,8 +401,31 @@ function appendHyperlinkEdits(
     if (match === null || range === null) return text;
     const transformed = transformRange(range, edit);
     if (transformed === null) return null;
-    if (sameRange(range, transformed)) return text;
-    return replaceAttribute(text, match, formatRangeText(transformed));
+    let next = text;
+    if (!sameRange(range, transformed)) {
+      next = replaceAttribute(next, match, formatRangeText(transformed));
+    }
+    // The internal `location` is a reference, not a label (file-compat §4): the
+    // model has already transformed it, and this rewrite keeps the saved bytes
+    // equal to the model. A location the transform refuses throws the same
+    // unsafe-part block the plan raises, so the edit is never saved stale.
+    const locationMatch = /(\blocation\s*=\s*)(["'])([^"']*)\2/.exec(next);
+    if (locationMatch !== null) {
+      const outcome = transformHyperlinkLocation(
+        decodeXmlAttributeValue(locationMatch[3] ?? ''),
+        edit,
+        { workbook: input.workbook },
+        edit.sheetId,
+      );
+      if (!outcome.ok) {
+        throw new WorkbookSaveError(
+          'unsafe-part',
+          `${outcome.block.message} The edit was blocked.`,
+        );
+      }
+      if (outcome.changed) next = replaceAttribute(next, locationMatch, outcome.location);
+    }
+    return next;
   });
   if (patched === slice) return;
   edits.push({ start: container.start, end: container.end, text: patched });
@@ -640,6 +666,16 @@ function escapeXmlAttributeValue(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+/** The inverse of `escapeXmlAttributeValue`, in the order that cannot double-decode. */
+function decodeXmlAttributeValue(value: string): string {
+  return value
+    .replaceAll('&quot;', '"')
+    .replaceAll('&apos;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
 }
 
 function parseRangeText(text: string): GridRange | null {

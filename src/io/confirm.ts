@@ -61,6 +61,43 @@ export function planMacroSave(options: {
   return { format: 'xlsx', fileName: toXlsxName(options.fileName) };
 }
 
+/** File-compat §6.5: any save rewrites the package, which invalidates a signature. */
+export const SIGNATURE_INVALIDATION_MESSAGE =
+  "Saving will invalidate the workbook's digital signature. Save anyway?";
+
+/**
+ * File-compat §6.5 and §7: signature parts are preserved, but writing the
+ * package invalidates them, so the write is preceded by a confirmation. A
+ * declined confirmation returns `false` and the caller must not write.
+ */
+export function confirmSignatureInvalidation(
+  confirmFn: (message: string) => boolean = (message) =>
+    typeof window === 'undefined' ? false : window.confirm(message),
+): boolean {
+  return confirmFn(SIGNATURE_INVALIDATION_MESSAGE);
+}
+
+export interface SignatureSaveInput {
+  /** `CompatibilityInfo.hasDigitalSignatures`, as `open` surfaces it. */
+  readonly hasDigitalSignatures: boolean;
+  /**
+   * Whether this save would write anything. A save with nothing to write
+   * returns the package's original bytes, so the signature is still valid.
+   */
+  readonly changed: boolean;
+  readonly confirmFn?: (message: string) => boolean;
+}
+
+/**
+ * File-compat §6.5: warn before writing over a signed package. A no-op save
+ * copies the original bytes and an unsigned workbook has nothing to lose, so
+ * neither asks; returning `false` means the caller writes nothing.
+ */
+export function planSignatureSave(options: SignatureSaveInput): boolean {
+  if (!options.hasDigitalSignatures || !options.changed) return true;
+  return confirmSignatureInvalidation(options.confirmFn);
+}
+
 function toXlsxName(fileName: string): string {
   if (/\.xlsm$/i.test(fileName)) return fileName.replace(/\.xlsm$/i, '.xlsx');
   if (/\.xlsx$/i.test(fileName)) return fileName;

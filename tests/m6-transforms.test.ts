@@ -7,6 +7,7 @@ import { numberValue, textValue } from '@model/value';
 import { createEmptyWorkbook, createSheet } from '@model/workbook';
 import {
   CHART_SOURCE_BLOCK_MESSAGE,
+  HYPERLINK_LOCATION_BLOCK_MESSAGE,
   PIVOT_SOURCE_BLOCK_MESSAGE,
   planOpaquePartTransforms,
   planRangeTransform,
@@ -21,6 +22,7 @@ import {
   transformVmlAnchorsXml,
   type StructuralEdit,
 } from '@model/range-transform';
+import { DocumentSession } from '@commands/session';
 import { openWorkbook } from '@ooxml/open';
 import { saveWorkbook } from '@ooxml/save';
 import {
@@ -29,7 +31,7 @@ import {
   planStructuralPartPatches,
   renumberWorksheetPart,
 } from '@ooxml/structure-patch';
-import { buildMultiSheetXlsx, buildXlsx } from './helpers/build-xlsx';
+import { buildMultiSheetXlsx, buildXlsx, unzipPart } from './helpers/build-xlsx';
 
 /**
  * M6 lane 5 — structural transforms hardening (file-compat §4, §6.4, §8, §10.7;
@@ -592,6 +594,233 @@ describe('M6 comment and note positions', () => {
       workbook,
     });
     expect(partText(deleted.bytes)).not.toContain('ref="C2"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hyperlink locations: transform or block
+// ---------------------------------------------------------------------------
+
+describe('M6 hyperlink locations', () => {
+  /** The edited sheet plus a second sheet whose name needs quoting. */
+  function locationWorkbook() {
+    const workbook = createEmptyWorkbook();
+    const first = createSheet('Sheet1', 'xl/worksheets/sheet1.xml');
+    const second = createSheet('Quoted Name', 'xl/worksheets/sheet2.xml');
+    workbook.sheets.push(first, second);
+    return { workbook, first, second };
+  }
+
+  /** One hyperlink on the edited sheet, at row 5 / column B. */
+  function planWith(
+    location: string,
+    edit: (sheetId: string) => StructuralEdit,
+    target: 'first' | 'second' = 'first',
+  ) {
+    const { workbook, first, second } = locationWorkbook();
+    const sheet = target === 'first' ? first : second;
+    sheet.hyperlinks.set('4:1', { target: '', location, tooltip: 'jump' });
+    return planRangeTransform(workbook, edit(sheet.id));
+  }
+
+  function locationAfter(plan: ReturnType<typeof planWith>): string | undefined {
+    return plan.hyperlinks.after[0]?.[1].location;
+  }
+
+  it('moves a sheet-qualified location on a row insert, keeping the authored form', () => {
+    expect(locationAfter(planWith('Sheet1!A1', (sheetId) => insertRow(sheetId, 0)))).toBe(
+      'Sheet1!A2',
+    );
+    expect(locationAfter(planWith('Sheet1!$B$3', (sheetId) => insertRow(sheetId, 1)))).toBe(
+      'Sheet1!$B$4',
+    );
+    // The absolute marker and the range form survive the rewrite.
+    expect(locationAfter(planWith('Sheet1!A1:B2', (sheetId) => insertRow(sheetId, 0)))).toBe(
+      'Sheet1!A2:B3',
+    );
+  });
+
+  it('moves a quoted-sheet location like a formula reference', () => {
+    expect(
+      locationAfter(planWith("'Quoted Name'!A1", (sheetId) => insertRow(sheetId, 0), 'second')),
+    ).toBe("'Quoted Name'!A2");
+  });
+
+  it('moves a bare location, a range and a leading `#` some producers write', () => {
+    // A bare address belongs to the sheet that holds the hyperlink.
+    expect(locationAfter(planWith('A1', (sheetId) => insertRow(sheetId, 0)))).toBe('A2');
+    expect(locationAfter(planWith('B2:C3', (sheetId) => insertColumn(sheetId, 0)))).toBe('C2:D3');
+    expect(locationAfter(planWith('#Sheet1!A1', (sheetId) => insertRow(sheetId, 0)))).toBe(
+      '#Sheet1!A2',
+    );
+  });
+
+  it('moves a location on a row or column delete', () => {
+    expect(locationAfter(planWith('Sheet1!A3', (sheetId) => deleteRow(sheetId, 0)))).toBe(
+      'Sheet1!A2',
+    );
+    expect(locationAfter(planWith('Sheet1!C1', (sheetId) => deleteColumn(sheetId, 0)))).toBe(
+      'Sheet1!B1',
+    );
+  });
+
+  it('collapses a location whose whole target is deleted, matching names and formulas', () => {
+    const plan = planWith('Sheet1!A1', (sheetId) => deleteRow(sheetId, 0));
+    expect(plan.block).toBeNull();
+    expect(locationAfter(plan)).toBe('#REF!');
+    // A range that only loses its first row shrinks rather than collapsing.
+    expect(locationAfter(planWith('Sheet1!A1:B2', (sheetId) => deleteRow(sheetId, 0)))).toBe(
+      'Sheet1!A1:B1',
+    );
+    // A collapsed jump is a broken link, not a reason to block every later
+    // edit on the sheet.
+    const later = planWith('#REF!', (sheetId) => insertRow(sheetId, 0));
+    expect(later.block).toBeNull();
+    expect(locationAfter(later)).toBe('#REF!');
+  });
+
+  it('moves the hyperlink cell key and its location together', () => {
+    const plan = planWith('Sheet1!A1', (sheetId) => insertRow(sheetId, 0));
+    expect(plan.hyperlinks.after).toEqual([
+      ['5:1', { target: '', location: 'Sheet1!A2', tooltip: 'jump' }],
+    ]);
+    expect(plan.changed).toBe(true);
+    // The external target is a relationship URL, never a reference.
+    expect(plan.hyperlinks.after[0]?.[1].target).toBe('');
+  });
+
+  it('leaves a location naming another sheet, or a resolving defined name, alone', () => {
+    const other = planWith("'Quoted Name'!A1", (sheetId) => insertRow(sheetId, 0));
+    expect(other.block).toBeNull();
+    expect(locationAfter(other)).toBe("'Quoted Name'!A1");
+
+    const { workbook, first } = locationWorkbook();
+    workbook.names.push({ name: 'Anchor', formula: 'Sheet1!$A$1', sheetId: null });
+    first.hyperlinks.set('4:1', { target: '', location: 'Anchor' });
+    const named = planRangeTransform(workbook, insertRow(first.id, 0));
+    // The same plan rewrites the name's own formula, so the jump keeps
+    // resolving to the intended cell and the authored text stays correct.
+    expect(named.block).toBeNull();
+    expect(named.nameRewrites).toEqual([
+      {
+        scope: 'workbook',
+        sheetId: null,
+        name: 'Anchor',
+        before: 'Sheet1!$A$1',
+        after: 'Sheet1!$A$2',
+      },
+    ]);
+    expect(named.hyperlinks.after[0]?.[1].location).toBe('Anchor');
+  });
+
+  it('blocks a location that is not a cell, range or defined name', () => {
+    const plan = planWith('Sheet1:Quoted Name!A1', (sheetId) => insertRow(sheetId, 0));
+    expect(plan.block?.code).toBe('anchor-untransformable');
+    expect(plan.block?.message).toContain(HYPERLINK_LOCATION_BLOCK_MESSAGE);
+    expect(plan.block?.message).toContain('Sheet1:Quoted Name!A1');
+  });
+
+  it('blocks a defined name the module cannot resolve', () => {
+    expect(planWith('Missing_Name', (sheetId) => insertRow(sheetId, 0)).block?.code).toBe(
+      'anchor-untransformable',
+    );
+  });
+
+  it('blocks when another sheet links into the edited sheet, rather than leaving it stale', () => {
+    const { workbook, first, second } = locationWorkbook();
+    second.hyperlinks.set('4:1', { target: '', location: 'Sheet1!A1' });
+    expect(planRangeTransform(workbook, insertRow(first.id, 0)).block?.code).toBe(
+      'anchor-untransformable',
+    );
+    // An edit that leaves the linked cell where it is does not block.
+    expect(planRangeTransform(workbook, insertRow(first.id, 20)).block).toBeNull();
+  });
+
+  it('refuses the edit with no transaction when the location cannot be transformed', () => {
+    const original = buildXlsx(
+      `${HEADER}\n<worksheet xmlns="${NS}"><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData><hyperlinks><hyperlink ref="A1" location="Not_A_Reference" display="odd"/></hyperlinks></worksheet>`,
+    );
+    const opened = openWorkbook(original);
+    const sheet = opened.workbook.sheets[0]!;
+    const session = new DocumentSession(opened.workbook);
+    const result = session.dispatch(
+      'structure.insertRows',
+      {},
+      {
+        activeSheetId: sheet.id,
+        selection: { startRow: 0, startCol: 0, endRow: 0, endCol: 0 },
+        activeCell: { row: 0, col: 0 },
+      },
+    );
+    expect(result.structure?.state).toBe('blocked');
+    expect(result.structure?.message).toContain('Not_A_Reference');
+    expect(result.ui).toMatchObject({ type: 'toast' });
+    expect(session.transactionCount).toBe(0);
+  });
+
+  it('writes the transformed location into the saved worksheet part', () => {
+    const original = buildMultiSheetXlsx(
+      [
+        {
+          name: 'Sheet1',
+          worksheetXml: `${HEADER}
+<worksheet xmlns="${NS}" xmlns:r="${R_NS}">
+  <dimension ref="A1:C6"/>
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c></row>
+    <row r="5"><c r="A5" t="inlineStr"><is><t>up</t></is></c><c r="B5" t="inlineStr"><is><t>jump</t></is></c><c r="C5" t="inlineStr"><is><t>other</t></is></c></row>
+  </sheetData>
+  <hyperlinks>
+    <hyperlink ref="A5" r:id="rId1" tooltip="External report"/>
+    <hyperlink ref="B5" location="Sheet1!A1" display="up"/>
+    <hyperlink ref="C5" location="'Quoted Name'!B2" display="other"/>
+  </hyperlinks>
+</worksheet>`,
+        },
+        {
+          name: 'Quoted Name',
+          worksheetXml: `${HEADER}\n<worksheet xmlns="${NS}"><sheetData><row r="2"><c r="B2"><v>2</v></c></row></sheetData></worksheet>`,
+        },
+      ],
+      {
+        extraParts: {
+          'xl/worksheets/_rels/sheet1.xml.rels': `${HEADER}
+<Relationships xmlns="${PKG_NS}">
+  <Relationship Id="rId1" Type="${R_NS}/hyperlink" Target="https://example.invalid/report" TargetMode="External"/>
+</Relationships>`,
+        },
+      },
+    );
+    const opened = openWorkbook(original);
+    const sheet = opened.workbook.sheets[0]!;
+    const session = new DocumentSession(opened.workbook);
+    const result = session.dispatch(
+      'structure.insertRows',
+      {},
+      {
+        activeSheetId: sheet.id,
+        selection: { startRow: 0, startCol: 0, endRow: 0, endCol: 0 },
+        activeCell: { row: 0, col: 0 },
+      },
+    );
+    expect(result.structure?.state).toBe('applied');
+
+    const saved = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+      dirtyDimensions: session.dirtyDimensionSnapshot(),
+      dirtyMerges: new Set(session.dirtyMergeSnapshot().keys()),
+    });
+    const afterXml = unzipPart(saved.bytes, 'xl/worksheets/sheet1.xml');
+    // The internal location follows the inserted row; the external target and
+    // the location that names another sheet keep their authored text.
+    expect(afterXml).toContain('<hyperlink ref="B6" location="Sheet1!A2" display="up"/>');
+    expect(afterXml).toContain(
+      '<hyperlink ref="C6" location="\'Quoted Name\'!B2" display="other"/>',
+    );
+    expect(afterXml).toContain('<hyperlink ref="A6" r:id="rId1" tooltip="External report"/>');
+    expect(afterXml).not.toContain('location="Sheet1!A1"');
   });
 });
 

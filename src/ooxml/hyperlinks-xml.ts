@@ -10,8 +10,13 @@ import type { Relationship } from './types';
  * "Hyperlinks: read-only; insert/edit dialog is V2"). An external target is the
  * relationship's target URL; an internal jump keeps its `location` text, which
  * is how Excel stores `#Sheet2!A1`. The element itself is preserved verbatim:
- * a save only rewrites it when a structural edit moves its `ref`, which the
- * source-part renumber does.
+ * a save only rewrites it when a structural edit moves its `ref` or transforms
+ * its internal `location`, which the source-part renumber does (see
+ * `transformHyperlinkLocation` in `@model/range-transform`).
+ *
+ * The `location` grammar is `[Sheet!]A1[:B2]`, with an optional quoted sheet
+ * name and optional `$` markers; a bare cell is relative to the sheet that
+ * holds the hyperlink.
  *
  * Following a link is a surface decision outside this milestone; this module
  * only makes the target available to the model.

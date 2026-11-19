@@ -367,6 +367,10 @@ describe('F13 validation-cf.xlsx — validation and every supported CF rule rend
     });
     expect(sheet.hyperlinks.has('8:0')).toBe(true);
     expect(sheet.hyperlinks.has('8:1')).toBe(true);
+    // file-compat §4 and §10.7: a hyperlink's internal `location` is a
+    // reference, so the insert above row 1 moves it with the cells it names.
+    // (This assertion used to document the gap: "location stays as authored".)
+    expect(sheet.hyperlinks.get('8:1')).toEqual({ target: '', location: 'Rules!A2' });
     expect(sheet.conditionalFormats[0]?.range.startRow).toBe(2);
 
     const saved = saveSession(opened, session);
@@ -376,9 +380,10 @@ describe('F13 validation-cf.xlsx — validation and every supported CF rule rend
     expect(afterXml).toContain('sqref="B3:B7"');
     expect(afterXml).toContain('<conditionalFormatting sqref="B3:B7">');
     expect(afterXml).toContain('<hyperlink ref="A9" r:id="rId1" tooltip="External report"/>');
-    // A same-workbook `location` is authored text, not a range anchor; it is
-    // preserved as written and its transform is a follow-up (see lane report).
-    expect(afterXml).toContain('<hyperlink ref="B9" location="Rules!A1" display="Rules sheet"/>');
+    // The external `target` above is a relationship URL and is untouched; the
+    // internal `location` is transformed, never left silently stale.
+    expect(afterXml).toContain('<hyperlink ref="B9" location="Rules!A2" display="Rules sheet"/>');
+    expect(afterXml).not.toContain('location="Rules!A1"');
   });
 });
 

@@ -21,6 +21,7 @@ import {
   MAX_COLUMN,
   MAX_ROW,
   findAreaReferences,
+  findDefinedName,
   formatAreaReference,
   parseWholeArea,
   type AreaReference,
@@ -38,7 +39,8 @@ import {
  * - AutoFilter ranges, criteria column offsets and the cleared-filter outcome
  *   (sort-autofilter §3.5);
  * - conditional-format and data-validation ranges (CF §7);
- * - comment and hyperlink cell keys;
+ * - comment cell keys, hyperlink cell keys and a hyperlink's internal
+ *   `location` reference;
  * - the row and column dimension maps (hidden flags, heights and widths move
  *   or renumber with their positions);
  * - Tier B range-bearing parts: drawing anchors, chart series ranges, pivot
@@ -203,6 +205,9 @@ export const ANCHOR_BLOCK_MESSAGE =
 /** An authored formula keeps a construct the module cannot rewrite safely. */
 export const UNSUPPORTED_FORMULA_BLOCK_MESSAGE =
   'A formula uses a reference construct calcplus cannot transform safely, so the edit was blocked.';
+/** file-compat §4 and §10.7: a hyperlink anchor the module cannot transform blocks. */
+export const HYPERLINK_LOCATION_BLOCK_MESSAGE =
+  'A hyperlink points at a cell or range this edit cannot keep correct, so the edit was blocked.';
 
 export interface RangeTransformPlan {
   readonly edit: StructuralEdit;
@@ -639,7 +644,10 @@ export function planRangeTransform(
   const rowDimensions = dimensionRenumber(targetSheet.rowDimensions, edit, 'row');
   const columnDimensions = dimensionRenumber(targetSheet.columnDimensions, edit, 'column');
   const comments = attachmentRenumber(targetSheet.comments, edit);
-  const hyperlinks = attachmentRenumber(targetSheet.hyperlinks, edit);
+  // A hyperlink carries a reference (its internal `location`) as well as a cell
+  // key, so it is transformed rather than only renumbered (file-compat §4).
+  const hyperlinks = planHyperlinkRenumber(workbook, targetSheet, edit, options);
+  if (hyperlinks.block !== null) block ??= hyperlinks.block;
 
   const validationAfter = transformRecords(targetSheet.validation, (record) =>
     transformValidationRecord(record, edit, options, targetSheet.id),
@@ -664,7 +672,7 @@ export function planRangeTransform(
     dimensionsChanged(rowDimensions) ||
     dimensionsChanged(columnDimensions) ||
     attachmentChanged(comments) ||
-    attachmentChanged(hyperlinks) ||
+    hyperlinks.changed ||
     validationAfter.changed ||
     conditionalFormatsAfter.changed ||
     autoFilter.changed ||
@@ -728,6 +736,170 @@ export function transformAttachmentMap<T>(
     if (next !== null) result.set(cellKey(next.row, next.col), value);
   }
   return result;
+}
+
+export type HyperlinkLocationTransform =
+  | { readonly ok: true; readonly location: string; readonly changed: boolean }
+  | { readonly ok: false; readonly block: TransformBlock };
+
+/**
+ * The A1 area a `location` names, with the offset the reference text starts at,
+ * so a rewrite can keep any leading whitespace and the `#` some producers write
+ * in front of an in-document jump. `null` when the text is not one area.
+ */
+function parseLocationArea(
+  location: string,
+): { readonly area: AreaReference; readonly offset: number } | null {
+  const afterSpace = location.length - location.trimStart().length;
+  const hash = location.startsWith('#', afterSpace) ? 1 : 0;
+  const offset = afterSpace + hash;
+  const area = parseWholeArea(location.slice(offset));
+  return area === null ? null : { area, offset };
+}
+
+/**
+ * Rewrite a hyperlink's internal `location` (file-compat §4, §10.7).
+ *
+ * Excel stores a same-workbook jump as `location="Sheet2!A1"`, with an
+ * optionally quoted sheet prefix; a location without a prefix is relative to
+ * the sheet that holds the hyperlink, and `$` markers are legal. That grammar is
+ * a reference in exactly the sense a formula's is, so the edit transforms it or
+ * the edit is blocked — a location left "as authored" would silently point at
+ * the wrong cells.
+ *
+ * - A plain cell or range on the edited sheet is transformed like a formula
+ *   reference; a target the edit removes collapses to `#REF!`, the module's one
+ *   convention for a collapsed reference (names and formulas do the same).
+ * - A location naming another sheet is untouched.
+ * - A defined name is untouched: the same plan rewrites the name's own formula,
+ *   so the jump keeps resolving to the intended cells.
+ * - Anything else — arbitrary text, a 3D or structured reference, a name we
+ *   cannot resolve — blocks the edit rather than going stale.
+ *
+ * Only `location` participates. An external `target` is a relationship URL, not
+ * a reference, and is never touched.
+ */
+export function transformHyperlinkLocation(
+  location: string,
+  edit: StructuralEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId,
+): HyperlinkLocationTransform {
+  const parsed = parseLocationArea(location);
+  if (parsed === null) {
+    if (location.trim() === '') return { ok: true, location, changed: false };
+    // A jump an earlier edit already collapsed is a broken link: no edit here
+    // can make it staler, and it must not block the sheet from now on.
+    if (location.trim().toUpperCase() === '#REF!') return { ok: true, location, changed: false };
+    if (findDefinedName(options.workbook, location.trim(), hostSheetId) !== null) {
+      return { ok: true, location, changed: false };
+    }
+    return {
+      ok: false,
+      block: {
+        code: 'anchor-untransformable',
+        message: `${HYPERLINK_LOCATION_BLOCK_MESSAGE} (the location "${location}" is not a cell, range or defined name this version understands.)`,
+      },
+    };
+  }
+  const { area, offset } = parsed;
+  const targetSheetId =
+    area.sheetName === null ? hostSheetId : findSheetIdByName(options.workbook, area.sheetName);
+  // A location naming a sheet this workbook does not hold is already broken or
+  // external; no local edit can make it staler than it is.
+  if (targetSheetId === null || targetSheetId !== edit.sheetId) {
+    return { ok: true, location, changed: false };
+  }
+  const transformed = transformArea(area, edit);
+  const text =
+    transformed === null
+      ? '#REF!'
+      : formatAreaReference({ ...transformed, prefix: area.prefix, single: area.single });
+  const rewritten = `${location.slice(0, offset + area.start)}${text}${location.slice(
+    offset + area.end,
+  )}`;
+  return { ok: true, location: rewritten, changed: rewritten !== location };
+}
+
+/**
+ * Whether a hyperlink stored on another sheet would be left pointing at the
+ * wrong cells by this edit. Its `location` is a reference into the edited sheet
+ * just like a formula's, but the structural patch rewrites only the edited
+ * sheet's part, so it cannot be transformed here: the edit is blocked instead
+ * (file-compat §4). A location that does not parse, or one that does not name a
+ * sheet, cannot be attributed to the edited sheet and is left alone.
+ */
+function foreignLocationChanges(
+  workbook: Workbook,
+  edit: StructuralEdit,
+): { readonly sheetName: string; readonly location: string } | null {
+  for (const sheet of workbook.sheets) {
+    if (sheet.id === edit.sheetId) continue;
+    for (const record of sheet.hyperlinks.values()) {
+      const location = record.location;
+      if (location === undefined) continue;
+      const parsed = parseLocationArea(location);
+      if (parsed === null) continue;
+      const { area } = parsed;
+      if (area.sheetName === null) continue;
+      if (findSheetIdByName(workbook, area.sheetName) !== edit.sheetId) continue;
+      const transformed = transformArea(area, edit);
+      if (transformed === null || !areasEqual(transformed, area)) {
+        return { sheetName: sheet.name, location };
+      }
+    }
+  }
+  return null;
+}
+
+interface HyperlinkRenumber extends AttachmentRenumber<HyperlinkRecord> {
+  readonly changed: boolean;
+  readonly block: TransformBlock | null;
+}
+
+/**
+ * Renumber a sheet's hyperlinks: the cell keys move with their cells and each
+ * internal `location` is transformed by `transformHyperlinkLocation`. A block
+ * anywhere leaves the edit refused rather than saved half-transformed.
+ */
+function planHyperlinkRenumber(
+  workbook: Workbook,
+  sheet: Sheet,
+  edit: StructuralEdit,
+  options: RangeTransformOptions,
+): HyperlinkRenumber {
+  const before: (readonly [string, HyperlinkRecord])[] = [];
+  const after: (readonly [string, HyperlinkRecord])[] = [];
+  let changed = false;
+  let block: TransformBlock | null = null;
+  for (const [key, record] of sheet.hyperlinks) {
+    before.push([key, record]);
+    const address = parseCellKey(key);
+    const next = transformCellAddress(address.row, address.col, edit);
+    if (next === null) {
+      changed = true;
+      continue;
+    }
+    let value = record;
+    if (record.location !== undefined) {
+      const outcome = transformHyperlinkLocation(record.location, edit, options, sheet.id);
+      if (!outcome.ok) block ??= outcome.block;
+      else if (outcome.changed) {
+        value = { ...record, location: outcome.location };
+        changed = true;
+      }
+    }
+    if (next.row !== address.row || next.col !== address.col) changed = true;
+    after.push([cellKey(next.row, next.col), value]);
+  }
+  const foreign = block === null ? foreignLocationChanges(workbook, edit) : null;
+  if (foreign !== null) {
+    block = {
+      code: 'anchor-untransformable',
+      message: `${HYPERLINK_LOCATION_BLOCK_MESSAGE} (a hyperlink on ${foreign.sheetName} points at ${foreign.location}, which this edit cannot rewrite.)`,
+    };
+  }
+  return { before, after, changed, block };
 }
 
 export interface AutoFilterTransformResult {
