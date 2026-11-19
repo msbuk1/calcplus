@@ -1,11 +1,16 @@
-import type { GridRange, Workbook } from '@model/types';
+import type { GridRange, OpaquePart, Workbook } from '@model/types';
 import { formatCellRef } from '@model/types';
 import {
+  planOpaquePartTransforms,
   transformCellAddress,
   transformMergeRange,
   transformRange,
   transformRangeBearingXml,
+  type OpaquePartKind,
+  type OpaquePartRewrite,
+  type RangeTransformPlan,
   type StructuralEdit,
+  type TransformBlock,
 } from '@model/range-transform';
 import type { ParsedWorksheet } from './worksheet-xml';
 import { parseWorksheetXml } from './worksheet-xml';
@@ -25,6 +30,11 @@ import { WorkbookSaveError } from './errors';
  * exactly as authored (file-compat identity rules). Formulas inside `<f>` are
  * deliberately left alone: the command layer marks every rewritten formula
  * cell dirty, and the normal patch writer writes the model's text.
+ *
+ * Tier B parts do not live in the worksheet part, so `planOpaquePartPatches`
+ * (and the combined `planStructuralPartPatches`) renumber the drawing, chart,
+ * comment and pivot-cache parts with the same edit. `renumberWorksheetPart`
+ * stays the worksheet-only primitive.
  */
 
 export interface StructurePartInput {
@@ -87,6 +97,124 @@ export function renumberWorksheetPart(input: StructurePartInput): StructurePartR
   // came from a validated parse, so the output cannot be malformed. The save
   // path parses and validates the part again before it writes it.
   return { bytes: new TextEncoder().encode(next), changed: next !== xml };
+}
+
+// ---------------------------------------------------------------------------
+// Tier B parts (drawings, charts, comments, pivots)
+// ---------------------------------------------------------------------------
+
+export type StructuralPartKind = 'worksheet' | OpaquePartKind;
+
+export interface StructuralPartPatch {
+  readonly path: string;
+  readonly kind: StructuralPartKind;
+  /** The part exactly as it was saved, for the transaction's inverse. */
+  readonly before: Uint8Array;
+  readonly after: Uint8Array;
+}
+
+export interface StructuralPartPlan {
+  readonly patches: readonly StructuralPartPatch[];
+  readonly block: TransformBlock | null;
+}
+
+/**
+ * Plan the renumbering of every non-worksheet part the edit touches. This is
+ * the minimal hook for the structural command: pass the plan the command
+ * already computed, store the patches in the same transaction, and undo writes
+ * `before` back.
+ */
+export function planOpaquePartPatches(
+  workbook: Workbook,
+  edit: StructuralEdit,
+  plan: RangeTransformPlan | null = null,
+): StructuralPartPlan {
+  const opaque =
+    plan === null
+      ? planOpaquePartTransforms(workbook, edit, { workbook })
+      : { rewrites: plan.opaqueParts, block: plan.block };
+  return {
+    patches: opaque.rewrites.map(partPatch),
+    block: opaque.block,
+  };
+}
+
+/**
+ * Plan every part a structural edit renumbers, including the worksheet source
+ * part. A caller that uses this must not also call `renumberWorksheetPart`:
+ * renumbering twice would apply the edit twice. Throws `WorkbookSaveError`
+ * (`unsafe-part`) when the worksheet cannot be cut safely — the structural
+ * command already turns that into a block.
+ */
+export function planStructuralPartPatches(
+  workbook: Workbook,
+  edit: StructuralEdit,
+  plan: RangeTransformPlan | null = null,
+): StructuralPartPlan {
+  const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
+  if (sheet === undefined) return { patches: [], block: null };
+  const patches: StructuralPartPatch[] = [];
+  const sourceBefore = workbook.sourceParts.get(sheet.partPath);
+  if (sourceBefore !== undefined) {
+    const worksheet = renumberWorksheetPart({
+      bytes: sourceBefore,
+      partName: sheet.partPath,
+      sheetName: sheet.name,
+      edit,
+      workbook,
+    });
+    if (worksheet.changed) {
+      patches.push({
+        path: sheet.partPath,
+        kind: 'worksheet',
+        before: sourceBefore,
+        after: worksheet.bytes,
+      });
+    }
+  }
+  const opaque = planOpaquePartPatches(workbook, edit, plan);
+  patches.push(...opaque.patches);
+  return { patches, block: opaque.block };
+}
+
+/**
+ * Write one side of a set of part patches into the model's part maps. The
+ * inverse is the same call with `'before'`, so a transaction restores the exact
+ * prior bytes without recomputing a transform.
+ */
+export function applyStructuralPartPatches(
+  workbook: Workbook,
+  patches: readonly StructuralPartPatch[],
+  direction: 'before' | 'after',
+): void {
+  for (const patch of patches) {
+    const bytes = direction === 'after' ? patch.after : patch.before;
+    if (patch.kind === 'worksheet') {
+      workbook.sourceParts.set(patch.path, bytes);
+      continue;
+    }
+    const previous: OpaquePart | undefined = workbook.opaqueParts.get(patch.path);
+    workbook.opaqueParts.set(patch.path, {
+      path: patch.path,
+      bytes,
+      anchor: previous?.anchor ?? null,
+    });
+    for (const sheet of workbook.sheets) {
+      const existing = sheet.opaqueParts.get(patch.path);
+      if (existing !== undefined) {
+        sheet.opaqueParts.set(patch.path, { path: patch.path, bytes, anchor: existing.anchor });
+      }
+    }
+  }
+}
+
+function partPatch(rewrite: OpaquePartRewrite): StructuralPartPatch {
+  return {
+    path: rewrite.path,
+    kind: rewrite.kind,
+    before: rewrite.before,
+    after: rewrite.after,
+  };
 }
 
 // ---------------------------------------------------------------------------
