@@ -161,4 +161,5 @@ lane 1.
   editing in Google Sheets, `fixtures/compat/producers/google-sheets.xlsm`);
   a LibreOffice save of the demo workbook is kept as
   `fixtures/manual/sales-roundtrip-libre.xlsx` (chart kept, macro stripped by
-  the `.xlsx` format). The excel-365 and excel-2019 captures remain.
+  the `.xlsx` format). Excel 2019 is recorded as not available (maintainer
+  ruling 2026-11-19). The excel-365 capture remains.
