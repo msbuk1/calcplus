@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cellRect, clickCell, openFixture, pixelAt } from './grid-helpers';
+import { cellRect, clickCell, dragSelect, openFixture, pixelAt } from './grid-helpers';
 
 const gridFixture = 'm2-grid.xlsx';
 
@@ -105,6 +105,55 @@ test('moves the active cell with the arrow keys and extends with Shift', async (
   const selection = await page.evaluate(() => window.__calcplus.getState().selection);
   expect(selection.anchor).toEqual({ row: 3, col: 2 });
   expect(selection.focus).toEqual({ row: 4, col: 2 });
+  // The active cell stays where the selection began (ticket 31 A).
+  await expect(page.getByTestId('active-cell')).toHaveText('C4');
+
+  // A plain arrow collapses the range and moves from the active cell, not from
+  // the end the Shift extension reached.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('active-cell')).toHaveText('D4');
+  await expect(page.getByTestId('name-box')).toHaveValue('D4');
+});
+
+test('a drag keeps its origin active and paints it unfilled inside the range', async ({ page }) => {
+  await openFixture(page, gridFixture);
+  // F10:G12 is empty in the fixture, so every sampled pixel is the paint alone.
+  await dragSelect(page, 9, 5, 11, 6);
+  await expect(page.getByTestId('name-box')).toHaveValue('F10:G12');
+
+  const state = await page.evaluate(() => window.__calcplus.getState());
+  expect(state.active).toEqual({ row: 9, col: 5 });
+  await expect(page.getByTestId('active-cell')).toHaveText('F10');
+
+  const origin = await cellRect(page, 9, 5);
+  const other = await cellRect(page, 10, 6);
+  // The active cell keeps the grid background; the rest of the range is tinted.
+  const unfilled = await pixelAt(page, origin.x + origin.width / 2, origin.y + origin.height / 2);
+  expect({ r: unfilled.r, g: unfilled.g, b: unfilled.b }).toEqual({ r: 255, g: 255, b: 255 });
+  const tinted = await pixelAt(page, other.x + other.width / 2, other.y + other.height / 2);
+  expect(tinted.r).toBeLessThan(255);
+  expect(tinted.b).toBeGreaterThan(tinted.r);
+
+  // No independent outline: the interior edge of the active cell is unpainted.
+  const inside = await pixelAt(page, origin.x + origin.width - 2, origin.y + origin.height / 2);
+  expect({ r: inside.r, g: inside.g, b: inside.b }).toEqual({ r: 255, g: 255, b: 255 });
+
+  // The fill handle stays at the range corner, not at the active cell.
+  const handle = await page.evaluate(() => window.__calcplus.getFillHandle());
+  expect(handle).not.toBeNull();
+  const corner = await cellRect(page, 11, 6);
+  expect(handle!.x).toBeGreaterThan(corner.x + corner.width / 2);
+  expect(handle!.y).toBeGreaterThan(corner.y + corner.height / 2);
+
+  // Both headers of the selected columns shade for the full extent.
+  for (const column of [origin, other]) {
+    const headerPixel = await pixelAt(page, column.x + 20, 12);
+    expect({ r: headerPixel.r, g: headerPixel.g, b: headerPixel.b }).toEqual({
+      r: 26,
+      g: 115,
+      b: 232,
+    });
+  }
 });
 
 test('jumps to the edge of the data with Ctrl and the arrow keys', async ({ page }) => {

@@ -101,6 +101,24 @@ export async function clickCell(page: Page, row: number, col: number): Promise<v
   await page.mouse.click(box.x + rect.x + rect.width / 2, box.y + rect.y + rect.height / 2);
 }
 
+/** Press on one cell and drag to another, the way a range selection starts. */
+export async function dragSelect(
+  page: Page,
+  fromRow: number,
+  fromCol: number,
+  toRow: number,
+  toCol: number,
+): Promise<void> {
+  const box = await page.getByTestId('grid-canvas').boundingBox();
+  if (box === null) throw new Error('The grid canvas has no box');
+  const from = await cellRect(page, fromRow, fromCol);
+  const to = await cellRect(page, toRow, toCol);
+  await page.mouse.move(box.x + from.x + from.width / 2, box.y + from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + to.x + to.width / 2, box.y + to.y + to.height / 2, { steps: 6 });
+  await page.mouse.up();
+}
+
 /** The colour of a pixel inside the grid canvas, in canvas coordinates. */
 export async function pixelAt(
   page: Page,

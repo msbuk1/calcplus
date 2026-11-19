@@ -38,12 +38,12 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | A sheet is active and the fill handle is visible | Implemented |
 | `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | A sheet is active and a range is selected | Planned |
 | `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | A sheet is active and a range is selected | Planned |
-| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | Home → Cells | — | Ctrl+- | A sheet is active and a range is selected | Implemented |
-| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | — | Ctrl+- | A sheet is active | Implemented |
-| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | — | Ctrl+- | A sheet is active | Implemented |
-| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | — | Ctrl+Shift+= | A sheet is active and a range is selected | Implemented |
-| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | — | Ctrl+Shift+= | A sheet is active | Implemented |
-| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | — | Ctrl+Shift+= | A sheet is active | Implemented |
+| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | Home → Cells | Context menu (Delete) | Ctrl+- | A sheet is active and a range is selected | Implemented |
+| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | Context menu (Delete)<br>Context menu (column header) | Ctrl+- | A sheet is active | Implemented |
+| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | Context menu (Delete)<br>Context menu (row header) | Ctrl+- | A sheet is active | Implemented |
+| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | Context menu (Insert) | Ctrl+Shift+= | A sheet is active and a range is selected | Implemented |
+| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | Context menu (Insert)<br>Context menu (column header) | Ctrl+Shift+= | A sheet is active | Implemented |
+| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | Context menu (Insert)<br>Context menu (row header) | Ctrl+Shift+= | A sheet is active | Implemented |
 | `dimension.set` | 1. Grid and editing — Row/column resize by drag; autofit by double-click and menu | Row height and column width | — | — | — | A sheet is active | Implemented |
 | `merge.across` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Across | — | — | — | A sheet is active and a range is selected | Planned |
 | `merge.cells` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Cells | — | — | — | A sheet is active and a range is selected | Planned |
@@ -94,7 +94,7 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
 | `file.saveAs` | 5. Workbook and sheets — Open, save, save as, close | Save As | — | File | Ctrl+Shift+S | A workbook is open and no file operation is in progress | Implemented |
 | `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | Sheet tab context menu | — | A visible sheet is active and more than one visible sheet exists | Implemented |
-| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | Home → Cells | Context menu | Shift+F11 | A workbook is open | Implemented |
+| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |
 | `sheet.rename` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Rename sheet | — | Sheet tab context menu | F2 | A visible sheet is active | Implemented |
 | `fidelity.protection` | 5. Workbook and sheets — Shell protection / workbook protection | Preserve workbook protection | — | — | — | Imported protection XML is preserved and not enforced | Planned |
 | `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | View → Window | — | — | A sheet is active | Planned |

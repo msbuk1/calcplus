@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import type { CSSProperties } from 'react';
 
@@ -12,6 +12,11 @@ export interface MenuItemModel {
   readonly checked?: boolean;
   readonly dividerBefore?: boolean;
   readonly testId?: string;
+  /**
+   * A one-level flyout, as Excel's Insert and Delete context-menu entries show.
+   * Child items are leaves: they never carry items of their own.
+   */
+  readonly items?: readonly MenuItemModel[];
 }
 
 export interface MenuProps {
@@ -29,10 +34,15 @@ export interface MenuProps {
   readonly rootRef?: RefObject<HTMLDivElement | null>;
 }
 
+const EMPTY_ITEMS: readonly MenuItemModel[] = [];
+const VIEWPORT_MARGIN = 8;
+
 /**
  * One keyboard-navigable menu for the File menu, ribbon split buttons and the
  * grid context menu. Arrow keys move, Enter or Space activates, Esc closes.
- * The menu never dispatches anything itself; it hands the item to its owner.
+ * An item with `items` opens a one-level flyout: Right (or Enter) opens it,
+ * Left or Esc closes it back to its parent item. The menu never dispatches
+ * anything itself; it hands the item to its owner.
  */
 export function Menu({
   items,
@@ -47,10 +57,21 @@ export function Menu({
 }: MenuProps): JSX.Element {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
+  const flyoutItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const focusFlyoutOnOpen = useRef(false);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [flyoutPosition, setFlyoutPosition] = useState<{
+    readonly left: number;
+    readonly top: number;
+  } | null>(null);
   const setRoot = (node: HTMLDivElement | null): void => {
     menuRef.current = node;
     if (rootRef !== undefined) rootRef.current = node;
   };
+
+  const openItem = openIndex === null ? undefined : items[openIndex];
+  const flyoutItems = openItem?.items ?? EMPTY_ITEMS;
 
   useEffect(() => {
     const first = items.findIndex((item) => item.disabled !== true);
@@ -93,23 +114,91 @@ export function Menu({
     };
   }, [anchorRef, onClose]);
 
-  const focusAt = (start: number, direction: 1 | -1): void => {
-    if (items.length === 0) return;
+  /**
+   * Place the flyout beside its parent row and clamp it to the viewport. The
+   * panel is fixed so the menu's own scroll container cannot clip it. The first
+   * paint is hidden fully off-screen; the layout effect corrects it before the
+   * browser paints.
+   */
+  useLayoutEffect(() => {
+    if (openIndex === null) {
+      setFlyoutPosition(null);
+      return;
+    }
+    const anchor = itemRefs.current[openIndex];
+    if (anchor === null) return;
+    const anchorRect = anchor.getBoundingClientRect();
+    const panelRect = flyoutRef.current?.getBoundingClientRect();
+    const width = panelRect?.width ?? 220;
+    const height = panelRect?.height ?? 0;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    let left = anchorRect.right + 2;
+    if (left + width > viewportWidth - VIEWPORT_MARGIN) {
+      left = Math.max(VIEWPORT_MARGIN, anchorRect.left - width - 2);
+    }
+    let top = anchorRect.top - 4;
+    if (height > 0 && top + height > viewportHeight - VIEWPORT_MARGIN) {
+      top = Math.max(VIEWPORT_MARGIN, viewportHeight - VIEWPORT_MARGIN - height);
+    }
+    setFlyoutPosition((current) =>
+      current !== null && current.left === left && current.top === top ? current : { left, top },
+    );
+    if (focusFlyoutOnOpen.current) {
+      focusFlyoutOnOpen.current = false;
+      const first = flyoutItems.findIndex((item) => item.disabled !== true);
+      if (first >= 0) flyoutItemRefs.current[first]?.focus();
+    }
+  }, [openIndex, flyoutItems]);
+
+  const focusAt = (
+    refs: readonly (HTMLButtonElement | null)[],
+    levelItems: readonly MenuItemModel[],
+    start: number,
+    direction: 1 | -1,
+  ): void => {
+    if (levelItems.length === 0) return;
     let index = start;
-    for (let step = 0; step < items.length; step += 1) {
-      index = (index + direction + items.length) % items.length;
-      const item = items[index];
+    for (let step = 0; step < levelItems.length; step += 1) {
+      index = (index + direction + levelItems.length) % levelItems.length;
+      const item = levelItems[index];
       if (item !== undefined && item.disabled !== true) {
-        itemRefs.current[index]?.focus();
+        refs[index]?.focus();
         return;
       }
     }
   };
 
+  const focusLast = (
+    refs: readonly (HTMLButtonElement | null)[],
+    levelItems: readonly MenuItemModel[],
+  ): void => {
+    focusAt(refs, levelItems, 0, -1);
+  };
+
+  const openSubmenu = (index: number, focusFirst: boolean): void => {
+    focusFlyoutOnOpen.current = focusFirst;
+    setOpenIndex(index);
+  };
+
+  const closeSubmenu = (refocusParent?: number): void => {
+    setOpenIndex(null);
+    setFlyoutPosition(null);
+    if (refocusParent !== undefined) itemRefs.current[refocusParent]?.focus();
+  };
+
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const parentIndex = currentIndex(itemRefs.current);
+    const childIndex = currentIndex(flyoutItemRefs.current);
+    const onChild = openIndex !== null && childIndex >= 0;
+
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
+      if (openIndex !== null) {
+        closeSubmenu(openIndex);
+        return;
+      }
       onClose();
       return;
     }
@@ -123,35 +212,96 @@ export function Menu({
       onClose();
       return;
     }
+    if (event.key === 'ArrowLeft') {
+      // One level only: Left backs out of a flyout and never closes the menu.
+      if (openIndex !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSubmenu(openIndex);
+      }
+      return;
+    }
+    if (event.key === 'ArrowRight') {
+      const item = parentIndex < 0 ? undefined : items[parentIndex];
+      if (
+        !onChild &&
+        item !== undefined &&
+        item.disabled !== true &&
+        item.items !== undefined &&
+        item.items.length > 0
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        openSubmenu(parentIndex, true);
+      }
+      return;
+    }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       event.stopPropagation();
-      focusAt(currentIndex(itemRefs.current), 1);
+      if (onChild) {
+        focusAt(flyoutItemRefs.current, flyoutItems, childIndex, 1);
+      } else {
+        if (openIndex !== null) closeSubmenu();
+        focusAt(itemRefs.current, items, parentIndex, 1);
+      }
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
       event.stopPropagation();
-      const current = currentIndex(itemRefs.current);
-      focusAt(current < 0 ? 0 : current, -1);
+      if (onChild) {
+        focusAt(flyoutItemRefs.current, flyoutItems, childIndex, -1);
+      } else {
+        if (openIndex !== null) closeSubmenu();
+        focusAt(itemRefs.current, items, parentIndex < 0 ? 0 : parentIndex, -1);
+      }
       return;
     }
     if (event.key === 'Home') {
       event.preventDefault();
       event.stopPropagation();
-      focusAt(-1, 1);
+      if (onChild) {
+        focusAt(flyoutItemRefs.current, flyoutItems, -1, 1);
+      } else {
+        if (openIndex !== null) closeSubmenu();
+        focusAt(itemRefs.current, items, -1, 1);
+      }
       return;
     }
     if (event.key === 'End') {
       event.preventDefault();
       event.stopPropagation();
-      focusAt(0, -1);
+      if (onChild) {
+        focusLast(flyoutItemRefs.current, flyoutItems);
+      } else {
+        if (openIndex !== null) closeSubmenu();
+        focusLast(itemRefs.current, items);
+      }
       return;
     }
     if (event.key === 'Enter' || event.key === ' ') {
-      const index = currentIndex(itemRefs.current);
-      const item = index < 0 ? undefined : items[index];
+      if (onChild) {
+        const child = flyoutItems[childIndex];
+        if (child === undefined || child.disabled === true) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(child);
+        return;
+      }
+      const item = parentIndex < 0 ? undefined : items[parentIndex];
       if (item === undefined || item.disabled === true) return;
+      if (item.items !== undefined && item.items.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (openIndex === parentIndex) {
+          const first = flyoutItems.findIndex((child) => child.disabled !== true);
+          if (first >= 0) flyoutItemRefs.current[first]?.focus();
+        } else {
+          openSubmenu(parentIndex, true);
+        }
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       onSelect(item);
@@ -176,12 +326,53 @@ export function Menu({
         <MenuRow
           key={item.id}
           item={item}
+          expanded={openIndex === index}
           itemRef={(element) => {
             itemRefs.current[index] = element;
           }}
-          onSelect={onSelect}
+          onActivate={() => {
+            if (item.items !== undefined && item.items.length > 0) {
+              // A click always offers the flyout; Esc, Left or another row
+              // closes it. Hover already opened it in the common path.
+              openSubmenu(index, false);
+              return;
+            }
+            onSelect(item);
+          }}
+          onHover={() => {
+            if (item.disabled === true) return;
+            if (item.items !== undefined && item.items.length > 0) {
+              if (openIndex !== index) openSubmenu(index, false);
+              return;
+            }
+            if (openIndex !== null) closeSubmenu();
+          }}
         />
       ))}
+      {openIndex === null || flyoutItems.length === 0 ? null : (
+        <div
+          ref={flyoutRef}
+          className="menu context-menu"
+          role="menu"
+          aria-label={openItem?.label}
+          style={{
+            left: `${flyoutPosition?.left ?? -9999}px`,
+            top: `${flyoutPosition?.top ?? -9999}px`,
+          }}
+        >
+          {flyoutItems.map((item, index) => (
+            <MenuRow
+              key={item.id}
+              item={item}
+              itemRef={(element) => {
+                flyoutItemRefs.current[index] = element;
+              }}
+              onActivate={() => onSelect(item)}
+              onHover={() => undefined}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -189,10 +380,13 @@ export function Menu({
 interface MenuRowProps {
   readonly item: MenuItemModel;
   readonly itemRef: (element: HTMLButtonElement | null) => void;
-  readonly onSelect: (item: MenuItemModel) => void;
+  readonly onActivate: () => void;
+  readonly onHover: () => void;
+  readonly expanded?: boolean;
 }
 
-function MenuRow({ item, itemRef, onSelect }: MenuRowProps): JSX.Element {
+function MenuRow({ item, itemRef, onActivate, onHover, expanded }: MenuRowProps): JSX.Element {
+  const hasItems = item.items !== undefined && item.items.length > 0;
   return (
     <>
       {item.dividerBefore === true ? <div className="menu-separator" role="separator" /> : null}
@@ -201,20 +395,27 @@ function MenuRow({ item, itemRef, onSelect }: MenuRowProps): JSX.Element {
         type="button"
         role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
         aria-checked={item.checked === undefined ? undefined : item.checked}
+        aria-haspopup={hasItems ? 'menu' : undefined}
+        aria-expanded={hasItems ? expanded === true : undefined}
         className="menu-item"
         disabled={item.disabled === true}
         data-command={item.commandId}
         data-testid={item.testId}
         onClick={() => {
           if (item.disabled === true) return;
-          onSelect(item);
+          onActivate();
         }}
+        onMouseEnter={onHover}
       >
         <span className="menu-check" aria-hidden="true">
           {item.checked === true ? '✓' : ''}
         </span>
         <span className="menu-label">{item.label}</span>
-        {item.shortcut === undefined ? null : (
+        {hasItems ? (
+          <span className="menu-shortcut" aria-hidden="true">
+            ›
+          </span>
+        ) : item.shortcut === undefined ? null : (
           <span className="menu-shortcut" aria-hidden="true">
             {item.shortcut}
           </span>
