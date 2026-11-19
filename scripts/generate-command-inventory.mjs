@@ -85,6 +85,12 @@ function readInventory() {
   }
 }
 
+/** The map may author one context-menu placement or a list (Insert Cells has two). */
+function contextMenuPlacements(entry) {
+  if (entry.contextMenu === undefined) return [];
+  return Array.isArray(entry.contextMenu) ? entry.contextMenu : [entry.contextMenu];
+}
+
 /**
  * Load the actual TypeScript registry through Vite's SSR loader rather than
  * scraping `id:` literals from the command files. The returned set is exactly
@@ -124,6 +130,7 @@ async function main() {
   const matrixByKey = new Map(matrix.map((row) => [`${row.section}::${row.feature}`, row]));
   const byMatrixRow = new Map();
   const seenIds = new Set();
+  const contextGroups = new Map();
 
   for (const entry of inventory) {
     const label = typeof entry.id === 'string' ? entry.id : '<missing id>';
@@ -218,6 +225,41 @@ async function main() {
     for (const menu of entry.menu ?? []) {
       if (typeof menu.menu !== 'string' || menu.menu.trim() === '') {
         fail(`${label}: menu placement has no menu name.`);
+      }
+    }
+    for (const placement of contextMenuPlacements(entry)) {
+      if (
+        placement.order !== undefined &&
+        (!Number.isInteger(placement.order) || placement.order < 0)
+      ) {
+        fail(`${label}: context-menu order must be a non-negative integer.`);
+      }
+      if (
+        placement.label !== undefined &&
+        (typeof placement.label !== 'string' || placement.label.trim() === '')
+      ) {
+        fail(`${label}: context-menu label must be a non-empty string.`);
+      }
+      if (placement.shortcut !== undefined && typeof placement.shortcut !== 'string') {
+        fail(`${label}: context-menu shortcut must be a string.`);
+      }
+      if (placement.group !== undefined) {
+        const group = placement.group;
+        if (typeof group.id !== 'string' || group.id.trim() === '') {
+          fail(`${label}: context-menu group needs a non-empty id.`);
+        }
+        if (typeof group.label !== 'string' || group.label.trim() === '') {
+          fail(`${label}: context-menu group needs a non-empty label.`);
+        }
+        if (!Number.isInteger(group.order) || group.order < 0) {
+          fail(`${label}: context-menu group order must be a non-negative integer.`);
+        }
+        const seen = contextGroups.get(group.id);
+        if (seen !== undefined && (seen.label !== group.label || seen.order !== group.order)) {
+          fail(`${label}: context-menu group "${group.id}" disagrees with its first definition.`);
+        } else if (seen === undefined) {
+          contextGroups.set(group.id, { label: group.label, order: group.order });
+        }
       }
     }
     if (entry.compact !== undefined && !['button', 'toggle'].includes(entry.compact.kind)) {
@@ -330,8 +372,12 @@ async function main() {
         ),
       ].join('<br>') || '—';
     const menuParts = (entry.menu ?? []).map((placement) => placement.menu);
-    if (entry.contextMenu !== undefined) menuParts.push('Context menu');
-    const menu = menuParts.join('<br>') || '—';
+    for (const placement of contextMenuPlacements(entry)) {
+      menuParts.push(
+        placement.group === undefined ? 'Context menu' : `Context menu (${placement.group.label})`,
+      );
+    }
+    const menu = [...new Set(menuParts)].join('<br>') || '—';
     const shortcut = entry.shortcut.join(', ') || '—';
     lines.push(
       `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${entry.implemented ? 'Implemented' : 'Planned'} |`,

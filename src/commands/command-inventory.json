@@ -182,7 +182,15 @@
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
-    "shortcut": ["Ctrl+Shift+="]
+    "shortcut": ["Ctrl+Shift+="],
+    "contextMenu": [
+      {
+        "order": 1,
+        "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Rows Above",
+        "shortcut": "Ctrl+Shift+="
+      }
+    ]
   },
   {
     "id": "structure.insertColumns",
@@ -192,7 +200,15 @@
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
-    "shortcut": ["Ctrl+Shift+="]
+    "shortcut": ["Ctrl+Shift+="],
+    "contextMenu": [
+      {
+        "order": 2,
+        "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Columns to the Left",
+        "shortcut": "Ctrl+Shift+="
+      }
+    ]
   },
   {
     "id": "structure.insertCells",
@@ -202,7 +218,23 @@
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
     "implemented": true,
-    "shortcut": ["Ctrl+Shift+="]
+    "shortcut": ["Ctrl+Shift+="],
+    "contextMenu": [
+      {
+        "order": 3,
+        "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Cells & Shift Right",
+        "shortcut": "Ctrl+Shift+=",
+        "args": { "shift": "right" }
+      },
+      {
+        "order": 4,
+        "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Cells & Shift Down",
+        "shortcut": "Ctrl+Shift+=",
+        "args": { "shift": "down" }
+      }
+    ]
   },
   {
     "id": "structure.deleteRows",
@@ -212,7 +244,15 @@
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
-    "shortcut": ["Ctrl+-"]
+    "shortcut": ["Ctrl+-"],
+    "contextMenu": [
+      {
+        "order": 1,
+        "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Rows",
+        "shortcut": "Ctrl+-"
+      }
+    ]
   },
   {
     "id": "structure.deleteColumns",
@@ -222,7 +262,15 @@
     "category": "edit",
     "enablement": "A sheet is active",
     "implemented": true,
-    "shortcut": ["Ctrl+-"]
+    "shortcut": ["Ctrl+-"],
+    "contextMenu": [
+      {
+        "order": 2,
+        "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Columns",
+        "shortcut": "Ctrl+-"
+      }
+    ]
   },
   {
     "id": "structure.deleteCells",
@@ -233,6 +281,22 @@
     "enablement": "A sheet is active and a range is selected",
     "implemented": true,
     "shortcut": ["Ctrl+-"],
+    "contextMenu": [
+      {
+        "order": 3,
+        "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Cells & Shift Up",
+        "shortcut": "Ctrl+-",
+        "args": { "shift": "up" }
+      },
+      {
+        "order": 4,
+        "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Cells & Shift Left",
+        "shortcut": "Ctrl+-",
+        "args": { "shift": "left" }
+      }
+    ],
     "ribbon": [
       {
         "tab": "Home",
@@ -1383,7 +1447,13 @@
         ]
       }
     ],
-    "contextMenu": { "order": 60 }
+    "contextMenu": [
+      {
+        "order": 5,
+        "group": { "id": "insert", "label": "Insert", "order": 36 },
+        "label": "Insert Sheet"
+      }
+    ]
   },
   {
     "id": "sheet.delete",
@@ -1394,7 +1464,14 @@
     "enablement": "A visible sheet is active and more than one visible sheet exists",
     "implemented": true,
     "shortcut": [],
-    "menu": [{ "menu": "Sheet tab context menu", "order": 20 }]
+    "menu": [{ "menu": "Sheet tab context menu", "order": 20 }],
+    "contextMenu": [
+      {
+        "order": 5,
+        "group": { "id": "delete", "label": "Delete", "order": 37 },
+        "label": "Delete Sheet"
+      }
+    ]
   },
   {
     "id": "sheet.rename",

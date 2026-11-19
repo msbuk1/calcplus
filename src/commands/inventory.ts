@@ -78,10 +78,33 @@ export interface CompactPlacement {
   readonly args?: Readonly<Record<string, unknown>>;
 }
 
+/** A one-level flyout of the grid context menu, as Excel's Insert/Delete show. */
+export interface ContextMenuGroup {
+  /** Stable id shared by every item inside the flyout. */
+  readonly id: string;
+  /** The flyout entry's label, verbatim from the oracle capture. */
+  readonly label: string;
+  /** The flyout entry's position among the flat context-menu items. */
+  readonly order: number;
+}
+
 export interface ContextMenuPlacement {
+  /** Sort order: among the flat items, or inside the flyout when grouped. */
   readonly order?: number;
   readonly label?: string;
+  /** The trailing shortcut text the capture shows, when it shows one. */
+  readonly shortcut?: string;
+  readonly args?: Readonly<Record<string, unknown>>;
+  /** Present when the item sits in a one-level flyout. */
+  readonly group?: ContextMenuGroup;
 }
+
+/**
+ * One command may surface more than once: Insert Cells & Shift Right and Shift
+ * Down are the same command with different arguments, as the ribbon menu
+ * already authors them.
+ */
+export type AuthoredContextMenu = ContextMenuPlacement | readonly ContextMenuPlacement[];
 
 export interface CommandInventoryEntry {
   readonly id: string;
@@ -94,7 +117,7 @@ export interface CommandInventoryEntry {
   readonly shortcut: readonly string[];
   readonly ribbon?: readonly RibbonPlacement[];
   readonly menu?: readonly MenuPlacement[];
-  readonly contextMenu?: ContextMenuPlacement;
+  readonly contextMenu?: AuthoredContextMenu;
   readonly compact?: CompactPlacement;
 }
 
@@ -106,6 +129,20 @@ const byId = new Map<string, CommandInventoryEntry>(
 
 export function inventoryCommand(id: string): CommandInventoryEntry | undefined {
   return byId.get(id);
+}
+
+/**
+ * Normalise the map's authored context-menu shape: a single placement or a
+ * list of them. Consumers always see a list.
+ */
+export function contextMenuPlacements(
+  entry: CommandInventoryEntry,
+): readonly ContextMenuPlacement[] {
+  const authored = entry.contextMenu;
+  if (authored === undefined) return [];
+  return Array.isArray(authored)
+    ? (authored as readonly ContextMenuPlacement[])
+    : [authored as ContextMenuPlacement];
 }
 
 export function implementedInventoryCommands(): readonly CommandInventoryEntry[] {

@@ -1,7 +1,8 @@
-import { COMMAND_INVENTORY, inventoryCommand } from '@commands/inventory';
+import { COMMAND_INVENTORY, contextMenuPlacements, inventoryCommand } from '@commands/inventory';
 import type {
   CommandInventoryEntry,
   CompactPlacement,
+  ContextMenuGroup,
   ControlValueSource,
   RibbonMenuItem,
   RibbonPlacement,
@@ -247,19 +248,60 @@ export function menuItemsFor(
   return items.sort((left, right) => menuRank(left.id) - menuRank(right.id));
 }
 
+/**
+ * The grid context menu: flat items plus the one-level Insert/Delete flyouts,
+ * in map order (ui-chrome §4.1). A flyout is disabled only when every item in
+ * it is disabled, so the interaction stays possible whenever a direction is.
+ */
 export function contextMenuItems(resolveState: CommandStateResolver): readonly MenuItemModel[] {
-  const items: MenuItemModel[] = [];
+  const flat: { readonly order: number; readonly item: MenuItemModel }[] = [];
+  const groups = new Map<
+    string,
+    {
+      readonly group: ContextMenuGroup;
+      readonly children: { readonly order: number; readonly item: MenuItemModel }[];
+    }
+  >();
+
   for (const entry of COMMAND_INVENTORY) {
-    if (!entry.implemented || entry.contextMenu === undefined) continue;
-    const state = resolveState(entry.id);
-    items.push({
-      id: entry.id,
-      label: entry.contextMenu.label ?? entry.label,
-      commandId: entry.id,
-      disabled: !state.enabled,
+    if (!entry.implemented) continue;
+    for (const placement of contextMenuPlacements(entry)) {
+      const state = resolveState(entry.id);
+      const group = placement.group;
+      const item: MenuItemModel = {
+        id: `${entry.id}:${group?.id ?? 'flat'}:${placement.order ?? 100}`,
+        label: placement.label ?? entry.label,
+        commandId: entry.id,
+        ...(placement.args === undefined ? {} : { args: placement.args }),
+        ...(placement.shortcut === undefined ? {} : { shortcut: placement.shortcut }),
+        disabled: !state.enabled,
+      };
+      if (group === undefined) {
+        flat.push({ order: placement.order ?? 100, item });
+        continue;
+      }
+      const bucket = groups.get(group.id) ?? { group, children: [] };
+      bucket.children.push({ order: placement.order ?? 100, item });
+      groups.set(group.id, bucket);
+    }
+  }
+
+  const entries = [...flat];
+  for (const [id, bucket] of groups) {
+    const children = [...bucket.children]
+      .sort((left, right) => left.order - right.order)
+      .map((child) => child.item);
+    entries.push({
+      order: bucket.group.order,
+      item: {
+        id: `context:${id}`,
+        label: bucket.group.label,
+        disabled: children.every((child) => child.disabled === true),
+        items: children,
+      },
     });
   }
-  return items.sort((left, right) => contextRank(left.id) - contextRank(right.id));
+  return entries.sort((left, right) => left.order - right.order).map((entry) => entry.item);
 }
 
 function controlOrder(control: ResolvedRibbonControl): number | null {
@@ -272,11 +314,6 @@ function controlOrder(control: ResolvedRibbonControl): number | null {
 function menuRank(id: string): number {
   const value = Number(id.slice(id.lastIndexOf(':') + 1));
   return Number.isFinite(value) ? value : 100;
-}
-
-function contextRank(id: string): number {
-  const entry = COMMAND_INVENTORY.find((candidate) => candidate.id === id);
-  return entry?.contextMenu?.order ?? 100;
 }
 
 function menuTestId(commandId: string): string | undefined {
