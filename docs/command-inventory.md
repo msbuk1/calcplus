@@ -10,8 +10,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 57
-- Inventory commands: 103
-- Implemented in this build: 58
+- Inventory commands: 105
+- Implemented in this build: 60
 - Planned for a later slice: 45
 - Out-of-scope rows (V2 or NEVER): 28
 
@@ -105,6 +105,8 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `formulaBar.focus` | 6. View and navigation — Formula bar and name box | Edit in formula bar | — | — | F2 | A sheet is active | Planned |
 | `nameBox.navigate` | 6. View and navigation — Formula bar and name box | Go to address | — | — | Enter | A sheet is active | Implemented |
 | `status.statistics` | 6. View and navigation — Status bar: sum/average/count for the selection; zoom slider | Selection statistics | — | — | — | A sheet is active | Planned |
+| `file.compatibilityReport` | 7. File I/O and printing — `.xlsx` open and save | Compatibility Report | — | File | — | A workbook is open | Implemented |
+| `file.exportReport` | 7. File I/O and printing — `.xlsx` open and save | Export Report | — | File | — | A workbook is open | Implemented |
 | `file.openXlsx` | 7. File I/O and printing — `.xlsx` open and save | Open .xlsx | — | — | — | The file layer can read the package | Planned |
 | `file.saveXlsx` | 7. File I/O and printing — `.xlsx` open and save | Save .xlsx | — | — | — | The file layer can write the package | Planned |
 | `file.openXlsm` | 7. File I/O and printing — `.xlsm` open and save; macro parts preserved, never executed | Open .xlsm | — | — | — | The file layer can read the package | Planned |

@@ -374,6 +374,7 @@ function cloneCellForSnapshot(cell: Cell): Cell {
     styleId: cell.styleId,
     richText: cell.richText === null ? null : { ...cell.richText },
     stale: cell.stale === true,
+    ...(cell.richTextFlattened === true ? { richTextFlattened: true } : {}),
     ...(cell.formulaSource === undefined ? {} : { formulaSource: { ...cell.formulaSource } }),
   };
 }

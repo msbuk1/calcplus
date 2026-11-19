@@ -21,6 +21,7 @@ const CONTRACT_ALLOWLIST = new Set([
 const REVIEWED_ADDITIONS = new Map([
   ['Python-2.0', 'argparse (via eslint/js-yaml); GPL-compatible per FSF.'],
   ['BlueOak-1.0.0', 'minimatch 10 (via typescript-eslint); permissive, GPL-compatible.'],
+  ['Zlib', 'pako (via xlsx-populate); Zlib is permissive and GPL-3.0-only compatible.'],
 ]);
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -35,13 +36,15 @@ const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta
 const failures = [];
 const reviewedUsed = new Map();
 let checked = 0;
+let resolvedFromInstalled = 0;
 
 for (const [path, entry] of Object.entries(lock.packages ?? {})) {
   if (path === '' || entry === undefined || entry.version === undefined) continue;
   if (!path.startsWith('node_modules/')) continue;
   checked += 1;
   const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
-  const license = normalise(entry.license);
+  const license = normalise(entry.license) ?? installedLicense(name);
+  if (license !== null && entry.license === undefined) resolvedFromInstalled += 1;
   if (license === null) {
     failures.push(`${name}@${entry.version}: no licence field`);
     continue;
@@ -64,8 +67,29 @@ if (failures.length > 0) {
 }
 
 console.log(`licence gate: checked ${checked} packages; all licences are GPL-3.0-only compatible.`);
+if (resolvedFromInstalled > 0) {
+  console.log(
+    `  licence field resolved from the installed package for ${resolvedFromInstalled} package(s) whose registry metadata omits it.`,
+  );
+}
 for (const [license, reason] of reviewedUsed) {
   console.log(`  reviewed addition: ${license} — ${reason}`);
+}
+
+/**
+ * The private registry's packument omits the licence field for some pinned
+ * packages even though the package itself declares one. The installed copy is
+ * the authoritative metadata the release would ship, so fall back to it rather
+ * than allow-listing a package without reading a licence.
+ */
+function installedLicense(name) {
+  try {
+    const path = new URL(`../node_modules/${name}/package.json`, import.meta.url);
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    return normalise(manifest.license);
+  } catch {
+    return null;
+  }
 }
 
 function normalise(value) {

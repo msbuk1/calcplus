@@ -28,6 +28,9 @@ export const clearContentsCommand: CommandDefinition<ClearArgs> = {
         savedResult: null,
         styleId: before.styleId,
         richText: null,
+        // Clear contents is an explicit deletion; the marker records that the
+        // dropped runs were deliberate (file-compat §9 F17, save guard).
+        ...(before.richText === null ? {} : { richTextFlattened: true }),
         stale: false,
       };
     });

@@ -739,7 +739,9 @@ a:focus-visible,
 /* ---------- Messages ---------- */
 
 .compat-banner {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   height: 26px;
   padding: 0 12px;
   overflow: hidden;
@@ -748,9 +750,29 @@ a:focus-visible,
   color: var(--warning);
   font-size: 12px;
   line-height: 26px;
+  flex: none;
+}
+
+.compat-banner-text {
+  flex: 1 1 auto;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.compat-banner-action {
   flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+
+.compat-banner-action:hover {
+  background: var(--warning-border);
 }
 
 .calc-warning {
@@ -1415,6 +1437,80 @@ a:focus-visible,
   border-radius: 3px;
   background: var(--danger-surface);
   color: var(--danger);
+}
+
+/* ---------- Reports ---------- */
+
+.report-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.report-summary {
+  margin-bottom: 10px;
+}
+
+.report-sections {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--grid-bg);
+}
+
+.report-section {
+  padding: 6px 10px;
+}
+
+.report-section + .report-section {
+  border-top: 1px solid var(--border);
+}
+
+.report-section-title {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.report-list,
+.report-note-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.report-entry {
+  margin-bottom: 6px;
+}
+
+.report-entry-title {
+  font-weight: 600;
+}
+
+.report-entry-where {
+  color: var(--disabled);
+}
+
+.report-entry-detail {
+  margin: 2px 0 0;
+  color: var(--disabled);
+}
+
+.report-notes {
+  padding: 8px 10px 0;
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.report-copied {
+  color: var(--disabled);
+  font-size: 12px;
 }
 
 /* ---------- Insert Function ---------- */

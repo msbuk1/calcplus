@@ -15,6 +15,18 @@ runs locally; no test or check runs on GitHub.
 4. Add the LibreOffice headless and openpyxl relationship checks locally where
    those tools are installed; the Excel check is a manual release step.
 
+The local repair-free verifier runs those checks for the producer matrix:
+
+```bash
+node scripts/verify-repair-free.mjs
+```
+
+It verifies relationships, content types, XML well-formedness and part names,
+then loads each file through openpyxl and LibreOffice headless when they are
+installed. Pass a file or directory to check other packages. The
+deliberately hostile fixtures (corrupt, encrypted, zip-bomb) fail it by design
+and are not in the default target; their own tests cover the rejection.
+
 The capture must be reproducible before a golden is committed. There is no
 runner, scheduled GitHub job or repository variable.
 

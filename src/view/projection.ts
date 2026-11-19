@@ -304,6 +304,7 @@ export function createSheetProjection(
     zoom,
     date1904: workbook.date1904,
     conditionalFormatting,
+    commentCells: new Set(sheet.comments.keys()),
     defaultRowHeightPoints: sheet.defaultRowHeight,
     defaultColumnWidthChars: sheet.defaultColumnWidth,
     cellAt(row, col) {

@@ -1,10 +1,11 @@
-import type { DefinedName } from '@model/types';
+import type { DefinedName, WorkbookProtectionRecord } from '@model/types';
 import {
   RELATIONSHIPS_NS,
   STRICT_SPREADSHEET_NS,
   SPREADSHEET_NS,
   attributeValue,
   decodeXml,
+  openTagStart,
   parseXml,
 } from './xml';
 import { WorkbookOpenError } from './errors';
@@ -23,6 +24,12 @@ export interface WorkbookXmlInfo {
   readonly activeTab: number;
   readonly calcOnLoad: boolean;
   readonly fullCalcOnLoad: boolean;
+  /**
+   * The workbook's `<workbookProtection>` element, verbatim (file-compat §6.7).
+   * Preserved and never enforced; the element itself lives in the workbook part,
+   * which only a name or sheet-list change rewrites.
+   */
+  readonly protection: WorkbookProtectionRecord | null;
 }
 
 export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookXmlInfo {
@@ -33,6 +40,7 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
   let activeTab = 0;
   let calcOnLoad = false;
   let fullCalcOnLoad = false;
+  let protection: WorkbookProtectionRecord | null = null;
   let sawWorkbook = false;
   let inSheets = false;
   let inDefinedNames = false;
@@ -52,7 +60,7 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
   parseXml(
     xml,
     {
-      onOpenTag(tag) {
+      onOpenTag(tag, position) {
         if (tag.uri === STRICT_SPREADSHEET_NS) {
           throw new WorkbookOpenError(
             'strict-ooxml',
@@ -67,6 +75,13 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
         switch (tag.local) {
           case 'workbookPr': {
             date1904 = isTruthy(attributeValue(tag, 'date1904'));
+            break;
+          }
+          case 'workbookProtection': {
+            // The open tag is the whole element in every producer: the schema's
+            // children are empty. Preserve the authored bytes so a rewrite of
+            // the workbook part carries protection through untouched.
+            protection = { rawXml: xml.slice(openTagStart(xml, position), position) };
             break;
           }
           case 'workbookView': {
@@ -150,6 +165,7 @@ export function parseWorkbookXml(bytes: Uint8Array, partName: string): WorkbookX
     activeTab,
     calcOnLoad,
     fullCalcOnLoad,
+    protection,
   };
 }
 

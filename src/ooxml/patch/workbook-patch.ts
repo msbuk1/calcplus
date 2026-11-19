@@ -2,14 +2,7 @@ import type { SheetId, Workbook } from '@model/types';
 import type { Relationship } from '../types';
 import { isFilterDatabaseName } from '../autofilter-xml';
 import { WorkbookSaveError } from '../errors';
-import {
-  decodeXml,
-  encodeXml,
-  escapeXmlText,
-  isWellFormedXml,
-  openTagStart,
-  parseXml,
-} from '../xml';
+import { decodeXml, encodeXml, isWellFormedXml, openTagStart, parseXml } from '../xml';
 
 const AFTER_CALC_PR = new Set([
   'oleSize',
@@ -244,7 +237,7 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
       edits.push({
         start: record.start,
         end: record.end,
-        text: `${open}${escapeXmlText(modelName.formula)}${closing}`,
+        text: `${open}${escapeNameText(modelName.formula)}${closing}`,
       });
       continue;
     }
@@ -259,7 +252,7 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
       edits.push({
         start: record.openEnd,
         end: record.closeStart,
-        text: escapeXmlText(modelName.formula),
+        text: escapeNameText(modelName.formula),
       });
     }
   }
@@ -277,6 +270,16 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
     );
   }
   return encodeXml(patched);
+}
+
+/**
+ * Element text needs only `&`, `<` and `>` escaped. Leaving apostrophes and
+ * double quotes literal keeps a defined name looking exactly like the one
+ * Excel writes, so retargeting a range changes the fewest bytes
+ * (file-compat §9 F23; the AutoFilter name writer does the same).
+ */
+function escapeNameText(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function replaceDefinedNameAttribute(openTag: string, localName: string, value: string): string {

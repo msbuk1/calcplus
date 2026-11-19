@@ -58,6 +58,8 @@ const COLORS = Object.freeze({
 
 /** Excel's default automatic border colour. */
 const DEFAULT_BORDER_COLOR = '#000000';
+/** The note/comment indicator triangle (file-compat §9 F12). */
+export const COMMENT_INDICATOR_COLOR = '#c00000';
 const MEASURE_CACHE_LIMIT = 8192;
 
 interface Pane {
@@ -367,6 +369,10 @@ export class CanvasRenderFrame implements RenderFrame {
       if (icon !== undefined) paintCfIcon(this.context, icon);
     }
 
+    // File-compat §9 F12: the note/comment indicator is a small red triangle in
+    // the cell's top-right corner, painted last so a fill or CF never hides it.
+    this.paintCommentIndicators(pane, projection, rowOf, colOf);
+
     context.restore();
   }
 
@@ -416,6 +422,44 @@ export class CanvasRenderFrame implements RenderFrame {
       const icon = opOfKind(cf, 'icon');
       if (icon !== undefined) paintCfIcon(context, icon);
       context.restore();
+    }
+  }
+
+  /**
+   * Paint the corner marker for every cell that carries a note or threaded
+   * comment. The projection supplies the key set (`commentCells`), so the
+   * renderer never reads the model or the comment text. A comment may be
+   * anchored to an empty cell, so this pass walks the set rather than the
+   * visible cells.
+   */
+  private paintCommentIndicators(
+    pane: Pane,
+    projection: SheetProjection,
+    rowOf: (row: number) => number,
+    colOf: (col: number) => number,
+  ): void {
+    const cells = projection.commentCells;
+    if (cells === undefined || cells.size === 0) return;
+    const { context } = this;
+    const size = Math.max(3, Math.min(8, Math.round(5 * projection.zoom)));
+    context.fillStyle = COMMENT_INDICATOR_COLOR;
+    for (const key of cells) {
+      const separator = key.indexOf(':');
+      if (separator < 0) continue;
+      const row = Number(key.slice(0, separator));
+      const col = Number(key.slice(separator + 1));
+      if (!Number.isInteger(row) || !Number.isInteger(col)) continue;
+      if (row < pane.startRow || row > pane.endRow) continue;
+      if (col < pane.startCol || col > pane.endCol) continue;
+      if (projection.isRowHidden(row) || projection.isColumnHidden(col)) continue;
+      const x = colOf(col) + projection.columnWidth(col);
+      const y = rowOf(row);
+      context.beginPath();
+      context.moveTo(x - size, y);
+      context.lineTo(x, y);
+      context.lineTo(x, y + size);
+      context.closePath();
+      context.fill();
     }
   }
 

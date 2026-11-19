@@ -164,6 +164,12 @@ export interface SheetProjection {
   totalWidth(): number;
   /** The merged range covering a cell, or `null`. */
   mergeAt(row: number, col: number): MergeSpan | null;
+  /**
+   * Cells that carry a legacy note or threaded comment, keyed `row:col`
+   * (file-compat §9 F12). The renderer paints the corner indicator from this
+   * set; the grid never reads comment text, replies or authors.
+   */
+  readonly commentCells?: ReadonlySet<string>;
   /** The used range of the sheet, or `null` when the sheet is empty. */
   usedRange(): { startRow: number; endRow: number; startCol: number; endCol: number } | null;
   /** The sorted columns that hold data in a row. */

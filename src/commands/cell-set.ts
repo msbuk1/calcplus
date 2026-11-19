@@ -61,16 +61,11 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
         },
       };
     }
-    if (before?.richText !== null && before?.richText !== undefined) {
-      return {
-        changes: [],
-        ui: {
-          type: 'toast',
-          message:
-            'This cell contains rich text. Rich text is read-only in this milestone; editing it would flatten its formatting, so the cell was not changed.',
-        },
-      };
-    }
+    // File-compat §9 F17 and workbook-model §9: editing a rich-text cell warns
+    // and flattens it to plain text in the same transaction. The warning
+    // travels with the change, so one undo restores the runs and the save
+    // policy in rich-text-xml.ts keeps them on disk.
+    const flattensRichText = before?.richText !== null && before?.richText !== undefined;
     if (args.value.type === 'text') {
       const unsafe = invalidXmlCharacterMessage(args.value.value);
       if (unsafe !== null) {
@@ -84,6 +79,10 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
     if (cellStateEquals(before, after)) {
       return { changes: [] };
     }
+    // A warned flatten is marked so the save guard lets the plain text through;
+    // every other way of dropping rich runs is still refused (rich-text-xml.ts).
+    const flattened =
+      after !== null && flattensRichText ? { ...after, richTextFlattened: true } : after;
     const change: CommandChange = {
       type: 'cell.set',
       sheetId: args.sheetId,
@@ -94,11 +93,20 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
         endCol: args.col,
       },
       before: [[before]],
-      after: [[after]],
+      after: [[flattened]],
     };
     return {
       changes: [change],
       selectionAfter: { ...change.range },
+      ...(flattensRichText
+        ? {
+            ui: {
+              type: 'toast' as const,
+              message:
+                'This cell held rich text. It was flattened to plain text; Undo restores the formatting.',
+            },
+          }
+        : {}),
     };
   },
 };

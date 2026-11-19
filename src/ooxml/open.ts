@@ -9,6 +9,10 @@ import type { Relationship, SharedStringsTable, WorkbookPackage } from './types'
 import { parseWorkbookXml } from './workbook-xml';
 import { parseWorksheetXml } from './worksheet-xml';
 import { parseRelationships, findRelationship, findRelationshipById } from './relationships';
+import { applySheetComments } from './comments-xml';
+import { applyHyperlinks } from './hyperlinks-xml';
+import { applyPrintSetup } from './print-setup-xml';
+import { applyValidations } from './validation-xml';
 import { readPackage } from './zip';
 
 /** §5 message, verbatim, for the unsupported-format row. */
@@ -146,6 +150,21 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     sheetRelationshipIds.set(sheet.id, reference.relationshipId);
     sheetIdByWorkbookIndex[index] = sheet.id;
     conditionalFormatRules.set(sheet.id, parsed.conditionalFormatRules);
+
+    // M6 lane 3: sheet content parts and preserved document state. Validation,
+    // hyperlinks, notes/threaded comments and print setup are read into the
+    // model; their parts stay opaque, so a save keeps them byte-identical.
+    const worksheetRelationships = relationshipsByPart.get(worksheetRelsPath) ?? [];
+    applyValidations(sheet, parsed.xml, parsed.rootChildren);
+    applyHyperlinks(sheet, parsed.xml, parsed.rootChildren, {
+      relationships: worksheetRelationships,
+    });
+    applySheetComments(sheet, {
+      entries,
+      relationships: worksheetRelationships,
+      workbookRelationships,
+    });
+    applyPrintSetup(sheet, parsed.xml, partPath);
   }
 
   const workbookNames: DefinedName[] = [];
@@ -173,7 +192,7 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
     styles: stylesInfo?.styles ?? [createDefaultStyle(0)],
     theme: { path: themePath, bytes: themeBytes ?? null },
     namedStyles: stylesInfo?.namedStyles ?? [],
-    protection: null,
+    protection: workbookInfo.protection,
     opaqueParts: new Map(),
     sourceParts: new Map(),
     indexedPalette: stylesInfo?.indexedPalette ?? null,
