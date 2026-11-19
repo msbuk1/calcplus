@@ -13,6 +13,7 @@ import type {
 import { cellStateEquals, cloneCell, getSheetById, setCellSnapshot } from '@model/types';
 import { cloneAutoFilter } from '@model/autofilter';
 import { findSheet } from '@model/workbook';
+import { applyStructuralPartPatches } from '@ooxml/structure-patch';
 import { BLANK, cellValueEquals, errorValue, type CellValue } from '@model/value';
 import { isSheetVisible } from '@view/sheet-visibility';
 import type {
@@ -707,6 +708,11 @@ export class DocumentSession {
     if (source === null) this.workbook.sourceParts.delete(change.partPath);
     else this.workbook.sourceParts.set(change.partPath, source);
 
+    // The opaque part rewrites (chart series, drawing anchors, comment refs,
+    // pivot locations) live in the same transaction: each side carries its own
+    // bytes, so undo restores them without recomputing a transform.
+    applyStructuralPartPatches(this.workbook, change.parts, direction);
+
     const rows = direction === 'after' ? change.rows.after : change.rows.before;
     sheet.rowDimensions.clear();
     for (const [index, dimension] of rows) sheet.rowDimensions.set(index, { ...dimension });
@@ -1028,6 +1034,7 @@ function estimateBytes(changes: readonly CommandChange[]): number {
       total += estimateAutoFilter(change.autoFilter.after);
       total += change.sourceBefore?.byteLength ?? 0;
       total += change.sourceAfter?.byteLength ?? 0;
+      for (const patch of change.parts) total += patch.before.byteLength + patch.after.byteLength;
       continue;
     }
     if (change.type === 'sheet.add' || change.type === 'sheet.delete') {

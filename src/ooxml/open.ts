@@ -11,6 +11,10 @@ import { parseWorksheetXml } from './worksheet-xml';
 import { parseRelationships, findRelationship, findRelationshipById } from './relationships';
 import { readPackage } from './zip';
 
+/** §5 message, verbatim, for the unsupported-format row. */
+const UNSUPPORTED_FORMAT_MESSAGE =
+  'This file format is not supported. Open it in Excel and save as .xlsx.';
+
 export interface CompatibilityInfo {
   readonly opaquePartPaths: readonly string[];
   readonly externalLinkParts: readonly string[];
@@ -36,14 +40,21 @@ export function openWorkbook(bytes: Uint8Array, fileName?: string): OpenedWorkbo
   if (fileName !== undefined) {
     const extension = fileName.slice(fileName.lastIndexOf('.')).toLowerCase();
     if (extension === '.xls' || extension === '.xlsb' || extension === '.ods') {
-      throw new WorkbookOpenError(
-        'unsupported-format',
-        'This file format is not supported. Open it in Excel and save as .xlsx.',
-      );
+      throw new WorkbookOpenError('unsupported-format', UNSUPPORTED_FORMAT_MESSAGE);
     }
   }
   const read = readPackage(bytes);
   const entries = read.entries;
+
+  // §5 container checks: a BIFF12 (.xlsb) or ODF package renamed to .xlsx is
+  // an unsupported format, not a damaged workbook.
+  if (entries.has('xl/workbook.bin')) {
+    throw new WorkbookOpenError('unsupported-format', UNSUPPORTED_FORMAT_MESSAGE);
+  }
+  const odfMimetype = entries.get('mimetype');
+  if (odfMimetype !== undefined && new TextDecoder().decode(odfMimetype).includes('opendocument')) {
+    throw new WorkbookOpenError('unsupported-format', UNSUPPORTED_FORMAT_MESSAGE);
+  }
 
   const contentTypesPath = '[Content_Types].xml';
   if (!entries.has(contentTypesPath)) {

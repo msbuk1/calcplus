@@ -24,8 +24,6 @@ const MAX_COMPRESSION_RATIO = 200;
  */
 const ENCRYPTED_MESSAGE =
   'This workbook is encrypted or password-protected. calcplus cannot open it.';
-const UNSUPPORTED_CONTAINER_MESSAGE =
-  'This file format is not supported, or the file is damaged. Open it in Excel and save as .xlsx.';
 const CORRUPT_MESSAGE = 'This file is damaged or is not a valid workbook.';
 const TOO_LARGE_MESSAGE = 'This workbook is too large or unusually compressed to open safely.';
 
@@ -52,8 +50,10 @@ export function detectUnsupportedContainer(bytes: Uint8Array): void {
   if (isCompoundFile(bytes)) {
     throw new WorkbookOpenError('encrypted', ENCRYPTED_MESSAGE);
   }
+  // §5: a non-ZIP file is the corrupt row, not a format row — at this point
+  // nothing can say what format the bytes really are.
   if (!isZip(bytes)) {
-    throw new WorkbookOpenError('unsupported-format', UNSUPPORTED_CONTAINER_MESSAGE);
+    corrupt();
   }
 }
 

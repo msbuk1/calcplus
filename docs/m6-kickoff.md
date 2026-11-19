@@ -140,3 +140,10 @@ lane 1.
 
 - 2026-11-19: split recorded; fixture generator modularised (regeneration
   byte-identical); wave 1 (lanes 1, 2, 5) launched.
+- 2026-11-19: wave 1 landed (`ba29cab`, `d0b3ae8`, `59696ef`). Orchestrator
+  cleanup wired the opaque part transforms through the commands and the save
+  path (transform or block now reaches saved files, undo restores the exact
+  prior bytes), aligned the non-ZIP message with §5 and added the `.xlsb` and
+  ODF container checks. Pivot output `location ref` transforms are confirmed
+  against workbook-model §10 ("anchor indexes for opaque … pivots"). Wave 2
+  (lanes 3, 4, 6) not yet launched.

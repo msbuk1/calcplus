@@ -106,8 +106,20 @@ describe('Tier C rejection', () => {
 
   it('rejects non-ZIP and truncated input without partial import', () => {
     expect(() => openWorkbook(new TextEncoder().encode('not a workbook'))).toThrow(
-      /not supported, or the file is damaged/,
+      /damaged or is not a valid workbook/,
     );
+  });
+
+  it('rejects a renamed binary workbook or ODF package as an unsupported format', () => {
+    // §5 container check: the extension says .xlsx but the package is a
+    // BIFF12 (.xlsb) workbook or an ODF spreadsheet.
+    const xlsb = zipSync({ 'xl/workbook.bin': new Uint8Array([0x00]) });
+    expect(() => openWorkbook(xlsb)).toThrow(/file format is not supported/);
+    expect(() => openWorkbook(xlsb)).toThrow(WorkbookOpenError);
+    const ods = zipSync({
+      mimetype: new TextEncoder().encode('application/vnd.oasis.opendocument.spreadsheet'),
+    });
+    expect(() => openWorkbook(ods)).toThrow(/file format is not supported/);
   });
 
   it('rejects Strict OOXML with a clear message', () => {

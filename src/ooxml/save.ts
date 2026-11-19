@@ -81,6 +81,27 @@ export interface SaveWorkbookResult {
 
 export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   let entries = new Map(input.package.entries);
+  // Transform-or-block (file-compat §6): a structural edit rewrites the bytes
+  // of the opaque parts it anchors — chart series, drawing anchors, comment
+  // refs, pivot locations. The model holds the transformed bytes, so write
+  // them over the package's originals. An untouched part holds identical
+  // bytes and is never rewritten, which keeps identity saves byte-identical.
+  // The save-managed parts are excluded: this function rewrites content
+  // types, workbook relationships and calcChain itself, so their package
+  // bytes are fresher than any unadopted model mirror.
+  const saveManagedPaths = new Set<string>([
+    input.package.contentTypesPath,
+    input.package.workbookRelsPath,
+    'xl/calcChain.xml',
+  ]);
+  const transformedOpaqueParts: string[] = [];
+  for (const [path, part] of input.workbook.opaqueParts) {
+    if (saveManagedPaths.has(path)) continue;
+    const original = entries.get(path);
+    if (original !== undefined && bytesEqual(original, part.bytes)) continue;
+    transformedOpaqueParts.push(path);
+    entries.set(path, part.bytes);
+  }
   const workbookPath = input.package.workbookPartPath;
   const stylesPath = input.package.stylesPath;
   const sourceStylesBytes = stylesPath === null ? undefined : entries.get(stylesPath);
@@ -196,7 +217,8 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     !dateSystemChanged &&
     !stylesNeedAppend &&
     sheetPlan?.changed !== true &&
-    !definedNamesChanged
+    !definedNamesChanged &&
+    transformedOpaqueParts.length === 0
   ) {
     const bytes = input.package.originalBytes ?? writePackage(input.package.entries);
     return {
@@ -537,6 +559,13 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     if (relationshipId !== undefined) {
       sheetRelationshipIds.set(sheet.id, relationshipId);
     }
+  }
+
+  // A transformed opaque part is written as a whole document; the report
+  // lists it so the export report can account for it.
+  for (const path of transformedOpaqueParts) {
+    patchedParts.push(path);
+    modeByPart.set(path, 'tree');
   }
 
   const bytes = writePackage(entries);
