@@ -150,3 +150,19 @@ lane 1.
 - 2026-11-19: the M5 exit gate passed on the maintainer's Windows machine
   (clipboard interoperability spike and oracle goldens verified against
   Excel 365). The M6 exit gate is unblocked.
+- 2026-11-19: maintainer demo run passed. A workbook with a chart, macro,
+  hyperlinks and formulas opened in calcplus, the compatibility report
+  displayed, edits saved, and the result reopened in Excel 365 with everything
+  intact. Excel's macro prompt is its own security for downloaded files, not
+  damage. The calcplus-saved file also reopens cleanly in Google Sheets and
+  LibreOffice (exit criterion 3 evidence; the file is kept as
+  `fixtures/manual/sales-roundtrip-demo.xlsm`). Producer captures for F22:
+  google-sheets captured 2026-11-19 (a genuine Google-written export after
+  editing in Google Sheets, `fixtures/compat/producers/google-sheets.xlsm`);
+  a LibreOffice save of the demo workbook is kept as
+  `fixtures/manual/sales-roundtrip-libre.xlsx` (chart kept, macro stripped by
+  the `.xlsx` format). Excel 2019 is recorded as not available (maintainer
+  ruling 2026-11-19). The excel-365 capture remains.
+- 2026-11-19: the excel-365 capture landed (saved by Excel 365, never opened
+  in calcplus) and the M6 exit gate passed — see the exit note in the
+  milestone plan. Ticket 32 is next.
