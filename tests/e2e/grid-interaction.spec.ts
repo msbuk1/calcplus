@@ -55,9 +55,18 @@ test('selects the whole row from the row header', async ({ page }) => {
   // The row header strip sits to the left of the cells.
   await page.mouse.click(box!.x + 20, box!.y + target.y + target.height / 2);
 
-  const tinted = await pixelAt(page, target.x + 10, target.y + 5);
+  // The visible cells of the row carry the selection tint. B3 is the active
+  // cell of the row selection — it stays unfilled (ticket 31 A) — so the
+  // sample sits in C3 and the active cell is asserted on its own.
+  const tinted = await pixelAt(page, target.x + target.width + 10, target.y + 5);
   expect(tinted.r).toBeLessThan(255);
   expect(tinted.b).toBeGreaterThan(tinted.r);
+  const activeCellPixel = await pixelAt(page, target.x + 10, target.y + 5);
+  expect({ r: activeCellPixel.r, g: activeCellPixel.g, b: activeCellPixel.b }).toEqual({
+    r: 255,
+    g: 255,
+    b: 255,
+  });
 
   await expect(page.getByTestId('name-box')).toHaveValue('3:3');
   expect(await focusedTestId(page)).toBe('grid-shell');

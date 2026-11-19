@@ -22,7 +22,7 @@ import {
   type PaneLayout,
   type PaneRect,
 } from './panes';
-import { selectionRange } from './selection';
+import { activeCell, selectionRange } from './selection';
 import {
   DEFAULT_TEXT_COLOR,
   MIN_FONT_PIXELS,
@@ -1088,6 +1088,19 @@ export class CanvasRenderFrame implements RenderFrame {
   ): void {
     const { context } = this;
     const range = selectionRange(state.selection);
+    // A collapsed selection is one cell: the active-cell box is the selection,
+    // and it keeps the single-cell look. A range leaves the active cell
+    // unfilled — the grid background shows through it — with no outline of its
+    // own; the range keeps its border and its fill handle (ticket 31 A).
+    const collapsed = range.startRow === range.endRow && range.startCol === range.endCol;
+    const activeRect = this.activeCellRect(
+      state.projection,
+      layout,
+      scrollX,
+      scrollY,
+      activeCell(state.selection),
+    );
+    const hole = collapsed ? null : activeRect;
     context.fillStyle = COLORS.selectionFill;
     let handleCorner: { x: number; y: number } | null = null;
     for (const pane of panes) {
@@ -1102,7 +1115,7 @@ export class CanvasRenderFrame implements RenderFrame {
       const y = topLeft.y;
       const width = bottomRight.x + bottomRight.width - x;
       const height = bottomRight.y + bottomRight.height - y;
-      context.fillRect(x, y, width, height);
+      fillRectExcept(context, x, y, width, height, hole);
       if (
         handleCorner === null ||
         bottomRight.x + bottomRight.width >= handleCorner.x ||
@@ -1132,17 +1145,18 @@ export class CanvasRenderFrame implements RenderFrame {
       context.strokeRect(x + 1, y + 1, Math.max(0, width - 2), Math.max(0, height - 2));
     }
 
-    const active = state.selection.focus;
-    const activeRect = this.activeCellRect(state.projection, layout, scrollX, scrollY, active);
     if (activeRect !== null) {
-      context.strokeStyle = COLORS.activeBorder;
-      context.lineWidth = 2;
-      context.strokeRect(
-        activeRect.x + 1,
-        activeRect.y + 1,
-        Math.max(0, activeRect.width - 2),
-        Math.max(0, activeRect.height - 2),
-      );
+      // The active-cell box belongs to a collapsed selection only.
+      if (collapsed) {
+        context.strokeStyle = COLORS.activeBorder;
+        context.lineWidth = 2;
+        context.strokeRect(
+          activeRect.x + 1,
+          activeRect.y + 1,
+          Math.max(0, activeRect.width - 2),
+          Math.max(0, activeRect.height - 2),
+        );
+      }
       // The fill handle sits at the bottom-right corner of the selection.
       const handleX = activeRect.x + activeRect.width - 3;
       const handleY = activeRect.y + activeRect.height - 3;
@@ -1195,7 +1209,9 @@ export class CanvasRenderFrame implements RenderFrame {
   ): void {
     const { context, width, height } = this;
     const { projection, selection } = state;
-    const active = selection.focus;
+    // Every header of the selected extent shades, as Excel's do; the active
+    // cell is shown by the unfilled cell inside the range (ticket 31 A).
+    const range = selectionRange(selection);
     const headerRight = width - layout.scrollbarSize;
     const headerBottom = height - layout.scrollbarSize;
 
@@ -1227,7 +1243,7 @@ export class CanvasRenderFrame implements RenderFrame {
             projection.columnWidth(col),
             layout.headerHeight,
             col,
-            active,
+            col >= range.startCol && col <= range.endCol,
           );
         }
       }
@@ -1253,7 +1269,7 @@ export class CanvasRenderFrame implements RenderFrame {
             projection.columnWidth(col),
             layout.headerHeight,
             col,
-            active,
+            col >= range.startCol && col <= range.endCol,
           );
         }
         context.restore();
@@ -1271,7 +1287,7 @@ export class CanvasRenderFrame implements RenderFrame {
             projection.rowHeight(row),
             layout.headerWidth,
             row,
-            active,
+            row >= range.startRow && row <= range.endRow,
           );
         }
       }
@@ -1286,7 +1302,7 @@ export class CanvasRenderFrame implements RenderFrame {
             projection.rowHeight(row),
             layout.headerWidth,
             row,
-            active,
+            row >= range.startRow && row <= range.endRow,
           );
         }
       }
@@ -1324,10 +1340,10 @@ export class CanvasRenderFrame implements RenderFrame {
     width: number,
     headerHeight: number,
     col: number,
-    active: GridCellAddress,
+    selected: boolean,
   ): void {
     const { context } = this;
-    if (active.col === col) {
+    if (selected) {
       context.fillStyle = COLORS.headerActiveBackground;
       context.fillRect(x, 0, width, headerHeight);
       context.fillStyle = COLORS.headerActiveText;
@@ -1344,10 +1360,10 @@ export class CanvasRenderFrame implements RenderFrame {
     height: number,
     headerWidth: number,
     row: number,
-    active: GridCellAddress,
+    selected: boolean,
   ): void {
     const { context } = this;
-    if (active.row === row) {
+    if (selected) {
       context.fillStyle = COLORS.headerActiveBackground;
       context.fillRect(0, y, headerWidth, height);
       context.fillStyle = COLORS.headerActiveText;
@@ -1365,6 +1381,38 @@ export class CanvasRenderFrame implements RenderFrame {
     this.measureCache.clear();
     this.patternCache.clear();
   }
+}
+
+/**
+ * Fill a rectangle except for an optional hole inside it. The selection tint
+ * covers the whole selected range apart from the active cell, which keeps the
+ * grid background (ticket 31 A).
+ */
+function fillRectExcept(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  hole: CellRect | null,
+): void {
+  if (hole === null) {
+    context.fillRect(x, y, width, height);
+    return;
+  }
+  const left = Math.max(x, hole.x);
+  const top = Math.max(y, hole.y);
+  const right = Math.min(x + width, hole.x + hole.width);
+  const bottom = Math.min(y + height, hole.y + hole.height);
+  if (right <= left || bottom <= top) {
+    context.fillRect(x, y, width, height);
+    return;
+  }
+  // Four strips around the hole; a zero-width strip paints nothing.
+  context.fillRect(x, y, width, top - y);
+  context.fillRect(x, bottom, width, y + height - bottom);
+  context.fillRect(x, top, left - x, bottom - top);
+  context.fillRect(right, top, x + width - right, bottom - top);
 }
 
 /**

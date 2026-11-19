@@ -46,6 +46,7 @@ import {
 } from './panes';
 import { resizeDimension, type DimensionAxis, type DimensionResize } from './resize';
 import {
+  activeCell,
   collapseSelection,
   extendSelection,
   selectionContains,
@@ -119,6 +120,22 @@ export interface CanvasGridProps {
    */
   readonly onFill?: (source: GridRange, destination: GridRange) => void;
   /**
+   * Copy mode (ticket 31 B). The dashed marquee marks the copy's destination:
+   * the arrow keys move it without moving the selection, Enter pastes there and
+   * Esc — or any other key or pointer action that moves the selection — ends
+   * the mode. All state is the application's; it is view state, never document
+   * state, exactly like the Format Painter's.
+   */
+  readonly marquee?: {
+    readonly range: GridRange;
+    /** One row or one column per press, clamped to the sheet. */
+    readonly onMove: (rowDelta: number, colDelta: number) => void;
+    /** Enter: paste the snapshot at the marquee and end copy mode. */
+    readonly onPaste: () => void;
+    /** Esc, another key, or a pointer that moves the selection. */
+    readonly onEnd: () => void;
+  };
+  /**
    * The focus owner hands the grid shell to the focus manager.
    */
   readonly shellRef?: RefObject<HTMLDivElement | null>;
@@ -153,6 +170,7 @@ export function CanvasGrid({
   painterActive,
   onPainterApply,
   onFill,
+  marquee,
   shellRef,
   onFocusZone,
 }: CanvasGridProps): JSX.Element {
@@ -204,6 +222,9 @@ export function CanvasGrid({
   const [editor, setEditor] = useState<EditorSession | null>(null);
   /** The live destination outline while the fill handle is dragged. */
   const [fillPreview, setFillPreview] = useState<GridRange | null>(null);
+  /** The copy marquee's overlay, kept over its range while the sheet scrolls. */
+  const marqueeRef = useRef<HTMLDivElement | null>(null);
+  const marqueeRangeRef = useRef<GridRange | null>(null);
 
   const paint = useCallback((): void => {
     const frame = frameRef.current;
@@ -234,6 +255,13 @@ export function CanvasGrid({
     if (session !== null) {
       positionEditor(editorRef.current, current.projection, layout, scroll, session);
     }
+    positionMarquee(
+      marqueeRef.current,
+      current.projection,
+      layout,
+      scroll,
+      marqueeRangeRef.current,
+    );
     updateScrollbarThumbs(
       verticalThumbRef.current,
       horizontalThumbRef.current,
@@ -316,9 +344,11 @@ export function CanvasGrid({
     schedulePaint();
   }, [viewport, schedulePaint]);
 
-  // Keep the active cell visible when the selection moves or the zoom changes.
-  // The layout is recomputed here because the paint may not have run with the
-  // new projection yet.
+  // Keep the selection's extension end visible when it moves or the zoom
+  // changes: during a drag or a Shift extension that is the cell under the
+  // pointer, and for a collapsed selection it is the active cell. The layout is
+  // recomputed here because the paint may not have run with the new projection
+  // yet.
   useEffect(() => {
     const layout = computePaneLayout(projection, viewport.width, viewport.height);
     const clamped = clampScroll(layout, scrollRef.current.x, scrollRef.current.y);
@@ -328,6 +358,26 @@ export function CanvasGrid({
       schedulePaint();
     }
   }, [projection, selection, viewport, schedulePaint]);
+
+  // The copy marquee follows the arrow keys; keep its far corner on screen so
+  // the paste destination stays visible while it moves (ticket 31 B).
+  const marqueeRange = marquee?.range ?? null;
+  const marqueeEndRow = marqueeRange?.endRow ?? null;
+  const marqueeEndCol = marqueeRange?.endCol ?? null;
+  marqueeRangeRef.current = marqueeRange;
+  useEffect(() => {
+    if (marqueeEndRow === null || marqueeEndCol === null) return;
+    const layout = computePaneLayout(projection, viewport.width, viewport.height);
+    const clamped = clampScroll(layout, scrollRef.current.x, scrollRef.current.y);
+    const next = scrollToReveal(projection, layout, clamped.x, clamped.y, {
+      row: marqueeEndRow,
+      col: marqueeEndCol,
+    });
+    if (next.x !== scrollRef.current.x || next.y !== scrollRef.current.y) {
+      scrollRef.current = next;
+      schedulePaint();
+    }
+  }, [projection, viewport, marqueeEndRow, marqueeEndCol, schedulePaint]);
 
   const editorId = editor?.id ?? null;
 
@@ -548,6 +598,14 @@ export function CanvasGrid({
       left.startCol === right.startCol &&
       left.endRow === right.endRow &&
       left.endCol === right.endCol);
+
+  /**
+   * Copy mode ends as soon as a pointer moves the selection: the ruling ends
+   * the mode first and then performs the action (ticket 31 B).
+   */
+  const endCopyMode = (): void => {
+    marquee?.onEnd();
+  };
 
   /** `true` when the press landed on the painted fill handle. */
   const fillHandleAt = (pointX: number, pointY: number): boolean => {
@@ -1072,6 +1130,7 @@ export function CanvasGrid({
       event.preventDefault();
       const target = mergeAnchor(current, address);
       const anchor = event.shiftKey ? stateRef.current.selection.anchor : target;
+      endCopyMode();
       onSelectionChange(extendSelection(collapseSelection(anchor), target));
       formulaBarPointing.onPoint(anchor, target);
       beginFormulaBarDrag(event, anchor, target);
@@ -1088,6 +1147,8 @@ export function CanvasGrid({
     // handler while the pointer is on the handle.
     if (event.button === 0 && fillHandleAt(pointX, pointY) && onFill !== undefined) {
       event.preventDefault();
+      // A fill re-draws the selection, so copy mode ends before it (ticket 31 B).
+      endCopyMode();
       const now = Date.now();
       const doubleClick = now - fillPressRef.current <= FILL_HANDLE_DOUBLE_CLICK_MS;
       fillPressRef.current = doubleClick ? 0 : now;
@@ -1116,6 +1177,7 @@ export function CanvasGrid({
       if (col === null) return;
       if (event.button === 2) {
         if (!rightClickKeepsHeaderSelection(current, stateRef.current.selection, 'column', col)) {
+          endCopyMode();
           onSelectionChange(
             columnHeaderSelection(current, col, stateRef.current.selection, scroll, false),
           );
@@ -1130,6 +1192,7 @@ export function CanvasGrid({
         scroll,
         event.shiftKey,
       );
+      endCopyMode();
       onSelectionChange(next);
       if (!event.shiftKey) {
         beginHeaderSelectionDrag(event, 'column', col, { row: next.focus.row, col });
@@ -1141,6 +1204,7 @@ export function CanvasGrid({
       if (row === null) return;
       if (event.button === 2) {
         if (!rightClickKeepsHeaderSelection(current, stateRef.current.selection, 'row', row)) {
+          endCopyMode();
           onSelectionChange(
             rowHeaderSelection(current, row, stateRef.current.selection, scroll, false),
           );
@@ -1155,6 +1219,7 @@ export function CanvasGrid({
         scroll,
         event.shiftKey,
       );
+      endCopyMode();
       onSelectionChange(next);
       if (!event.shiftKey) {
         beginHeaderSelectionDrag(event, 'row', row, { row, col: next.focus.col });
@@ -1171,11 +1236,13 @@ export function CanvasGrid({
     // Only a left press starts or extends a selection drag.
     if (event.button === 2) {
       if (!selectionContains(stateRef.current.selection, target.row, target.col)) {
+        endCopyMode();
         onSelectionChange(collapseSelection(target));
       }
       return;
     }
     if (event.button !== 0) return;
+    endCopyMode();
     if (event.shiftKey) {
       const base = stateRef.current.selection;
       onSelectionChange(extendSelection(base, target));
@@ -1272,6 +1339,35 @@ export function CanvasGrid({
         return;
       }
     }
+    // Copy mode owns the arrow keys, Enter and Escape (ticket 31 B): the
+    // marquee moves without the selection, Enter pastes at it and Escape ends
+    // the mode. Any other key ends the mode first and then performs its own
+    // action below.
+    if (marquee !== undefined) {
+      if (
+        !altKey &&
+        (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight')
+      ) {
+        event.preventDefault();
+        const rowDelta = key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : 0;
+        const colDelta = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1 : 0;
+        marquee.onMove(rowDelta, colDelta);
+        return;
+      }
+      if (key === 'Enter') {
+        event.preventDefault();
+        marquee.onPaste();
+        return;
+      }
+      if (key === 'Escape') {
+        event.preventDefault();
+        marquee.onEnd();
+        return;
+      }
+      // A key that only modifies another key does not end copy mode: its
+      // companion decides, so Ctrl+V still pastes at the marquee.
+      if (!MARQUEE_MODIFIER_KEYS.has(key)) marquee.onEnd();
+    }
     const layout = layoutRef.current;
     const rowHeight =
       current.projection.rowHeight(0) || GRID_METRICS.rowHeight * current.projection.zoom;
@@ -1291,7 +1387,11 @@ export function CanvasGrid({
       ctrlKey,
       shiftKey,
       altKey,
-      selection: current.selection,
+      // A plain key starts from the active cell (the anchor), so a selection
+      // built by a Shift extension or a drag collapses and then moves from
+      // where the gesture began. A Shift extension keeps extending from the
+      // focus end (ticket 31 A).
+      selection: shiftKey ? current.selection : collapseSelection(activeCell(current.selection)),
       projection: current.projection,
       pageRows,
       pageCols,
@@ -1306,12 +1406,12 @@ export function CanvasGrid({
       // composition begins. Mount and focus the editor in this event so the
       // composed text lands in the textarea instead of on the grid shell. The
       // default action is not prevented: it is what starts the composition.
-      flushSync(() => beginEditing(current.selection.focus, '', false));
+      flushSync(() => beginEditing(activeCell(current.selection), '', false));
       return;
     }
     if (key === 'F2') {
       event.preventDefault();
-      const active = current.selection.focus;
+      const active = activeCell(current.selection);
       beginEditing(active, current.projection.rawTextAt(active.row, active.col), true);
       return;
     }
@@ -1322,7 +1422,7 @@ export function CanvasGrid({
     }
     if (key.length === 1 && !ctrlKey && !altKey && !metaKey && /\S/.test(key)) {
       event.preventDefault();
-      beginEditing(current.selection.focus, key, false);
+      beginEditing(activeCell(current.selection), key, false);
     }
   };
 
@@ -1516,6 +1616,19 @@ export function CanvasGrid({
       ? null
       : rangeOverlayRect(projection, layout, scrollRef.current.x, scrollRef.current.y, fillPreview);
 
+  // The copy marquee is the paste destination; like the fill preview it is
+  // view state and never enters the model or the undo log (ticket 31 B).
+  const marqueeRect =
+    marqueeRange === null
+      ? null
+      : rangeOverlayRect(
+          projection,
+          layout,
+          scrollRef.current.x,
+          scrollRef.current.y,
+          marqueeRange,
+        );
+
   return (
     <div
       ref={setShellRef}
@@ -1538,7 +1651,7 @@ export function CanvasGrid({
         // inserted into the textarea rather than the shell. The keydown path
         // handles the usual case and opens it before composing.
         if (editorSessionRef.current !== null) return;
-        const active = stateRef.current.selection.focus;
+        const active = activeCell(stateRef.current.selection);
         flushSync(() => beginEditing(active, '', false));
       }}
       data-testid="grid-shell"
@@ -1599,6 +1712,23 @@ export function CanvasGrid({
             top: `${fillPreviewRect.y}px`,
             width: `${fillPreviewRect.width}px`,
             height: `${fillPreviewRect.height}px`,
+          }}
+        />
+      ) : null}
+      {marqueeRect !== null ? (
+        <div
+          ref={marqueeRef}
+          className="copy-marquee"
+          data-testid="copy-marquee"
+          style={{
+            position: 'absolute',
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+            border: '2px dashed var(--accent)',
+            left: `${marqueeRect.x}px`,
+            top: `${marqueeRect.y}px`,
+            width: `${marqueeRect.width}px`,
+            height: `${marqueeRect.height}px`,
           }}
         />
       ) : null}
@@ -1704,6 +1834,23 @@ const POINTING_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Keys that only modify or lock another key. Pressing one on its own must not
+ * end copy mode: the key they modify (Ctrl+V, for example) still belongs to the
+ * marquee.
+ */
+const MARQUEE_MODIFIER_KEYS: ReadonlySet<string> = new Set([
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
+  'CapsLock',
+  'NumLock',
+  'ScrollLock',
+  'OS',
+  'AltGraph',
+]);
+
+/**
  * Windows and Linux input methods report the keys they process with keyCode
  * 229; the first such key starts a composition. The key is usually "Process"
  * and can be the composed character itself when the input method commits
@@ -1768,6 +1915,26 @@ function positionEditor(
 }
 
 /**
+ * Keep the copy marquee over its range while the sheet scrolls. The overlay is
+ * a DOM element, so the paint has to place it exactly as it places the editor
+ * and the scrollbar thumbs.
+ */
+function positionMarquee(
+  element: HTMLDivElement | null,
+  projection: SheetProjection,
+  layout: PaneLayout,
+  scroll: ScrollOffset,
+  range: GridRange | null,
+): void {
+  if (element === null || range === null) return;
+  const rect = rangeOverlayRect(projection, layout, scroll.x, scroll.y, range);
+  element.style.left = `${rect.x}px`;
+  element.style.top = `${rect.y}px`;
+  element.style.width = `${rect.width}px`;
+  element.style.height = `${rect.height}px`;
+}
+
+/**
  * A right click on a header keeps a header selection that already covers the
  * clicked axis, so the context menu acts on the whole selection (Excel's
  * context-menu behaviour; ticket 29).
@@ -1799,10 +1966,11 @@ function columnHeaderSelection(
   scroll: ScrollOffset,
   extend: boolean,
 ): GridSelection {
+  const active = activeCell(selection);
   const current = headerSelectionRange(projection, selection, 'column');
   if (extend && current !== null) {
     if (col >= current.startCol && col <= current.endCol) {
-      return selectionForRange(current, selection.focus);
+      return selectionForRange(current, active);
     }
     return selectionForRange(
       {
@@ -1811,7 +1979,7 @@ function columnHeaderSelection(
         endRow: projection.rowCount - 1,
         endCol: Math.max(current.endCol, col),
       },
-      selection.focus,
+      active,
     );
   }
   if (current !== null) {
@@ -1819,7 +1987,7 @@ function columnHeaderSelection(
     if (visible !== null && visible.length > 1 && visible.includes(col)) return selection;
   }
   const firstVisibleRow = Math.max(projection.freezeRows, projection.rowAt(scroll.y));
-  const focus = selection.focus.col === col ? selection.focus : { row: firstVisibleRow, col };
+  const focus = active.col === col ? active : { row: firstVisibleRow, col };
   return selectionForRange(
     {
       startRow: 0,
@@ -1844,10 +2012,11 @@ function rowHeaderSelection(
   scroll: ScrollOffset,
   extend: boolean,
 ): GridSelection {
+  const active = activeCell(selection);
   const current = headerSelectionRange(projection, selection, 'row');
   if (extend && current !== null) {
     if (row >= current.startRow && row <= current.endRow) {
-      return selectionForRange(current, selection.focus);
+      return selectionForRange(current, active);
     }
     return selectionForRange(
       {
@@ -1856,7 +2025,7 @@ function rowHeaderSelection(
         endRow: Math.max(current.endRow, row),
         endCol: projection.columnCount - 1,
       },
-      selection.focus,
+      active,
     );
   }
   if (current !== null) {
@@ -1864,7 +2033,7 @@ function rowHeaderSelection(
     if (visible !== null && visible.length > 1 && visible.includes(row)) return selection;
   }
   const firstVisibleCol = Math.max(projection.freezeCols, projection.columnAt(scroll.x));
-  const focus = selection.focus.row === row ? selection.focus : { row, col: firstVisibleCol };
+  const focus = active.row === row ? active : { row, col: firstVisibleCol };
   return selectionForRange(
     {
       startRow: row,

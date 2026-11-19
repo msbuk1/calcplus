@@ -58,7 +58,13 @@ import type { GridCellAddress, GridSelection } from '@grid/frame';
 import type { DimensionAxis, DimensionResize } from '@grid/resize';
 import { gridDebugState } from '@grid/debug';
 import { cellRect } from '@grid/panes';
-import { collapseSelection, selectionForRange, selectionRange } from '@grid/selection';
+import {
+  activeCell,
+  collapseSelection,
+  moveRange,
+  selectionForRange,
+  selectionRange,
+} from '@grid/selection';
 import { isPointingBoundary, pointingReference } from '@grid/editor';
 import { resolveNavigation } from '@grid/navigation';
 import { AboutDialog } from '@chrome/AboutDialog';
@@ -165,6 +171,9 @@ export function App(): JSX.Element {
   // feeds the dialog's "Recently used" category and never enters the workbook.
   const [recentFunctions, setRecentFunctions] = useState<readonly PublishedFunction[]>([]);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
+  // Copy mode's marquee, the paste destination while a Ctrl+C or Ctrl+X
+  // snapshot is live. View state only, like the painter's target (ticket 31 B).
+  const [copyMarquee, setCopyMarquee] = useState<GridRange | null>(null);
   const narrow = useMediaQuery('(max-width: 899px)');
   const ribbonRef = useRef<HTMLElement | null>(null);
   const compactRef = useRef<HTMLElement | null>(null);
@@ -184,7 +193,7 @@ export function App(): JSX.Element {
   const clipboardRef = useRef<ClipboardSnapshot | null>(null);
   const focusGridAfterDialogRef = useRef(false);
 
-  const active = selection.focus;
+  const active = activeCell(selection);
   const activeView =
     document === null ? DEFAULT_SHEET_VIEW : (sheetViews[document.sheetId] ?? DEFAULT_SHEET_VIEW);
 
@@ -265,6 +274,7 @@ export function App(): JSX.Element {
     setContextMenu(null);
     setDialog(null);
     setPainter(null);
+    setCopyMarquee(null);
     setRibbonTab('Home');
     barEditAddressRef.current = null;
     barPointingRef.current = null;
@@ -428,6 +438,9 @@ export function App(): JSX.Element {
   const startPainter = (): void => {
     if (document === null) return;
     setPainter(null);
+    // Starting another gesture mode ends copy mode; the marquee would otherwise
+    // mark a destination the painter is about to overwrite (ticket 31 B).
+    setCopyMarquee(null);
     // The command reads the style at the source range's anchor, so the whole
     // selection is the pickup source; a collapsed selection is the common case.
     const source = selectionRange(selection);
@@ -438,7 +451,7 @@ export function App(): JSX.Element {
         {
           activeSheetId: document.sheetId,
           selection: source,
-          activeCell: selection.focus,
+          activeCell: active,
         },
       );
       if (result.ui?.message !== undefined) {
@@ -559,6 +572,7 @@ export function App(): JSX.Element {
     if (targetId === null || targetId === document.sheetId) return;
     setDocument({ ...document, sheetId: targetId });
     setPainter(null);
+    setCopyMarquee(null);
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setLiveEditText(null);
     setBarDraft(null);
@@ -596,24 +610,35 @@ export function App(): JSX.Element {
       focusGrid();
       return;
     }
-    if (result.clipboard !== undefined) clipboardRef.current = result.clipboard;
+    if (result.clipboard !== undefined) {
+      clipboardRef.current = result.clipboard;
+      // Copy mode: the dashed marquee marks the copied range and becomes the
+      // paste destination the arrow keys move (ticket 31 B).
+      setCopyMarquee(range);
+    }
     const label =
       projection === null ? 'the selection' : formatSelectionAddress(selection, projection);
     setStatus(`${mode === 'copy' ? 'Copied' : 'Cut'} ${label}.`);
     focusGrid();
   };
 
-  const pasteClipboard = (): void => {
+  /**
+   * Paste the in-app snapshot at a destination in one `edit.paste`
+   * transaction. Copy mode ends only when the paste is applied, so a rejected
+   * paste leaves the marquee in place to try again.
+   */
+  const pasteAt = (target: GridRange): void => {
     if (document === null) return;
     const snapshot = clipboardRef.current;
     if (snapshot === null) {
       setStatus('The clipboard is empty.');
+      setCopyMarquee(null);
       focusGrid();
       return;
     }
     const result = document.session.dispatch('edit.paste', {
       sheetId: document.sheetId,
-      target: selectionRange(selection),
+      target,
       snapshot,
     });
     setVersion((current) => current + 1);
@@ -622,6 +647,7 @@ export function App(): JSX.Element {
       focusGrid();
       return;
     }
+    setCopyMarquee(null);
     if (result.selectionAfter !== undefined) {
       setSelection(
         selectionForRange(result.selectionAfter, {
@@ -643,10 +669,33 @@ export function App(): JSX.Element {
     focusGrid();
   };
 
+  /** Ctrl+V pastes at the marquee while copy mode is on, otherwise at the selection. */
+  const pasteClipboard = (): void => {
+    pasteAt(copyMarquee ?? selectionRange(selection));
+  };
+
+  /** An arrow key moves the marquee one row or column, clamped to the sheet. */
+  const moveCopyMarquee = (rowDelta: number, colDelta: number): void => {
+    if (copyMarquee === null || projection === null) return;
+    setCopyMarquee(
+      moveRange(copyMarquee, rowDelta, colDelta, projection.rowCount, projection.columnCount),
+    );
+  };
+
+  /** Enter pastes at the marquee; Esc and any other action end copy mode. */
+  const pasteCopyMarquee = (): void => {
+    if (copyMarquee === null) return;
+    pasteAt(copyMarquee);
+  };
+
+  const endCopyMarquee = (): void => {
+    setCopyMarquee(null);
+  };
+
   const dirty = document?.session.hasUnsavedChanges ?? false;
   const calculation = document?.calculation.state() ?? null;
   const staleCount = calculation?.staleCount ?? 0;
-  const activeCell = projection?.cellAt(active.row, active.col) ?? null;
+  const activeProjected = projection?.cellAt(active.row, active.col) ?? null;
   // The bar's draft owns the text while it is editing; otherwise it mirrors an
   // in-cell edit or the active cell.
   const barText = barDraft ?? liveEditText ?? projection?.rawTextAt(active.row, active.col) ?? '';
@@ -657,7 +706,7 @@ export function App(): JSX.Element {
       workbook: document?.session.workbook ?? null,
       activeSheetId: document?.sheetId ?? null,
       selection: selectionRange(selection),
-      activeCell: selection.focus,
+      activeCell: active,
       view: {
         showGridLines: activeView.showGridLines,
         showHeadings: activeView.showHeadings,
@@ -702,11 +751,11 @@ export function App(): JSX.Element {
 
   const controlValues = useMemo(
     () => ({
-      'font-family': activeCell?.style.font.name ?? 'Calibri',
-      'font-size': activeCell === null ? '11' : String(activeCell.style.font.size),
-      'number-format': activeCell?.style.numberFormat ?? 'General',
+      'font-family': activeProjected?.style.font.name ?? 'Calibri',
+      'font-size': activeProjected === null ? '11' : String(activeProjected.style.font.size),
+      'number-format': activeProjected?.style.numberFormat ?? 'General',
     }),
-    [activeCell],
+    [activeProjected],
   );
 
   useEffect(() => {
@@ -784,6 +833,13 @@ export function App(): JSX.Element {
         setFocusZone('grid');
         return;
       }
+      // Esc ends copy mode from any zone. The grid owns the key when it has
+      // the focus, so this is the fallback (ticket 31 B).
+      if (event.key === 'Escape' && copyMarquee !== null) {
+        event.preventDefault();
+        setCopyMarquee(null);
+        return;
+      }
       if (event.altKey && event.key === '=') {
         event.preventDefault();
         setFocusZone('grid');
@@ -796,7 +852,7 @@ export function App(): JSX.Element {
       // focuses its own first item, so the focus zone is left untouched here.
       if (event.altKey && event.key === 'ArrowDown') {
         event.preventDefault();
-        openFilterDropdown(selection.focus.col);
+        openFilterDropdown(active.col);
         return;
       }
       if (event.shiftKey && event.key === 'F11') {
@@ -952,7 +1008,10 @@ export function App(): JSX.Element {
       if (document !== null && target.sheetId !== document.sheetId) {
         setDocument({ ...document, sheetId: target.sheetId });
         setPainter(null);
+        setCopyMarquee(null);
       }
+      // A jump changes the selection, so copy mode ends first (ticket 31 B).
+      setCopyMarquee(null);
       const single =
         target.range.startRow === target.range.endRow &&
         target.range.startCol === target.range.endCol;
@@ -992,7 +1051,7 @@ export function App(): JSX.Element {
       const result = document.session.dispatch(commandId, args, {
         activeSheetId: document.sheetId,
         selection: selectionRange(selection),
-        activeCell: selection.focus,
+        activeCell: active,
       });
       applyActiveSheetHint(result);
       setVersion((value) => value + 1);
@@ -1047,7 +1106,7 @@ export function App(): JSX.Element {
       const result = document.session.dispatch(commandId, query, {
         activeSheetId: document.sheetId,
         selection: selectionRange(selection),
-        activeCell: selection.focus,
+        activeCell: active,
       });
       applyActiveSheetHint(result, { focus: false });
       if (result.changes.length > 0) setVersion((value) => value + 1);
@@ -1067,7 +1126,7 @@ export function App(): JSX.Element {
           const next = nextFindMatch(
             outcome.matches,
             document.sheetId,
-            selection.focus,
+            active,
             document.session.workbook,
             query.direction,
           );
@@ -1109,6 +1168,8 @@ export function App(): JSX.Element {
       barEditAddressRef.current = null;
       barPointingRef.current = null;
     }
+    // A match changes the selection, so copy mode ends first (ticket 31 B).
+    setCopyMarquee(null);
     setSelection(collapseSelection({ row: match.row, col: match.col }));
     setStatus(`Selected ${sheet.name}!${match.address}.`);
   };
@@ -1137,7 +1198,7 @@ export function App(): JSX.Element {
         {
           activeSheetId: document.sheetId,
           selection: selectionRange(selection),
-          activeCell: selection.focus,
+          activeCell: active,
         },
       );
       // A toast with no selection is a rejected target, not a completed jump.
@@ -1192,6 +1253,7 @@ export function App(): JSX.Element {
     }
     setDocument({ ...document, sheetId: sheet.id });
     setPainter(null);
+    setCopyMarquee(null);
     setSelection(collapseSelection({ row: 0, col: 0 }));
     setLiveEditText(null);
     setBarDraft(null);
@@ -1429,7 +1491,7 @@ export function App(): JSX.Element {
       const result = document.session.dispatch(commandId, args, {
         activeSheetId: document.sheetId,
         selection: selectionRange(selection),
-        activeCell: selection.focus,
+        activeCell: active,
         ...options,
       });
       applyActiveSheetHint(result);
@@ -1679,6 +1741,8 @@ export function App(): JSX.Element {
     setBarDraft(null);
     setBarCaretRequest(null);
     runCellSet(address, text);
+    // The bar's commit moves the selection, so copy mode ends first (ticket 31 B).
+    setCopyMarquee(null);
     if (projection !== null) {
       const target = options.moveDown
         ? { row: Math.min(projection.rowCount - 1, address.row + 1), col: address.col }
@@ -1838,7 +1902,7 @@ export function App(): JSX.Element {
         {
           activeSheetId: document.sheetId,
           selection: range,
-          activeCell: selection.focus,
+          activeCell: active,
         },
         // A single-tab Apply keeps its own command id in the transaction log;
         // a multi-tab Apply is one `format.cellsDialog` transaction.
@@ -1908,7 +1972,7 @@ export function App(): JSX.Element {
         {
           activeSheetId: document.sheetId,
           selection: selectionRange(selection),
-          activeCell: selection.focus,
+          activeCell: active,
         },
       );
       if (result.changes.length > 0) setVersion((value) => value + 1);
@@ -1972,7 +2036,7 @@ export function App(): JSX.Element {
         {
           activeSheetId: document.sheetId,
           selection: selectionRange(selection),
-          activeCell: selection.focus,
+          activeCell: active,
         },
       );
       setVersion((value) => value + 1);
@@ -2372,6 +2436,16 @@ export function App(): JSX.Element {
             painterActive={painter !== null}
             onPainterApply={applyPainter}
             onFill={handleFill}
+            marquee={
+              copyMarquee === null
+                ? undefined
+                : {
+                    range: copyMarquee,
+                    onMove: moveCopyMarquee,
+                    onPaste: pasteCopyMarquee,
+                    onEnd: endCopyMarquee,
+                  }
+            }
             shellRef={shellRef}
             onFocusZone={() => setFocusZone('grid')}
           />
@@ -2409,7 +2483,7 @@ export function App(): JSX.Element {
         status={status}
         activeCell={document === null ? '' : formatCellRef(active.row, active.col)}
         activeValue={projection?.cellAt(active.row, active.col)?.displayText ?? ''}
-        stale={activeCell?.stale === true}
+        stale={activeProjected?.stale === true}
         staleCount={staleCount}
         statistics={selectionStatistics}
         records={filterRecords}
@@ -2457,7 +2531,7 @@ export function App(): JSX.Element {
 
       {dialog === 'format' ? (
         <FormatCellsDialog
-          initial={activeCell?.style}
+          initial={activeProjected?.style}
           targetLabel={formatRangeAddress(selectionRange(selection), false, false)}
           initialTab={formatCellsTab ?? undefined}
           onClose={closeDialog}
