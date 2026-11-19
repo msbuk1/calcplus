@@ -7,4 +7,4 @@
 - Handle small, self-contained changes directly. Use the orchestrator for milestone work. Bring in research or documentation help only when the task needs it. Spawn subagents as needed.
 - Commit or push only when the user asks. Follow `CONTRIBUTING.md` for signed commits.
 - Each milestone uses a light sense check only. Deeper hardening runs only when the user explicitly kicks it off, and nothing automatic starts it.
-- Write plainly and avoid abbreviations in replies. Preserve exact code, commands, and file paths.
+- Write in plain English. Use common words and short sentences; simple English is always better. Break long explanations into lists. Avoid rare words and abbreviations. This applies to replies, reports and documentation. Preserve exact code, commands, and file paths.
