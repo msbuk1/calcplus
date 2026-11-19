@@ -1446,13 +1446,6 @@
           { "label": "Insert Sheet", "commandId": "sheet.insert" }
         ]
       }
-    ],
-    "contextMenu": [
-      {
-        "order": 5,
-        "group": { "id": "insert", "label": "Insert", "order": 36 },
-        "label": "Insert Sheet"
-      }
     ]
   },
   {
@@ -1464,14 +1457,7 @@
     "enablement": "A visible sheet is active and more than one visible sheet exists",
     "implemented": true,
     "shortcut": [],
-    "menu": [{ "menu": "Sheet tab context menu", "order": 20 }],
-    "contextMenu": [
-      {
-        "order": 5,
-        "group": { "id": "delete", "label": "Delete", "order": 37 },
-        "label": "Delete Sheet"
-      }
-    ]
+    "menu": [{ "menu": "Sheet tab context menu", "order": 20 }]
   },
   {
     "id": "sheet.rename",

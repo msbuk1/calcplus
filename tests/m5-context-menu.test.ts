@@ -38,7 +38,7 @@ describe('the grid context menu', () => {
     expect(labels[6]).toBe('Clear contents');
   });
 
-  it('renders Insert as a five-item flyout in capture order', () => {
+  it('renders Insert as a four-item flyout in capture order', () => {
     const menu = contextMenuItems(resolver());
     const insert = item(menu, 'Insert');
     expect(insert.commandId).toBeUndefined();
@@ -47,28 +47,25 @@ describe('the grid context menu', () => {
       'Insert Columns to the Left',
       'Insert Cells & Shift Right',
       'Insert Cells & Shift Down',
-      'Insert Sheet',
     ]);
     expect(insert.items?.map((child) => child.shortcut ?? null)).toEqual([
       'Ctrl+Shift+=',
       'Ctrl+Shift+=',
       'Ctrl+Shift+=',
       'Ctrl+Shift+=',
-      null,
     ]);
     expect(insert.items?.map((child) => child.commandId)).toEqual([
       'structure.insertRows',
       'structure.insertColumns',
       'structure.insertCells',
       'structure.insertCells',
-      'sheet.insert',
     ]);
     // The two Insert Cells directions are one command with different arguments.
     expect(insert.items?.[2]?.args).toEqual({ shift: 'right' });
     expect(insert.items?.[3]?.args).toEqual({ shift: 'down' });
   });
 
-  it('renders Delete as a five-item flyout in capture order', () => {
+  it('renders Delete as a four-item flyout in capture order', () => {
     const menu = contextMenuItems(resolver());
     const remove = item(menu, 'Delete');
     expect(remove.commandId).toBeUndefined();
@@ -77,23 +74,19 @@ describe('the grid context menu', () => {
       'Delete Columns',
       'Delete Cells & Shift Up',
       'Delete Cells & Shift Left',
-      'Delete Sheet',
     ]);
-    // The structure deletes carry the map's Ctrl+- shortcut; Delete Sheet has
-    // no shortcut of its own, so none is invented for it.
+    // The structure deletes carry the map's Ctrl+- shortcut.
     expect(remove.items?.map((child) => child.shortcut ?? null)).toEqual([
       'Ctrl+-',
       'Ctrl+-',
       'Ctrl+-',
       'Ctrl+-',
-      null,
     ]);
     expect(remove.items?.map((child) => child.commandId)).toEqual([
       'structure.deleteRows',
       'structure.deleteColumns',
       'structure.deleteCells',
       'structure.deleteCells',
-      'sheet.delete',
     ]);
     expect(remove.items?.[2]?.args).toEqual({ shift: 'up' });
     expect(remove.items?.[3]?.args).toEqual({ shift: 'left' });
@@ -108,14 +101,11 @@ describe('the grid context menu', () => {
   });
 
   it('follows the registry for each child', () => {
-    const menu = contextMenuItems(
-      resolver({ 'structure.deleteRows': false, 'sheet.insert': false }),
-    );
+    const menu = contextMenuItems(resolver({ 'structure.deleteRows': false }));
     const insert = item(menu, 'Insert');
     const remove = item(menu, 'Delete');
     expect(insert.disabled).toBe(false);
     expect(remove.disabled).toBe(false);
-    expect(item(insert.items ?? [], 'Insert Sheet').disabled).toBe(true);
     expect(item(insert.items ?? [], 'Insert Rows Above').disabled).toBe(false);
     expect(item(remove.items ?? [], 'Delete Rows').disabled).toBe(true);
     expect(item(remove.items ?? [], 'Delete Columns').disabled).toBe(false);
@@ -127,7 +117,6 @@ describe('the grid context menu', () => {
         'structure.insertRows': false,
         'structure.insertColumns': false,
         'structure.insertCells': false,
-        'sheet.insert': false,
       }),
     );
     const insert = item(menu, 'Insert');

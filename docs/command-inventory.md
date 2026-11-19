@@ -93,8 +93,8 @@ limitation. `format.conditionalRender` is the v1 instance.
 | `file.open` | 5. Workbook and sheets — Open, save, save as, close | Open | — | File | Ctrl+O | No file operation is in progress | Implemented |
 | `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
 | `file.saveAs` | 5. Workbook and sheets — Open, save, save as, close | Save As | — | File | Ctrl+Shift+S | A workbook is open and no file operation is in progress | Implemented |
-| `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | Sheet tab context menu<br>Context menu (Delete) | — | A visible sheet is active and more than one visible sheet exists | Implemented |
-| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | Home → Cells | Context menu (Insert) | Shift+F11 | A workbook is open | Implemented |
+| `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | Sheet tab context menu | — | A visible sheet is active and more than one visible sheet exists | Implemented |
+| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |
 | `sheet.rename` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Rename sheet | — | Sheet tab context menu | F2 | A visible sheet is active | Implemented |
 | `fidelity.protection` | 5. Workbook and sheets — Shell protection / workbook protection | Preserve workbook protection | — | — | — | Imported protection XML is preserved and not enforced | Planned |
 | `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | View → Window | — | — | A sheet is active | Planned |
