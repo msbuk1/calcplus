@@ -295,7 +295,7 @@ describe('P1 rich text preservation', () => {
       extraParts: { 'xl/sharedStrings.xml': richSharedStrings },
     });
 
-  it('blocks an M1 editor edit that would flatten rich text', () => {
+  it('warns and flattens a rich cell as one transaction (file-compat §9 F17)', () => {
     const original = richWorkbook();
     const opened = openWorkbook(original);
     const session = new DocumentSession(opened.workbook);
@@ -308,15 +308,22 @@ describe('P1 rich text preservation', () => {
       col: 0,
       value: textValue('Bold plain'),
     });
-    expect(result.changes).toHaveLength(0);
+    // One transaction: the value change lands and the warning travels with it.
+    expect(result.changes).toHaveLength(1);
     expect(result.ui?.message).toMatch(/rich text/i);
-    expect(result.ui?.message).toMatch(/read-only|flatten/i);
-    expect(session.hasUnsavedChanges).toBe(false);
-    expect(session.canUndo).toBe(false);
+    expect(result.ui?.message).toMatch(/plain text/i);
+    expect(session.hasUnsavedChanges).toBe(true);
+    expect(session.canUndo).toBe(true);
+    expect(sheet.cells.get('0:0')?.richText).toBeNull();
+    expect(sheet.cells.get('0:0')?.value).toEqual({ type: 'text', value: 'Bold plain' });
 
     session.undo();
+    expect(sheet.cells.get('0:0')?.richText).not.toBeNull();
+    expect(sheet.cells.get('0:0')?.value).toEqual({ type: 'text', value: 'Bold plain' });
+
+    // The restored cell equals the source part, so the save writes nothing and
+    // the original runs stay authored (rich-text-xml.ts).
     const saved = saveOpened(opened, session);
-    expect(saved.noOp).toBe(true);
     expect(Buffer.compare(Buffer.from(saved.bytes), Buffer.from(original))).toBe(0);
   });
 
@@ -351,6 +358,8 @@ describe('P1 rich text preservation', () => {
     const opened = openWorkbook(richWorkbook());
     const sheet = opened.workbook.sheets[0]!;
     const original = sheet.cells.get('0:0')!;
+    // No command marked this flatten, so the save must not drop the runs
+    // silently (only cell.set and Clear contents set `richTextFlattened`).
     setCellSnapshot(sheet, 0, 0, { ...original, richText: null });
     expect(() =>
       saveWorkbook({
@@ -358,7 +367,7 @@ describe('P1 rich text preservation', () => {
         package: opened.package,
         dirtyCells: new Map([[sheet.id, new Set(['0:0'])]]),
       }),
-    ).toThrow(/rich text.*cannot be rewritten|rich text.*read-only/i);
+    ).toThrow(/rich text.*cannot be rewritten/i);
   });
 });
 

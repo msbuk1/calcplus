@@ -109,6 +109,8 @@ export interface BuildMultiSheetOptions {
   readonly stylesXml?: string;
   readonly extraParts?: Record<string, string>;
   readonly workbookExtras?: string;
+  /** Additional workbook relationships, for parts such as the persons part. */
+  readonly workbookRelsExtras?: string;
 }
 
 /**
@@ -155,6 +157,7 @@ ${options.sharedStrings.map((text) => `  <si><t>${escapeXml(text)}</t></si>`).jo
   ${sheetRelEntries.join('\n  ')}
   ${sharedStrings === null ? '' : `<Relationship Id="rId${nextRelationshipId}" Type="${REL_NS}/sharedStrings" Target="sharedStrings.xml"/>`}
   ${options.stylesXml === undefined ? '' : `<Relationship Id="rId${nextRelationshipId + (sharedStrings === null ? 0 : 1)}" Type="${REL_NS}/styles" Target="styles.xml"/>`}
+  ${options.workbookRelsExtras ?? ''}
 </Relationships>`;
 
   const overrides = [

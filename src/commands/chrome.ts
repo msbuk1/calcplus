@@ -130,6 +130,32 @@ const helpAboutCommand: CommandDefinition<void> = {
   },
 };
 
+const fileCompatibilityReportCommand: CommandDefinition<void> = {
+  id: 'file.compatibilityReport',
+  label: 'Compatibility Report',
+  category: 'file',
+  keybindings: [],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+const fileExportReportCommand: CommandDefinition<void> = {
+  id: 'file.exportReport',
+  label: 'Export Report',
+  category: 'file',
+  keybindings: [],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
 export function chromeCommands(): readonly CommandDefinition<never>[] {
   return [
     fileNewCommand,
@@ -140,6 +166,8 @@ export function chromeCommands(): readonly CommandDefinition<never>[] {
     viewHeadingsCommand,
     viewZoom100Command,
     nameBoxNavigateCommand,
+    fileCompatibilityReportCommand,
+    fileExportReportCommand,
     helpAboutCommand,
   ] as unknown as readonly CommandDefinition<never>[];
 }

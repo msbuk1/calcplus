@@ -688,7 +688,7 @@ describe('structural save renumbers and preserves unmodelled content', () => {
 // ---------------------------------------------------------------------------
 
 describe('structural save on the compatibility fixture', () => {
-  it('renumbers a real worksheet without disturbing its opaque parts', () => {
+  it('transforms the anchored chart and drawing and undoes byte-exactly', () => {
     const original = new Uint8Array(
       readFileSync(new URL('../fixtures/compat/m1-chart-unknown.xlsx', import.meta.url)),
     );
@@ -711,17 +711,44 @@ describe('structural save on the compatibility fixture', () => {
     expect(afterRows.length).toBe(beforeRows.length);
     expect(afterXml).toContain('<legacyDrawing r:id="rId2"/>');
     expect(afterXml).toContain('preserve-me');
+    // Transform-or-block: the edit rewrites the chart series and the drawing
+    // anchor it shifts. Every other opaque part stays byte-identical.
+    const chartAfter = unzipPart(result.bytes, 'xl/charts/chart1.xml');
+    expect(chartAfter).toContain('Sheet1!$B$3:$B$4');
+    expect(chartAfter).not.toContain('$B$2:$B$3');
+    const drawingAfter = unzipPart(result.bytes, 'xl/drawings/drawing1.xml');
+    expect(drawingAfter).toContain('<xdr:row>1</xdr:row>');
+    expect(drawingAfter).not.toContain('<xdr:row>0</xdr:row>');
     for (const [path, bytes] of opened.package.entries) {
       if (
         path === 'xl/worksheets/sheet1.xml' ||
         path === 'xl/workbook.xml' ||
-        path === 'xl/calcChain.xml'
+        path === 'xl/calcChain.xml' ||
+        path === 'xl/charts/chart1.xml' ||
+        path === 'xl/drawings/drawing1.xml'
       ) {
         continue;
       }
       expect(Buffer.from(result.package.entries.get(path)!).equals(Buffer.from(bytes)), path).toBe(
         true,
       );
+    }
+    // Undo writes the `before` bytes back, so no anchor is ever left stale.
+    session.dispatch('edit.undo', {}, { activeSheetId: sheet.id });
+    const undone = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+      dirtyDimensions: session.dirtyDimensionSnapshot(),
+      dirtyMerges: new Set(session.dirtyMergeSnapshot().keys()),
+    });
+    for (const path of ['xl/charts/chart1.xml', 'xl/drawings/drawing1.xml']) {
+      expect(
+        Buffer.from(undone.package.entries.get(path)!).equals(
+          Buffer.from(opened.package.entries.get(path)!),
+        ),
+        path,
+      ).toBe(true);
     }
   });
 });

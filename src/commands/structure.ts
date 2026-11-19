@@ -5,7 +5,11 @@ import {
 } from '@model/range-transform';
 import type { GridRange, RowDimension, Sheet, SheetId } from '@model/types';
 import { MAX_COLUMN, MAX_ROW } from '@model/references';
-import { renumberWorksheetPart } from '@ooxml/structure-patch';
+import {
+  planOpaquePartPatches,
+  renumberWorksheetPart,
+  type StructuralPartPatch,
+} from '@ooxml/structure-patch';
 import type {
   CommandChange,
   CommandContext,
@@ -168,6 +172,10 @@ function runStructure(context: CommandContext, args: StructureArgs, kind: EditKi
   if (plan.block !== null) {
     return blockResult(sheet.id, edit, plan.block.message);
   }
+  // The transform-or-block rule reaches the opaque parts the edit anchors
+  // (charts, drawings, comments, pivots). Their byte rewrites ride the same
+  // transaction; undo writes the `before` bytes back (workbook-model §10).
+  const opaquePatches = planOpaquePartPatches(context.workbook, edit, plan).patches;
 
   const sourceBefore = context.workbook.sourceParts.get(sheet.partPath) ?? null;
   let sourceAfter: Uint8Array | null = null;
@@ -185,7 +193,7 @@ function runStructure(context: CommandContext, args: StructureArgs, kind: EditKi
     }
   }
 
-  const change = buildChange(sheet, edit, plan, sourceBefore, sourceAfter);
+  const change = buildChange(sheet, edit, plan, sourceBefore, sourceAfter, opaquePatches);
   const changes: CommandChange[] = [change];
   for (const rewrite of plan.nameRewrites) {
     changes.push({
@@ -283,6 +291,7 @@ function buildChange(
   plan: RangeTransformPlan,
   sourceBefore: Uint8Array | null,
   sourceAfter: Uint8Array | null,
+  parts: readonly StructuralPartPatch[],
 ): StructureApplyChange {
   const before = plan.mergeRewrites.map((rewrite) => rewrite.before);
   const after = plan.mergeRewrites
@@ -293,6 +302,7 @@ function buildChange(
     sheetId: sheet.id,
     partPath: sheet.partPath,
     edit,
+    parts,
     cells: plan.cellMoves,
     rows: rowsChange(plan),
     columns: { before: plan.columnDimensions.before, after: plan.columnDimensions.after },

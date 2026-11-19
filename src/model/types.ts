@@ -58,6 +58,14 @@ export interface Cell {
   stale?: boolean;
   /** Present only for shared groups and legacy array formulas. */
   readonly formulaSource?: FormulaSource;
+  /**
+   * Set only when a command deliberately replaced a rich-text cell's content
+   * after warning the user (file-compat §9 F17). It is transient bookkeeping,
+   * never written to a part: it lets the save guard tell a warned flatten from
+   * a silent one (rich-text-xml.ts). Equality and snapshots carry it so undo
+   * and a crash restore behave like the live model.
+   */
+  richTextFlattened?: boolean;
 }
 
 export interface DefinedName {
@@ -110,6 +118,34 @@ export interface HyperlinkRecord {
 export interface ValidationRecord {
   readonly range: GridRange;
   readonly rawXml: string;
+}
+
+/** Print margins in inches, exactly as `<pageMargins>` declares them. */
+export interface PageMarginsRecord {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+  readonly header: number;
+  readonly footer: number;
+}
+
+/**
+ * Imported print setup (file-compat §3: print area, orientation, fit-to-width
+ * and margins). The print area is not duplicated here: it is the sheet-scoped
+ * `_xlnm.Print_Area` defined name (workbook-model §1), maintained by the print
+ * feature. `null` means the part declares neither `<pageMargins>` nor
+ * `<pageSetup>`; `undefined` means the model was built before the part was read
+ * (a snapshot restore), so a save leaves the source elements alone.
+ */
+export interface PrintSetupRecord {
+  readonly margins: PageMarginsRecord | null;
+  readonly orientation: 'portrait' | 'landscape' | null;
+  readonly fitToWidth: number | null;
+  readonly fitToHeight: number | null;
+  readonly paperSize: number | null;
+  /** Parsed source of the two elements, for a byte-faithful attribute rewrite. */
+  readonly raw?: unknown;
 }
 
 export interface ConditionalFormatRecord {
@@ -248,6 +284,12 @@ export interface Sheet {
    */
   autoFilter: AutoFilter | null;
   protection: { readonly rawXml: string } | null;
+  /**
+   * Imported print setup: margins, orientation, fit-to-width and paper size.
+   * Optional so a model restored from an older snapshot keeps the source part
+   * untouched; `null` means the sheet declares no print setup elements.
+   */
+  printSetup?: PrintSetupRecord | null;
   readonly view: SheetView;
   /**
    * Imported sheet-format defaults in points and character units. `null` means
@@ -429,6 +471,7 @@ export function cloneCell(cell: Cell | null): Cell | null {
     styleId: cell.styleId,
     richText: cell.richText === null ? null : { ...cell.richText },
     stale: cell.stale === true,
+    ...(cell.richTextFlattened === true ? { richTextFlattened: true } : {}),
     ...(cell.formulaSource === undefined ? {} : { formulaSource: { ...cell.formulaSource } }),
   };
 }

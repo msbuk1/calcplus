@@ -44,12 +44,18 @@ export function escapeXmlAttribute(value: string): string {
   return escapeXmlText(value);
 }
 
+function unsafeXmlMessage(partName: string): string {
+  return `The workbook contains a DTD or entity declaration in ${partName}; calcplus rejects it for safety.`;
+}
+
+/**
+ * Gate every part before parsing. Saxes never resolves external entities and
+ * has no DTD support, so this check is defence in depth, not the only layer:
+ * a DTD or entity declaration is rejected outright and never expanded.
+ */
 export function assertSafeXml(xml: string, partName: string): void {
   if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) {
-    throw new WorkbookOpenError(
-      'unsafe-xml',
-      `The workbook contains a DTD or entity declaration in ${partName}; calcplus rejects it for safety.`,
-    );
+    throw new WorkbookOpenError('unsafe-xml', unsafeXmlMessage(partName));
   }
 }
 
@@ -65,11 +71,22 @@ export interface XmlEventHandlers {
 /**
  * Parse a part with saxes. Positions are JavaScript string indexes; the
  * position reported for an open tag is the index just after its closing `>`.
- * DTDs and entity declarations are rejected before parsing.
+ * DTDs and entity declarations are rejected before parsing, and saxes never
+ * resolves an entity: an undefined reference fails closed as an unsafe part
+ * rather than being expanded.
  */
 export function parseXml(xml: string, handlers: XmlEventHandlers, partName: string): void {
   assertSafeXml(xml, partName);
   const parser = new SaxesParser({ xmlns: true, position: true });
+  const parseFailure = (message: string): WorkbookOpenError => {
+    // An entity reference with no declaration can only be expanded from a DTD.
+    // Saxes refuses to expand it; report the same safe-xml rejection the gate
+    // uses, so no entity construct ever reaches a handler.
+    if (/undefined entity/i.test(message)) {
+      return new WorkbookOpenError('unsafe-xml', unsafeXmlMessage(partName));
+    }
+    return new WorkbookOpenError('corrupt', `Could not parse ${partName}: ${message}`);
+  };
   parser.on('opentag', (tag) => {
     handlers.onOpenTag?.(tag, parser.position);
   });
@@ -84,15 +101,18 @@ export function parseXml(xml: string, handlers: XmlEventHandlers, partName: stri
   parser.on('processinginstruction', (instruction) =>
     handlers.onProcessingInstruction?.(instruction.target, instruction.body),
   );
+  parser.on('doctype', () => {
+    throw new WorkbookOpenError('unsafe-xml', unsafeXmlMessage(partName));
+  });
   parser.on('error', (error) => {
-    throw new WorkbookOpenError('corrupt', `Could not parse ${partName}: ${error.message}`);
+    throw parseFailure(error.message);
   });
   try {
     parser.write(xml).close();
   } catch (error) {
     if (error instanceof WorkbookOpenError) throw error;
     const message = error instanceof Error ? error.message : String(error);
-    throw new WorkbookOpenError('corrupt', `Could not parse ${partName}: ${message}`);
+    throw parseFailure(message);
   }
 }
 

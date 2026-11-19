@@ -2,6 +2,7 @@ import type { ClipboardSnapshot } from '@model/clipboard';
 import type { FillBlockCode, FillStopReason } from '@model/fill';
 import type { FindMatch } from '@model/find';
 import type { StructuralEdit } from '@model/range-transform';
+import type { StructuralPartPatch } from '@ooxml/structure-patch';
 import type { SortBlockCode, SortStopReason, SortWarning } from '@model/sort';
 import type {
   AutoFilter,
@@ -409,6 +410,12 @@ export interface StructureApplyChange {
   readonly sheetId: SheetId;
   readonly partPath: string;
   readonly edit: StructuralEdit;
+  /**
+   * Byte rewrites for the opaque parts the edit anchors (chart series, drawing
+   * anchors, comment refs, pivot locations). Stored in the same transaction so
+   * undo writes `before` back without recomputing a transform.
+   */
+  readonly parts: readonly StructuralPartPatch[];
   readonly cells: readonly StructureCellRecord[];
   readonly rows: StructureRowsChange;
   readonly columns: StructureColumnsChange;
@@ -535,6 +542,12 @@ export function inverseChange(change: CommandChange): CommandChange {
           after: change.conditionalFormats.before,
         },
         autoFilter: { before: change.autoFilter.after, after: change.autoFilter.before },
+        parts: change.parts.map((patch) => ({
+          path: patch.path,
+          kind: patch.kind,
+          before: patch.after,
+          after: patch.before,
+        })),
         sourceBefore: change.sourceAfter,
         sourceAfter: change.sourceBefore,
       };

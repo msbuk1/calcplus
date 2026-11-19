@@ -225,9 +225,31 @@ test('double-clicking the fill handle fills down to the adjacent data edge', asy
   expect(await cellDisplay(page, 6, 1)).toBeNull();
   await expect(page.getByTestId('name-box')).toHaveValue('B2:B6');
 
+  // The handle consumed the gesture: no in-cell editor opened, so Ctrl+Z
+  // reaches the undo command instead of being swallowed by the textarea.
+  // The fill moved the painted handle away from the double-click point, so
+  // this also covers the layout race the recorded press point closes.
+  await expect(page.getByTestId('cell-editor')).toHaveCount(0);
+
   await page.keyboard.press('Control+z');
   await expect.poll(() => cellDisplay(page, 2, 1)).toBeNull();
   expect(await cellDisplay(page, 5, 1)).toBeNull();
+});
+
+test('a double-click away from the handle still opens the in-cell editor', async ({ page }) => {
+  await openFillSheet(page);
+  await selectRange(page, 'B2');
+
+  const cell = await cellRect(page, 1, 1);
+  const box = await page.getByTestId('grid-canvas').boundingBox();
+  if (box === null) throw new Error('The grid canvas has no box');
+  await page.mouse.dblclick(box.x + cell.x + cell.width / 2, box.y + cell.y + cell.height / 2);
+
+  // The guard belongs to the handle alone; an ordinary cell double-click edits.
+  await expect(page.getByTestId('cell-editor')).toBeVisible();
+  await expect(page.getByTestId('cell-editor')).toHaveValue('A2*2');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('cell-editor')).toHaveCount(0);
 });
 
 test('Ctrl+D fills down and Ctrl+R fills right, one transaction each', async ({ page }) => {

@@ -65,8 +65,12 @@ list needs a review note and a change to the local licence gate.
 | fast-check | 4.10.x | MIT | Property tests | Compatible. |
 | `@types/*` | current | MIT | TypeScript declarations | Build-only. |
 | axe-core | MPL-2.0 | Accessibility tests (v2; unused in v1) | MPL-2.0 is GPLv3-compatible; test-only. |
-| openpyxl | MIT | Independent file verification | Test-only; not yet wired. |
-| LibreOffice | MPL-2.0 | Differential smoke oracle | Test-only; not yet wired. |
+| openpyxl | MIT | Independent file verification and the F22 producer fixture | Test-only; not distributed. |
+| LibreOffice | MPL-2.0 | Differential smoke oracle and the F22 producer fixture | Test-only; not distributed. |
+| SheetJS CE (`xlsx`) | Apache-2.0 | Generated the committed F22 SheetJS fixture | Test-only; not distributed and no longer a dependency (0.18.5 advisory, maintainer review 2026-11-19): install it temporarily only to regenerate the fixture. |
+| xlsx-populate | MIT | F22 producer fixture generator | Test-only; not distributed. |
+| JSZip (via xlsx-populate) | MIT | Producer fixture archiving | Dual MIT/GPL-3.0-or-later; MIT is used. |
+| Zlib (via pako, xlsx-populate) | Zlib | Producer fixture compression | Permissive, GPL-3.0-only compatible; reviewed addition to the gate. |
 | ssf | Apache-2.0 | Number-format differential oracle | Test-only; later milestone. |
 | Python | PSF-2.0 | Oracle and fixture scripts | Test-only. |
 | JSZip | MIT or GPL-3.0-or-later | Prototypes and tests only | Choose MIT if it is ever shipped. |
@@ -78,9 +82,9 @@ list needs a review note and a change to the local licence gate.
 | Univer | Apache-2.0 | Rejected as the grid foundation; compatible if code were reused, with notices. |
 | GenOffice | Apache-2.0 except `ee/` | Prior art only. The `ee/` directory is proprietary and must never be copied. |
 | IronCalc | MIT / Apache-2.0 | Rejected for v1 on date and `.xlsx` fidelity. |
-| SheetJS CE | Apache-2.0 | Data extractor, not a preservation engine. |
+| SheetJS CE | Apache-2.0 | Data extractor, not a preservation engine; generated the committed F22 fixture (dependency removed 2026-11-19). |
 | ExcelJS | MIT | Drops charts, external links, pivots and VBA. |
-| xlsx-populate | MIT | Drops cached formula results. |
+| xlsx-populate | MIT | Drops cached formula results; used only to generate F22 producer fixtures. |
 | SpreadJS | Commercial | Too expensive and replaces the product. |
 | Handsontable | Proprietary | Commercial licence required. |
 

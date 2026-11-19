@@ -1636,6 +1636,28 @@
     "shortcut": []
   },
   {
+    "id": "file.compatibilityReport",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsx` open and save",
+    "label": "Compatibility Report",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": true,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 80 }]
+  },
+  {
+    "id": "file.exportReport",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "`.xlsx` open and save",
+    "label": "Export Report",
+    "category": "file",
+    "enablement": "A workbook is open",
+    "implemented": true,
+    "shortcut": [],
+    "menu": [{ "menu": "File", "order": 90 }]
+  },
+  {
     "id": "file.openXlsm",
     "matrixSection": "7. File I/O and printing",
     "matrixFeature": "`.xlsm` open and save; macro parts preserved, never executed",

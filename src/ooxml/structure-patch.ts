@@ -1,11 +1,17 @@
-import type { GridRange, Workbook } from '@model/types';
+import type { GridRange, OpaquePart, Workbook } from '@model/types';
 import { formatCellRef } from '@model/types';
 import {
+  planOpaquePartTransforms,
   transformCellAddress,
+  transformHyperlinkLocation,
   transformMergeRange,
   transformRange,
   transformRangeBearingXml,
+  type OpaquePartKind,
+  type OpaquePartRewrite,
+  type RangeTransformPlan,
   type StructuralEdit,
+  type TransformBlock,
 } from '@model/range-transform';
 import type { ParsedWorksheet } from './worksheet-xml';
 import { parseWorksheetXml } from './worksheet-xml';
@@ -17,14 +23,20 @@ import { WorkbookSaveError } from './errors';
  * After a structural edit the model's cells sit at new addresses but the last
  * saved part still carries the old ones. A later save patches by address, so
  * the part must be renumbered first: `<row r>`, every cell `r`, `<col min/max>`
- * spans, `<dimension ref>`, merged ranges, hyperlinks, CF/validation `sqref`
- * and rule formulas and the AutoFilter rectangle.
+ * spans, `<dimension ref>`, merged ranges, hyperlink `ref` and internal
+ * `location`, CF/validation `sqref` and rule formulas and the AutoFilter
+ * rectangle.
  *
  * The transform is textual: only modelled attributes are rewritten, so every
  * unmodelled attribute, child element and byte the edit does not touch stays
  * exactly as authored (file-compat identity rules). Formulas inside `<f>` are
  * deliberately left alone: the command layer marks every rewritten formula
  * cell dirty, and the normal patch writer writes the model's text.
+ *
+ * Tier B parts do not live in the worksheet part, so `planOpaquePartPatches`
+ * (and the combined `planStructuralPartPatches`) renumber the drawing, chart,
+ * comment and pivot-cache parts with the same edit. `renumberWorksheetPart`
+ * stays the worksheet-only primitive.
  */
 
 export interface StructurePartInput {
@@ -77,7 +89,7 @@ export function renumberWorksheetPart(input: StructurePartInput): StructurePartR
   appendColumnEdits(xml, parsed, input.edit, edits);
   appendDimensionEdit(xml, parsed, input.edit, edits);
   appendMergeEdits(xml, parsed, input.edit, edits);
-  appendHyperlinkEdits(xml, parsed, input.edit, edits);
+  appendHyperlinkEdits(xml, parsed, input, edits);
   appendConditionalFormatEdits(xml, parsed, input, edits);
   appendValidationEdits(xml, parsed, input, edits);
   appendAutoFilterEdits(xml, parsed, input.edit, edits);
@@ -87,6 +99,124 @@ export function renumberWorksheetPart(input: StructurePartInput): StructurePartR
   // came from a validated parse, so the output cannot be malformed. The save
   // path parses and validates the part again before it writes it.
   return { bytes: new TextEncoder().encode(next), changed: next !== xml };
+}
+
+// ---------------------------------------------------------------------------
+// Tier B parts (drawings, charts, comments, pivots)
+// ---------------------------------------------------------------------------
+
+export type StructuralPartKind = 'worksheet' | OpaquePartKind;
+
+export interface StructuralPartPatch {
+  readonly path: string;
+  readonly kind: StructuralPartKind;
+  /** The part exactly as it was saved, for the transaction's inverse. */
+  readonly before: Uint8Array;
+  readonly after: Uint8Array;
+}
+
+export interface StructuralPartPlan {
+  readonly patches: readonly StructuralPartPatch[];
+  readonly block: TransformBlock | null;
+}
+
+/**
+ * Plan the renumbering of every non-worksheet part the edit touches. This is
+ * the minimal hook for the structural command: pass the plan the command
+ * already computed, store the patches in the same transaction, and undo writes
+ * `before` back.
+ */
+export function planOpaquePartPatches(
+  workbook: Workbook,
+  edit: StructuralEdit,
+  plan: RangeTransformPlan | null = null,
+): StructuralPartPlan {
+  const opaque =
+    plan === null
+      ? planOpaquePartTransforms(workbook, edit, { workbook })
+      : { rewrites: plan.opaqueParts, block: plan.block };
+  return {
+    patches: opaque.rewrites.map(partPatch),
+    block: opaque.block,
+  };
+}
+
+/**
+ * Plan every part a structural edit renumbers, including the worksheet source
+ * part. A caller that uses this must not also call `renumberWorksheetPart`:
+ * renumbering twice would apply the edit twice. Throws `WorkbookSaveError`
+ * (`unsafe-part`) when the worksheet cannot be cut safely — the structural
+ * command already turns that into a block.
+ */
+export function planStructuralPartPatches(
+  workbook: Workbook,
+  edit: StructuralEdit,
+  plan: RangeTransformPlan | null = null,
+): StructuralPartPlan {
+  const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
+  if (sheet === undefined) return { patches: [], block: null };
+  const patches: StructuralPartPatch[] = [];
+  const sourceBefore = workbook.sourceParts.get(sheet.partPath);
+  if (sourceBefore !== undefined) {
+    const worksheet = renumberWorksheetPart({
+      bytes: sourceBefore,
+      partName: sheet.partPath,
+      sheetName: sheet.name,
+      edit,
+      workbook,
+    });
+    if (worksheet.changed) {
+      patches.push({
+        path: sheet.partPath,
+        kind: 'worksheet',
+        before: sourceBefore,
+        after: worksheet.bytes,
+      });
+    }
+  }
+  const opaque = planOpaquePartPatches(workbook, edit, plan);
+  patches.push(...opaque.patches);
+  return { patches, block: opaque.block };
+}
+
+/**
+ * Write one side of a set of part patches into the model's part maps. The
+ * inverse is the same call with `'before'`, so a transaction restores the exact
+ * prior bytes without recomputing a transform.
+ */
+export function applyStructuralPartPatches(
+  workbook: Workbook,
+  patches: readonly StructuralPartPatch[],
+  direction: 'before' | 'after',
+): void {
+  for (const patch of patches) {
+    const bytes = direction === 'after' ? patch.after : patch.before;
+    if (patch.kind === 'worksheet') {
+      workbook.sourceParts.set(patch.path, bytes);
+      continue;
+    }
+    const previous: OpaquePart | undefined = workbook.opaqueParts.get(patch.path);
+    workbook.opaqueParts.set(patch.path, {
+      path: patch.path,
+      bytes,
+      anchor: previous?.anchor ?? null,
+    });
+    for (const sheet of workbook.sheets) {
+      const existing = sheet.opaqueParts.get(patch.path);
+      if (existing !== undefined) {
+        sheet.opaqueParts.set(patch.path, { path: patch.path, bytes, anchor: existing.anchor });
+      }
+    }
+  }
+}
+
+function partPatch(rewrite: OpaquePartRewrite): StructuralPartPatch {
+  return {
+    path: rewrite.path,
+    kind: rewrite.kind,
+    before: rewrite.before,
+    after: rewrite.after,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -258,11 +388,12 @@ function appendMergeEdits(
 function appendHyperlinkEdits(
   xml: string,
   parsed: ParsedWorksheet,
-  edit: StructuralEdit,
+  input: StructurePartInput,
   edits: TextEdit[],
 ): void {
   const container = parsed.rootChildren.find((child) => child.local === 'hyperlinks');
   if (container === undefined) return;
+  const edit = input.edit;
   const slice = xml.slice(container.start, container.end);
   const patched = patchElements(slice, scanElements(slice, 'hyperlink'), (text) => {
     const match = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(text);
@@ -270,8 +401,31 @@ function appendHyperlinkEdits(
     if (match === null || range === null) return text;
     const transformed = transformRange(range, edit);
     if (transformed === null) return null;
-    if (sameRange(range, transformed)) return text;
-    return replaceAttribute(text, match, formatRangeText(transformed));
+    let next = text;
+    if (!sameRange(range, transformed)) {
+      next = replaceAttribute(next, match, formatRangeText(transformed));
+    }
+    // The internal `location` is a reference, not a label (file-compat §4): the
+    // model has already transformed it, and this rewrite keeps the saved bytes
+    // equal to the model. A location the transform refuses throws the same
+    // unsafe-part block the plan raises, so the edit is never saved stale.
+    const locationMatch = /(\blocation\s*=\s*)(["'])([^"']*)\2/.exec(next);
+    if (locationMatch !== null) {
+      const outcome = transformHyperlinkLocation(
+        decodeXmlAttributeValue(locationMatch[3] ?? ''),
+        edit,
+        { workbook: input.workbook },
+        edit.sheetId,
+      );
+      if (!outcome.ok) {
+        throw new WorkbookSaveError(
+          'unsafe-part',
+          `${outcome.block.message} The edit was blocked.`,
+        );
+      }
+      if (outcome.changed) next = replaceAttribute(next, locationMatch, outcome.location);
+    }
+    return next;
   });
   if (patched === slice) return;
   edits.push({ start: container.start, end: container.end, text: patched });
@@ -512,6 +666,16 @@ function escapeXmlAttributeValue(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+/** The inverse of `escapeXmlAttributeValue`, in the order that cannot double-decode. */
+function decodeXmlAttributeValue(value: string): string {
+  return value
+    .replaceAll('&quot;', '"')
+    .replaceAll('&apos;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
 }
 
 function parseRangeText(text: string): GridRange | null {

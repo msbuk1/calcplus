@@ -48,8 +48,11 @@ import {
   type ConditionalFormatSavePlan,
 } from './conditional-format-xml';
 import { WorkbookSaveError } from './errors';
+import { planPartPolicy, removeMacroParts, isMacroPartPath, type SavedFormat } from './part-policy';
 import { validatePatchedPart } from './xml';
 import { writePackage } from './zip';
+import { planPrintSetupSave, printSetupChanged } from './print-setup-xml';
+import { dropUnchangedCells } from './rich-text-xml';
 import {
   patchWorkbookDefinedNames,
   removeCalcChain,
@@ -68,6 +71,12 @@ export interface SaveWorkbookInput {
   readonly dirtyMerges?: ReadonlySet<SheetId>;
   readonly options?: {
     readonly worksheet?: WorksheetSaveOptions;
+    /**
+     * Target format for a Save As. Defaults to the source package's own format
+     * (a macro-enabled package keeps its macro parts). `xlsx` from an `xlsm`
+     * package drops them; the caller confirms first (file-compat §6.3).
+     */
+    readonly format?: SavedFormat;
   };
 }
 
@@ -81,6 +90,37 @@ export interface SaveWorkbookResult {
 
 export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   let entries = new Map(input.package.entries);
+  // Transform-or-block (file-compat §6): a structural edit rewrites the bytes
+  // of the opaque parts it anchors — chart series, drawing anchors, comment
+  // refs, pivot locations. The model holds the transformed bytes, so write
+  // them over the package's originals. An untouched part holds identical
+  // bytes and is never rewritten, which keeps identity saves byte-identical.
+  // The save pipeline's part policy (M6 lane 4, src/ooxml/part-policy.ts)
+  // decides which parts this function may rewrite. Its pipeline-owned set is
+  // the save-managed list: this function rewrites content types, workbook
+  // relationships and calcChain itself, so their package bytes are fresher
+  // than any unadopted model mirror. Every other part is written only by the
+  // transform-or-block overlay below, and only when the model holds different
+  // bytes; a part the policy calls verbatim is otherwise copied unchanged.
+  const partPolicy = planPartPolicy({
+    package: input.package,
+    parts: entries,
+    format: input.options?.format,
+  });
+  const saveManagedPaths = partPolicy.pipelineOwnedPartPaths;
+  const macroRemovalPending = partPolicy.removedPartPaths.size > 0;
+  const transformedOpaqueParts: string[] = [];
+  for (const [path, part] of input.workbook.opaqueParts) {
+    if (saveManagedPaths.has(path)) continue;
+    // A part the policy drops for this save (an `.xlsm` -> `.xlsx` Save As)
+    // must not come back from a model mirror that has not been adopted yet.
+    if (partPolicy.removedPartPaths.has(path)) continue;
+    if (partPolicy.format === 'xlsx' && isMacroPartPath(path)) continue;
+    const original = entries.get(path);
+    if (original !== undefined && bytesEqual(original, part.bytes)) continue;
+    transformedOpaqueParts.push(path);
+    entries.set(path, part.bytes);
+  }
   const workbookPath = input.package.workbookPartPath;
   const stylesPath = input.package.stylesPath;
   const sourceStylesBytes = stylesPath === null ? undefined : entries.get(stylesPath);
@@ -144,8 +184,11 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   // compare every authored formula with its source part so the patch still
   // writes them.
   const dirtyCellsForSave = mergeDirtyCells(
-    input.dirtyCells,
-    sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+    mergeDirtyCells(
+      input.dirtyCells,
+      sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+    ),
+    recalculatedFormulaCells(input, input.dirtyCells, newSheetIds),
   );
   const dirtyCellSheetIds = [...dirtyCellsForSave.entries()]
     .filter(([, cells]) => cells.size > 0)
@@ -175,6 +218,11 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     const plan = planConditionalFormatsSave(sheet, sourceBytes);
     if (plan.changed) conditionalFormatPlans.set(sheet.id, plan);
   }
+  // Print setup is document state too (file-compat §3): while the model still
+  // describes the parsed source, the sheet's elements are never rewritten.
+  const printSetupSheetIds = input.workbook.sheets
+    .filter((sheet) => !newSheetIds.has(sheet.id) && printSetupChanged(sheet))
+    .map((sheet) => sheet.id);
   const dirtySheetIds = [
     ...new Set([
       ...dirtyCellSheetIds,
@@ -193,7 +241,10 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     !dateSystemChanged &&
     !stylesNeedAppend &&
     sheetPlan?.changed !== true &&
-    !definedNamesChanged
+    !definedNamesChanged &&
+    transformedOpaqueParts.length === 0 &&
+    printSetupSheetIds.length === 0 &&
+    !macroRemovalPending
   ) {
     const bytes = input.package.originalBytes ?? writePackage(input.package.entries);
     return {
@@ -226,6 +277,27 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   const removedParts: string[] = [];
   let formulaChanged = false;
 
+  // An explicit Save As from a macro workbook to `.xlsx` removes the macro
+  // parts, their relationships and their content-type overrides (§6.3). The
+  // caller has already confirmed the format change; a normal save keeps the
+  // macro parts byte-identically because the policy's source format is `xlsm`.
+  if (macroRemovalPending) {
+    const removal = removeMacroParts({
+      entries,
+      relationships,
+      contentTypesPath: input.package.contentTypesPath,
+      workbookPartPath: input.package.workbookPartPath,
+      workbookRelsPath: input.package.workbookRelsPath,
+    });
+    entries = removal.entries;
+    relationships = removal.relationships;
+    removedParts.push(...removal.removedParts);
+    for (const path of removal.patchedParts) {
+      if (!patchedParts.includes(path)) patchedParts.push(path);
+      modeByPart.set(path, 'position');
+    }
+  }
+
   if (stylesNeedAppend) {
     if (stylesPath === null || sourceStylesBytes === undefined) {
       throw new WorkbookSaveError(
@@ -247,7 +319,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   for (const sheetId of dirtySheetIds) {
     const sheet = getSheetById(input.workbook, sheetId);
     const dirtyKeys = dirtyCellsForSave.get(sheetId) ?? new Set<string>();
-    const dirtyCells: DirtyCellInput[] = [...dirtyKeys]
+    const requestedCells: DirtyCellInput[] = [...dirtyKeys]
       .map((key) => {
         const address = parseCellKey(key);
         const cell = getCell(sheet, address.row, address.col);
@@ -263,6 +335,18 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
         `The worksheet ${sheet.partPath} has no source skeleton to patch.`,
       );
     }
+    // A dirty marker whose model state already matches the source part is not a
+    // change (an undo restores the cell but not the marker). Dropping it keeps
+    // the authored bytes, which is what preserves rich-text runs after undo
+    // (file-compat §9 F17; see rich-text-xml.ts).
+    const dirtyCells = dropUnchangedCells({
+      partName: sheet.partPath,
+      sourceBytes,
+      sheetName: sheet.name,
+      sharedStrings: input.package.sharedStrings,
+      sheet,
+      dirtyCells: requestedCells,
+    });
     const dirtyDimensions = withSheetFilterHiddenRows(
       sheet,
       syncAutoFilter?.changed === true
@@ -308,6 +392,21 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       patchedParts.push(sheet.partPath);
       modeByPart.set(sheet.partPath, result.mode);
     }
+  }
+
+  // Print setup is written after the row/cell patch has settled: the plan reads
+  // the part as it stands now, so a sheet that is both edited and re-oriented
+  // gets one consistent result, and only the modelled attributes change
+  // (file-compat §3, §9 F16).
+  for (const sheetId of printSetupSheetIds) {
+    const sheet = input.workbook.sheets.find((candidate) => candidate.id === sheetId);
+    const current = sheet === undefined ? undefined : entries.get(sheet.partPath);
+    if (sheet === undefined || current === undefined) continue;
+    const plan = planPrintSetupSave(sheet, current, sheet.partPath);
+    if (!plan.changed) continue;
+    entries.set(sheet.partPath, plan.bytes);
+    if (!patchedParts.includes(sheet.partPath)) patchedParts.push(sheet.partPath);
+    modeByPart.set(sheet.partPath, 'position');
   }
 
   // Sheet insert, delete and rename are structural: new parts are written in
@@ -534,6 +633,13 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     if (relationshipId !== undefined) {
       sheetRelationshipIds.set(sheet.id, relationshipId);
     }
+  }
+
+  // A transformed opaque part is written as a whole document; the report
+  // lists it so the export report can account for it.
+  for (const path of transformedOpaqueParts) {
+    patchedParts.push(path);
+    modeByPart.set(path, 'tree');
   }
 
   const bytes = writePackage(entries);
@@ -807,6 +913,73 @@ function structuralFormulaDirtyCells(
   return dirty;
 }
 
+/**
+ * File-compat §6.1 and §9 F6: a formula with no cached `<v>` is recalculated on
+ * open, and its evaluated result must reach the file even though no command
+ * touched the cell. This is the whole scope of the rewrite: a cell that already
+ * carried a cached result keeps those bytes, because the engine's own result is
+ * not a reason to replace what Excel saved (and the engine's precision is not
+ * Excel's). Any input change still sets `fullCalcOnLoad`, so Excel recomputes
+ * the dependants from evaluated inputs on load.
+ *
+ * A stale cell is excluded: it keeps its original `<v>` (or none) and the
+ * workbook asks Excel to recalculate, because a stale value must never be
+ * presented as current. Shared and array groups are excluded for the same
+ * reason: they are read-only and their cached result is preserved verbatim.
+ *
+ * The source part is parsed once per formula-bearing sheet to learn which cells
+ * carried no cache. A calculation-generation marker on the workbook would make
+ * that parse unnecessary; until the model carries one, a save pays one extra
+ * worksheet parse.
+ */
+function recalculatedFormulaCells(
+  input: SaveWorkbookInput,
+  alreadyDirty: ReadonlyMap<SheetId, ReadonlySet<string>>,
+  newSheetIds: ReadonlySet<SheetId>,
+): Map<SheetId, Set<string>> {
+  const dirty = new Map<SheetId, Set<string>>();
+  for (const sheet of input.workbook.sheets) {
+    if (newSheetIds.has(sheet.id)) continue;
+    let hasEvaluatedFormula = false;
+    for (const cell of sheet.cells.values()) {
+      if (cell.formula === null || cell.formulaSource !== undefined) continue;
+      if (cell.stale === true) continue;
+      if (cell.savedResult === null || cell.savedResult.type === 'blank') continue;
+      hasEvaluatedFormula = true;
+      break;
+    }
+    if (!hasEvaluatedFormula) continue;
+    const sourceBytes = input.workbook.sourceParts.get(sheet.partPath);
+    if (sourceBytes === undefined) continue;
+    const parsed = parseWorksheetXml(sourceBytes, {
+      sharedStrings: input.package.sharedStrings,
+      partPath: sheet.partPath,
+      name: sheet.name,
+    });
+    const sheetDirty = alreadyDirty.get(sheet.id);
+    for (const [key, cell] of sheet.cells) {
+      if (cell.formula === null || cell.formulaSource !== undefined) continue;
+      if (cell.stale === true) continue;
+      if (cell.savedResult === null || cell.savedResult.type === 'blank') continue;
+      if (sheetDirty?.has(key) === true) continue;
+      const original = parsed.sheet.cells.get(key) ?? null;
+      // Only a formula the source carried without a cached result is written.
+      if (
+        original !== null &&
+        original.formula !== null &&
+        original.savedResult !== null &&
+        original.savedResult.type !== 'blank'
+      ) {
+        continue;
+      }
+      const keys = dirty.get(sheet.id) ?? new Set<string>();
+      keys.add(key);
+      dirty.set(sheet.id, keys);
+    }
+  }
+  return dirty;
+}
+
 function dirtyCellsChangeFormula(
   sourceBytes: Uint8Array,
   sheet: Sheet,
@@ -833,11 +1006,14 @@ function dirtyCellsChangeFormula(
           : 'Shared formulas are read-only in this milestone; the file was not written.',
       );
     }
-    // File-compat F17 / workbook-model §9: imported rich text is preserved
-    // while untouched. The model cannot write rich runs back, so a dirty cell
-    // that still holds the original rich text would be flattened silently.
-    // The M1 editor blocks these edits first; this is the save-level guard.
-    if (original?.richText !== null && original?.richText !== undefined) {
+    // File-compat §9 F17 / workbook-model §9: imported rich text is preserved
+    // while untouched. A cell the editor flattened deliberately carries
+    // `richTextFlattened` (the command warned the user), and a deleted cell is
+    // an explicit clear; every other way of dropping the runs — a style-only
+    // edit, a fill or a paste that overwrote the cell — would flatten them
+    // silently and is refused instead.
+    const flattenedDeliberately = dirty.cell === null || dirty.cell.richTextFlattened === true;
+    if (original?.richText !== null && original?.richText !== undefined && !flattenedDeliberately) {
       throw new WorkbookSaveError(
         'unsupported-edit',
         `The rich text at ${formatCellRef(dirty.row, dirty.col)} cannot be rewritten in this milestone; the file was not written.`,

@@ -364,7 +364,10 @@ export function parseWorksheetXml(
           return;
         }
 
-        if (cell !== null && inInlineString && parent === 'is') {
+        // A run's `<t>` sits inside `<r>`, not directly under `<is>`; every
+        // text node in the inline string feeds the plain-text display, and the
+        // phonetic block is excluded separately.
+        if (cell !== null && inInlineString) {
           if (tag.local === 't') {
             inInlineText = true;
             cell.inlineT = true;

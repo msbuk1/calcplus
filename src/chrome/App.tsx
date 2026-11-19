@@ -23,6 +23,7 @@ import type {
   Cell,
   ColumnFilter,
   GridRange,
+  HyperlinkRecord,
   Sheet,
   SheetId,
   Workbook,
@@ -40,8 +41,15 @@ import { WorkbookSaveError } from '@ooxml/errors';
 import { applyRangeTransformPrototype } from '@ooxml/range-transform';
 import { adoptSavedPackage, saveWorkbook } from '@ooxml/save';
 import { snapshotWorkbook } from '@ooxml/snapshot';
-import { confirmReplaceDocument } from '@io/confirm';
+import { listUnsupportedConditionalFormats } from '@ooxml/conditional-format-xml';
+import type { PreservedPartReport } from '@ooxml/part-policy';
+import { listPreservedParts } from '@ooxml/part-policy';
+import { buildCompatibilityReport, buildExportReport } from '@ooxml/report';
+import type { CompatibilityReport, ExportReport } from '@ooxml/report';
+import { compatibilityReportSummary, exportReportSummary } from '@ooxml/report';
+import { confirmReplaceDocument, planMacroSave, planSignatureSave } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
+import { checkExternalLink, internalLocationText, parseInternalLocation } from '@view/hyperlinks';
 import { firstVisibleSheetId, isSheetVisible, visibleSheetCount } from '@view/sheet-visibility';
 import {
   DEFAULT_SHEET_VIEW,
@@ -84,6 +92,8 @@ import { GoToDialog } from '@chrome/GoToDialog';
 import type { GoToOutcome } from '@chrome/GoToDialog';
 import { InsertFunctionDialog } from '@chrome/InsertFunctionDialog';
 import { NameBox } from '@chrome/NameBox';
+import { ReportDialog } from '@chrome/ReportDialog';
+import { compatibilitySections, exportSections } from '@chrome/report-view';
 import { Ribbon } from '@chrome/Ribbon';
 import { SheetTabs } from '@chrome/SheetTabs';
 import { SortDialog } from '@chrome/SortDialog';
@@ -115,10 +125,23 @@ interface LoadedDocument {
   readonly handle: FileHandleLike | null;
   readonly sheetId: string;
   readonly compatibility: CompatibilityInfo;
+  /** The open-time unsupported conditional-format listing (read-only in v1). */
+  readonly unsupportedConditionalFormats: ReturnType<typeof listUnsupportedConditionalFormats>;
+  /** Lane 4's preserved-part listing for the compatibility report. */
+  readonly preservedParts: readonly PreservedPartReport[];
   readonly calculation: CalculationController;
 }
 
-type AppDialog = 'about' | 'find' | 'replace' | 'goto' | 'format' | 'insert-function' | 'sort';
+type AppDialog =
+  | 'about'
+  | 'find'
+  | 'replace'
+  | 'goto'
+  | 'format'
+  | 'insert-function'
+  | 'sort'
+  | 'compatibility-report'
+  | 'export-report';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -172,6 +195,9 @@ export function App(): JSX.Element {
   // Functions inserted this session, most recent first. View state only: it
   // feeds the dialog's "Recently used" category and never enters the workbook.
   const [recentFunctions, setRecentFunctions] = useState<readonly PublishedFunction[]>([]);
+  // The last save's export report, kept for File → Export Report. It is a
+  // read-only view of facts the save already reported; it never enters the model.
+  const [lastExportReport, setLastExportReport] = useState<ExportReport | null>(null);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
   // Copy mode's marquee, the paste destination while a Ctrl+C or Ctrl+X
   // snapshot is live. View state only, like the painter's target (ticket 31 B).
@@ -226,6 +252,21 @@ export function App(): JSX.Element {
     [document, version],
   );
 
+  /**
+   * The on-open compatibility report (file-compat §7). It consumes the open
+   * path's `CompatibilityInfo`, the banked unsupported-rule listing and lane
+   * 4's preserved-part listing; `version` refreshes the stale-cell items.
+   */
+  const compatibilityReport = useMemo<CompatibilityReport | null>(() => {
+    if (document === null) return null;
+    return buildCompatibilityReport({
+      workbook: document.session.workbook,
+      compatibility: document.compatibility,
+      unsupportedConditionalFormats: document.unsupportedConditionalFormats,
+      preserved: document.preservedParts,
+    });
+  }, [document, version]);
+
   const selectionStatistics = useMemo<SelectionStatistics | null>(() => {
     if (projection === null) return null;
     const statistics = projection.selectionStatistics(selectionRange(selection));
@@ -264,6 +305,12 @@ export function App(): JSX.Element {
       handle,
       sheetId: initialSheetId,
       compatibility: opened.compatibility,
+      unsupportedConditionalFormats: listUnsupportedConditionalFormats(opened.workbook),
+      preservedParts: listPreservedParts({
+        package: opened.package,
+        workbook: opened.workbook,
+        format: fileName.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx',
+      }),
       calculation,
     });
     setSheetViews(initialSheetViews(opened.workbook));
@@ -337,6 +384,30 @@ export function App(): JSX.Element {
 
   const saveFile = async (saveAs: boolean): Promise<void> => {
     if (document === null || busy) return;
+    // File-compat §6.3: the default Save keeps .xlsm; Save As from a macro
+    // workbook converts to .xlsx and only after explicit confirmation.
+    const macroPlan = planMacroSave({
+      fileName: document.fileName,
+      hasMacros: document.compatibility.hasMacros,
+      saveAs,
+    });
+    if (macroPlan === null) {
+      setStatus('Save As cancelled. The workbook was not written.');
+      return;
+    }
+    // File-compat §6.5: a signed package is preserved, but saving invalidates
+    // the signature, so the write is preceded by a confirmation. A save with
+    // nothing to write returns the original bytes and never asks, and an
+    // unsigned workbook has nothing to warn about. Declining writes nothing.
+    if (
+      !planSignatureSave({
+        hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
+        changed: document.session.hasUnsavedChanges,
+      })
+    ) {
+      setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
+      return;
+    }
     setBusy(true);
     // Snapshot the dirty state before the write await. Edits made while the
     // browser is writing are not in the saved bytes and must stay dirty.
@@ -351,8 +422,9 @@ export function App(): JSX.Element {
         dirtyCells: dirtyKeysFromSnapshot(savedDirty),
         dirtyDimensions: savedDimensions,
         dirtyMerges: new Set(savedMerges.keys()),
+        options: { format: macroPlan.format },
       });
-      const outcome = await saveWorkbookFile(result.bytes, document.fileName, document.handle, {
+      const outcome = await saveWorkbookFile(result.bytes, macroPlan.fileName, document.handle, {
         forceFallback: FORCE_FALLBACK,
         saveAs,
       });
@@ -360,6 +432,36 @@ export function App(): JSX.Element {
         setStatus('Save As cancelled.');
         return;
       }
+      // The export report is assembled from the before/after packages and the
+      // save's own part report (file-compat §7). It is shown only when it has
+      // something stale, removed or warned about; the model is never touched.
+      const transformedParts = result.report.patchedParts.filter(
+        (path) => result.report.modeByPart.get(path) === 'tree',
+      );
+      const formatChange =
+        document.fileName.toLowerCase().endsWith('.xlsm') &&
+        outcome.fileName.toLowerCase().endsWith('.xlsx')
+          ? ({ from: 'xlsm', to: 'xlsx' } as const)
+          : null;
+      const exportReport = buildExportReport({
+        workbook: document.session.workbook,
+        before: document.pkg,
+        after: result.package,
+        report: result.report,
+        compatibility: document.compatibility,
+        noOp: result.noOp,
+        structuralChange: savedStructuralVersion > 0,
+        formatChange,
+        preserved: listPreservedParts({
+          package: document.pkg,
+          entries: result.package.entries,
+          workbook: document.session.workbook,
+          dirtyCells: dirtyKeysFromSnapshot(savedDirty),
+          transformedParts,
+          format: outcome.fileName.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx',
+        }),
+      });
+      setLastExportReport(exportReport);
       adoptSavedPackage(document.session.workbook, result.package);
       document.session.markSaved(savedDirty, savedDimensions, savedStructuralVersion, savedMerges);
       setDocument((current) => {
@@ -378,11 +480,23 @@ export function App(): JSX.Element {
           fileName: outcome.fileName,
           handle: outcome.handle ?? current.handle,
           sheetId,
+          // A confirmed format change removed the macro parts (§6.3), so the
+          // next save must not warn about macros that are no longer there.
+          compatibility:
+            macroPlan.format === 'xlsx' && current.compatibility.hasMacros
+              ? { ...current.compatibility, hasMacros: false }
+              : current.compatibility,
+          preservedParts: listPreservedParts({
+            package: result.package,
+            workbook,
+            format: outcome.fileName.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx',
+          }),
         };
       });
       setVersion((current) => current + 1);
       recoveryRef.current = null;
       setStatus(result.noOp ? 'Saved. No changes to write.' : 'Saved.');
+      if (exportReport.needsAttention) setDialog('export-report');
     } catch (error) {
       if (error instanceof WorkbookSaveError) {
         recoveryRef.current = snapshotWorkbook(document.session.workbook, document.pkg);
@@ -1042,6 +1156,45 @@ export function App(): JSX.Element {
       setFocusZone('grid');
       setStatus(`Selected ${target.sheetName}!${target.label}.`);
       return target.label;
+    },
+    [resolveNavigationTarget, selectNavigationTarget],
+  );
+
+  /**
+   * A Ctrl+click on a linked cell (feature matrix §8 "followable
+   * (Ctrl+click)"). An external address opens in a new tab only when its scheme
+   * is on the allowlist; an internal location resolves through the same path as
+   * the name box and Go To. Every refusal reports why instead of failing
+   * silently, and the app itself never navigates.
+   */
+  const followHyperlink = useCallback(
+    (link: HyperlinkRecord): void => {
+      if (link.target !== '') {
+        const check = checkExternalLink(link.target);
+        if (check.kind === 'refused') {
+          setStatus(check.message);
+          return;
+        }
+        window.open(check.url, '_blank', 'noopener,noreferrer');
+        setStatus('Opened the hyperlink in a new tab.');
+        return;
+      }
+      const location = link.location ?? '';
+      const parsed = parseInternalLocation(location);
+      if (parsed === null) {
+        setStatus(`The hyperlink target "${location}" could not be resolved.`);
+        return;
+      }
+      const resolution = resolveNavigationTarget(internalLocationText(parsed));
+      if (resolution.kind === 'invalid') {
+        setStatus(
+          `The hyperlink target "${location}" could not be resolved: ${resolution.message}`,
+        );
+        return;
+      }
+      selectNavigationTarget(resolution.target);
+      setFocusZone('grid');
+      setStatus(`Followed the link to ${resolution.target.sheetName}!${resolution.target.label}.`);
     },
     [resolveNavigationTarget, selectNavigationTarget],
   );
@@ -2288,6 +2441,16 @@ export function App(): JSX.Element {
         submitGoTo(target);
         return null;
       }
+      case 'file.compatibilityReport':
+        if (document === null) return null;
+        clearPainter();
+        setDialog('compatibility-report');
+        return null;
+      case 'file.exportReport':
+        if (document === null) return null;
+        clearPainter();
+        setDialog('export-report');
+        return null;
       case 'help.about':
         clearPainter();
         setDialog('about');
@@ -2386,13 +2549,35 @@ export function App(): JSX.Element {
         }}
       />
 
-      {document?.compatibility.notes.length ? (
+      {document !== null &&
+      compatibilityReport !== null &&
+      (compatibilityReport.hasContent || document.compatibility.notes.length > 0) ? (
         <div
           className="compat-banner"
-          title={document.compatibility.notes.join(' ')}
+          title={[
+            ...document.compatibility.notes,
+            compatibilityReportSummary(compatibilityReport),
+          ].join(' ')}
           data-testid="compat-banner"
         >
-          {document.compatibility.notes.join(' ')}
+          <span className="compat-banner-text">
+            {[
+              ...document.compatibility.notes,
+              ...(compatibilityReport.hasContent
+                ? [compatibilityReportSummary(compatibilityReport)]
+                : []),
+            ].join(' ')}
+          </span>
+          {compatibilityReport.hasContent ? (
+            <button
+              type="button"
+              className="compat-banner-action"
+              data-testid="compatibility-report-open"
+              onClick={() => runCommand('file.compatibilityReport')}
+            >
+              Review
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -2444,6 +2629,7 @@ export function App(): JSX.Element {
             painterActive={painter !== null}
             onPainterApply={applyPainter}
             onFill={handleFill}
+            onFollowHyperlink={followHyperlink}
             marquee={
               copyMarquee === null
                 ? undefined
@@ -2585,6 +2771,37 @@ export function App(): JSX.Element {
           recentlyUsed={recentFunctions}
           onClose={closeDialog}
           onInsert={insertFunctionByName}
+        />
+      ) : null}
+
+      {dialog === 'compatibility-report' && compatibilityReport !== null ? (
+        <ReportDialog
+          title="Compatibility Report"
+          summary={
+            compatibilityReport.hasContent
+              ? compatibilityReportSummary(compatibilityReport)
+              : 'Nothing to report.'
+          }
+          sections={compatibilitySections(compatibilityReport)}
+          notes={compatibilityReport.notes}
+          emptyMessage="There is no preserved, unsupported or unenforced content in this workbook."
+          copyText={compatibilityReport.text}
+          onClose={closeDialog}
+        />
+      ) : null}
+
+      {dialog === 'export-report' ? (
+        <ReportDialog
+          title="Export Report"
+          summary={
+            lastExportReport === null
+              ? 'No export has been reported since this workbook was opened.'
+              : exportReportSummary(lastExportReport)
+          }
+          sections={lastExportReport === null ? [] : exportSections(lastExportReport)}
+          emptyMessage="No export has been reported since this workbook was opened."
+          copyText={lastExportReport?.text ?? 'Export report\n\nNothing to report.'}
+          onClose={closeDialog}
         />
       ) : null}
     </div>

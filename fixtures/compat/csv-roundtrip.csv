@@ -1,0 +1,6 @@
+Product,Region,Units,Unit price,Total,Note
+Widget,North,3,12.5,37.50,"Gift wrap, blue"
+Gadget,South,2,1234.5,"2,469.00","Quoted ""as-is"""
+Thing,East,0,0.5,0.00,"Multi-line
+note with a comma, and ""quotes"""
+Café,West,1,€2.50,€2.50,Non-ASCII snowman ☃
