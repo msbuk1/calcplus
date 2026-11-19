@@ -309,10 +309,10 @@ const MANIFEST = {
   producers: [
     {
       id: 'excel-365',
-      file: 'excel-365.xlsx',
+      file: 'excel-365.xlsm',
       kind: 'maintainer-capture',
-      status: 'absent',
-      note: 'Capture an exported workbook on the maintainer’s Windows PC with Excel 365; the manual repair check is the release step.',
+      status: 'captured',
+      note: 'Captured 2026-11-19 from the maintainer’s demo run (created and saved in Excel 365; macro-enabled export with a chart, hyperlinks and formulas). The manual repair check passed on the same run.',
     },
     {
       id: 'excel-2019',
