@@ -147,3 +147,6 @@ lane 1.
   ODF container checks. Pivot output `location ref` transforms are confirmed
   against workbook-model §10 ("anchor indexes for opaque … pivots"). Wave 2
   (lanes 3, 4, 6) not yet launched.
+- 2026-11-19: the M5 exit gate passed on the maintainer's Windows machine
+  (clipboard interoperability spike and oracle goldens verified against
+  Excel 365). The M6 exit gate is unblocked.

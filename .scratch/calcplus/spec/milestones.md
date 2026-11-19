@@ -196,6 +196,13 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 4. Fill and insert/delete are one undo transaction each.
 5. 100k-row sort and filter meet the performance budgets.
 
+**Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 4 and 5
+were proven by the local conformance and performance suites; criterion 3 was
+verified by the maintainer on Windows against Excel 365 with the clipboard
+interoperability spike and the oracle golden captures. The M4A win32 visual
+golden was refreshed after the merged-label renderer fix. M5 is closed, and
+the M6 exit gate is no longer blocked on it.
+
 ### M6 — File fidelity (14-20 pw)
 
 **Build**
