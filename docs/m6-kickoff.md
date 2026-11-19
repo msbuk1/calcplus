@@ -87,3 +87,56 @@ per `file-compat.md` §9, and wire identity (F1-F2), styles/strings/caches
   (`src/commands/command-inventory.json`) is authoritative for chrome.
 - Goldens and fixture changes are reviewed like code; a diff that only updates
   expectations is flagged.
+
+## Lane split (added 2026-11-19)
+
+Six parallel lanes cover the M6 build list. `file-compat.md` §9 (F1-F24) is
+the deliverable list; each lane owns its fixtures end to end.
+
+| # | Lane | Scope | Fixtures | Core files | Effort |
+|---|---|---|---|---|---|
+| 1 | IO hardening + Tier C | Zip ratio and size caps, XXE-safe parsing, CFB/encrypted rejection with the §5 message, truncated-package rejection with no partial import, Strict-namespace rejection | F18-F21 | `src/ooxml/zip.ts`, `src/ooxml/xml.ts` (hardening, no API change), rejection paths in `src/ooxml/open.ts` | 1.5-2 pw |
+| 2 | Write-side fidelity core | No-op byte identity; styles and shared strings append-only; cached results kept, uncached recalculate on save; unsupported functions stale or `#NAME?`; shared and array formulas preserved read-only; date1904 flag | F1-F8, F15 | `src/ooxml/save.ts`, `open.ts` (parse side), `styles-xml.ts`, `shared-strings.ts`, `worksheet-xml.ts` (formula and cached-value paths), `workbook-xml.ts` | 4-5 pw |
+| 3 | Sheet + content features | Comments and threaded comments/persons, hyperlinks, validation, protection and hidden/veryHidden, print setup, rich-text runs (flatten with a warning on edit), defined names including quoted sheet references | F12-F14, F16, F17, F23 | new modules in the `autofilter-xml.ts` pattern (`comments-xml.ts`, `threaded-comments-xml.ts`, `validation-xml.ts`, page setup) | 3-4 pw |
+| 4 | Preserved parts + macros | Byte-identical preservation of charts, images, shapes, pivots and caches, external links, VBA, signatures, tables, slicers, sparklines, custom XML and properties; a dirty sheet keeps its unmodelled children and their order; `.xlsm` to `.xlsx` confirmation | F9-F11 | new `src/ooxml/part-policy.ts`; `save.ts` consults it | 2.5-3 pw |
+| 5 | Structural transforms hardening | Drawing anchors, chart series ranges, pivot source ranges, comment and hyperlink positions through structural edits; Tier B anchors; transform or block, never a silently stale anchor; unsupported formula constructs never leave stale text | exit criterion 5 (proves the F9/F10 behaviours) | `src/model/range-transform.ts`, `src/ooxml/structure-patch.ts`, `src/ooxml/patch/*` | 3-4 pw |
+| 6 | Reports + producers + CSV | Compatibility and export reports consuming the banked unsupported-rule listing; producer matrix (Excel 365/2019, LibreOffice, Google Sheets, openpyxl, SheetJS, xlsx-populate); repair-free verifier; CSV RFC 4180 round trip | F22, F24 | new `src/ooxml/report.ts`; `scripts/fixtures/groups/producers.mjs`; CSV module | 2-3 pw |
+
+### Boundary rules
+
+1. **Save pipeline (lanes 2 and 4).** Lane 4's preservation policy lives in
+   its own `src/ooxml/part-policy.ts` (which parts are copied verbatim versus
+   rewritten); lane 2's writers consult it. Neither lane restructures
+   `save.ts` beyond its own concern.
+2. **Wiring hooks are orchestrator-merged.** Lanes 3 and 6 write complete
+   modules and leave the few hook lines in `worksheet-xml.ts`, `save.ts` or
+   `open.ts` for the orchestrator to add at lane end. The same applies to
+   lane 1's rejection paths in `open.ts`. Nothing else touches a shared
+   writer mid-lane.
+3. **Transforms are lane 5's.** `range-transform.ts`, `structure-patch.ts`
+   and `src/ooxml/patch/*` belong to lane 5; other lanes report transform
+   needs to it instead of editing.
+4. **Fixture groups are single-file.** The generator is modularised
+   (`scripts/fixtures/parts.mjs` plus `scripts/fixtures/groups/*.mjs`): each
+   lane authors its fixtures in one new group module and never edits
+   `generate-fixtures.mjs`. See `scripts/fixtures/groups/README.md`.
+
+### Parallelism
+
+All six lanes can run at once under the boundary rules; the only real
+contact is lanes 2 and 4 on the save pipeline, dissolved by rule 1. When
+staffing is limited: wave 1 is lanes 1, 2 and 5 (cheapest independent lane,
+critical path, riskiest); wave 2 is lanes 3, 4 and 6. Lane 6's reports stay
+last even when its CSV, producer and verifier work starts early; they
+consume listing hooks from lanes 2, 4 and 5.
+
+### Exit-criteria coverage
+
+1 from all lanes (F1-F24); 2 from lanes 2 and 4; 3 and 4 from lane 6 plus
+the maintainer's manual Windows runs; 5 from lane 5; 6 from lane 4; 7 from
+lane 1.
+
+### Status
+
+- 2026-11-19: split recorded; fixture generator modularised (regeneration
+  byte-identical); wave 1 (lanes 1, 2, 5) launched.
