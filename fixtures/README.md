@@ -27,7 +27,11 @@ are not committed yet; the capture runs manually on the maintainer's PC. See
 `scripts/fixtures/groups/producers.mjs` writes the producer fixtures with
 openpyxl, LibreOffice headless, SheetJS and xlsx-populate when those tools are
 installed, normalises the ZIP container and document timestamps so regeneration
-is byte-identical, and prints every producer it could not generate. Excel 365,
+is byte-identical, and prints every producer it could not generate. The
+`xlsx` package behind the SheetJS fixture is deliberately **not** a dependency
+(0.18.5 advisory, maintainer review 2026-11-19): the committed fixture stands,
+and `xlsx@0.18.5` is installed temporarily only when that fixture needs
+regenerating. Excel 365,
 Excel 2019 and Google Sheets exports are captured by the maintainer on their own
 machine; drop the file into `compat/producers/` under the name in
 `manifest.json`.

@@ -88,7 +88,12 @@ export async function producerAvailability() {
       available: producerAvailable('soffice', ['--version']),
       reason: 'soffice (LibreOffice headless)',
     },
-    { id: 'sheetjs', available: await moduleAvailable('xlsx'), reason: 'the xlsx npm package' },
+    {
+      id: 'sheetjs',
+      available: await moduleAvailable('xlsx'),
+      reason:
+        'the xlsx npm package (the fixture is committed; install xlsx@0.18.5 temporarily to regenerate)',
+    },
     {
       id: 'xlsx-populate',
       available: await moduleAvailable('xlsx-populate'),
