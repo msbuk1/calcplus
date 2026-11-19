@@ -1,6 +1,6 @@
 # 31 — Selection active cell and copy-marquee interaction parity
 
-Status: open
+Status: resolved
 Type: oracle parity
 Blocked by: the context-menu submenu work (shared files: `App.tsx`, `Menu.tsx`)
 

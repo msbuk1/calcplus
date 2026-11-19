@@ -1,6 +1,6 @@
 # 29 — Selection-aware command targeting (pin the cross-cutting rule)
 
-Status: open
+Status: resolved
 Type: hardening
 Blocked by: none
 
