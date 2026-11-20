@@ -235,7 +235,10 @@ export class CanvasRenderFrame implements RenderFrame {
     const { context } = this;
     context.save();
     context.fillStyle = fill;
+    // The highlighting overlays clip to the panes like the selection paint
+    // (ticket 46): a range scrolled under a frozen strip never tints it.
     for (const pane of panes) {
+      if (pane.rect.width <= 0 || pane.rect.height <= 0) continue;
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
       const startCol = Math.max(range.startCol, pane.startCol);
@@ -243,17 +246,20 @@ export class CanvasRenderFrame implements RenderFrame {
       if (startRow > endRow || startCol > endCol) continue;
       const topLeft = cellRect(state.projection, layout, scrollX, scrollY, startRow, startCol);
       const bottomRight = cellRect(state.projection, layout, scrollX, scrollY, endRow, endCol);
-      context.fillRect(
-        topLeft.x,
-        topLeft.y,
-        bottomRight.x + bottomRight.width - topLeft.x,
-        bottomRight.y + bottomRight.height - topLeft.y,
+      this.paintInPane(pane, () =>
+        context.fillRect(
+          topLeft.x,
+          topLeft.y,
+          bottomRight.x + bottomRight.width - topLeft.x,
+          bottomRight.y + bottomRight.height - topLeft.y,
+        ),
       );
     }
     context.strokeStyle = stroke;
     context.lineWidth = 2;
     context.setLineDash(dashed ? [6, 3] : []);
     for (const pane of panes) {
+      if (pane.rect.width <= 0 || pane.rect.height <= 0) continue;
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
       const startCol = Math.max(range.startCol, pane.startCol);
@@ -261,11 +267,13 @@ export class CanvasRenderFrame implements RenderFrame {
       if (startRow > endRow || startCol > endCol) continue;
       const topLeft = cellRect(state.projection, layout, scrollX, scrollY, startRow, startCol);
       const bottomRight = cellRect(state.projection, layout, scrollX, scrollY, endRow, endCol);
-      context.strokeRect(
-        topLeft.x + 1,
-        topLeft.y + 1,
-        Math.max(0, bottomRight.x + bottomRight.width - topLeft.x - 2),
-        Math.max(0, bottomRight.y + bottomRight.height - topLeft.y - 2),
+      this.paintInPane(pane, () =>
+        context.strokeRect(
+          topLeft.x + 1,
+          topLeft.y + 1,
+          Math.max(0, bottomRight.x + bottomRight.width - topLeft.x - 2),
+          Math.max(0, bottomRight.y + bottomRight.height - topLeft.y - 2),
+        ),
       );
     }
     context.restore();

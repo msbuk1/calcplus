@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { buildXlsx } from '../helpers/build-xlsx';
 import {
@@ -92,6 +93,25 @@ async function wheel(page: Page, deltaX: number, deltaY: number): Promise<void> 
 /** The painted signature of a region, for equality between two scroll offsets. */
 async function signature(page: Page, region: Region): Promise<string> {
   return regionSignature(page, region.x, region.y, region.width, region.height);
+}
+
+/**
+ * A hash of the composited page pixels of a canvas region. Unlike the canvas
+ * signature this includes DOM overlays (the marquee is DOM chrome), so it can
+ * prove that an overlay does not paint inside a frozen strip.
+ */
+async function regionHash(page: Page, region: Region): Promise<string> {
+  const box = await page.getByTestId('grid-canvas').boundingBox();
+  if (box === null) throw new Error('The grid canvas has no box');
+  const png = await page.screenshot({
+    clip: {
+      x: box.x + region.x,
+      y: box.y + region.y,
+      width: region.width,
+      height: region.height,
+    },
+  });
+  return createHash('sha256').update(png).digest('hex');
 }
 
 /** The dark pixels in a region: label and cell text. */
@@ -328,4 +348,101 @@ test('a selection across the divider still tints both panes round the active cel
   expect(active.r, JSON.stringify(active)).toBeGreaterThan(245);
   expect(active.g).toBeGreaterThan(245);
   expect(active.b).toBeGreaterThan(245);
+});
+
+test('the copy marquee leaves no ink in the frozen strip', async ({ page }) => {
+  // The marquee is a DOM overlay, so its ink is measured from composited page
+  // pixels, not from the canvas (ticket 46).
+  await openGrid(page, { rows: 2, cols: 0 });
+  const band = await frozenRowBand(page, 2);
+  const divider = band.y + band.height;
+  const canvas = await page.getByTestId('grid-canvas').boundingBox();
+  if (canvas === null) throw new Error('The grid canvas has no box');
+
+  // Copy a cell just below the strip: the marquee sits clear of the band.
+  await clickCell(page, 21, 3);
+  await page.keyboard.press('Control+c');
+  const marquee = page.getByTestId('copy-marquee');
+  await expect(marquee).toBeVisible();
+  await settle(page);
+  const cleanBand = await regionHash(page, band);
+
+  // Scroll so the marquee's rectangle straddles the divider: its top is above
+  // it and its bottom below.
+  await wheel(page, 0, 400);
+  await wheel(page, 0, -10);
+  const straddling = await cellRect(page, 21, 3);
+  expect(straddling.y).toBeLessThan(divider);
+  expect(straddling.y + straddling.height).toBeGreaterThan(divider);
+  expect(await regionHash(page, band), 'the marquee painted inside the frozen strip').toBe(
+    cleanBand,
+  );
+
+  // The clip cuts the paint, not the geometry: the element is still the range
+  // the paste targets, so its box matches the cells.
+  const clipped = await marquee.boundingBox();
+  expect(clipped).not.toBeNull();
+  expect(clipped?.x).toBeCloseTo(canvas.x + straddling.x, 0);
+  expect(clipped?.y).toBeCloseTo(canvas.y + straddling.y, 0);
+  const clipPath = await marquee.evaluate((element) => getComputedStyle(element).clipPath);
+  expect(clipPath, 'the marquee has no pane clip').not.toBe('none');
+
+  // Scroll back into view: the marquee still tracks its cell and the band is
+  // untouched.
+  await wheel(page, 0, -190);
+  const visible = await cellRect(page, 21, 3);
+  expect(visible.y).toBeGreaterThanOrEqual(divider);
+  const tracked = await marquee.boundingBox();
+  expect(tracked?.x).toBeCloseTo(canvas.x + visible.x, 0);
+  expect(tracked?.y).toBeCloseTo(canvas.y + visible.y, 0);
+  await settle(page);
+  expect(await regionHash(page, band)).toBe(cleanBand);
+});
+
+test('the Format Painter highlight leaves no ink in the frozen strip', async ({ page }) => {
+  await openGrid(page, { rows: 2, cols: 0 });
+  const band = await frozenRowBand(page, 2);
+  const divider = band.y + band.height;
+  const canvas = await page.getByTestId('grid-canvas').boundingBox();
+  if (canvas === null) throw new Error('The grid canvas has no box');
+  const cleanBand = await regionHash(page, band);
+
+  // Pick up the painter, then hover a scrolling cell: the target highlight is
+  // painted below the strip.
+  await clickCell(page, 8, 3);
+  await page.getByRole('button', { name: 'Format Painter' }).click();
+  await expect(page.getByTestId('status-message')).toContainText('Format Painter picked up');
+  const target = await cellRect(page, 21, 3);
+  await page.mouse.move(
+    canvas.x + target.x + target.width / 2,
+    canvas.y + target.y + target.height / 2,
+  );
+  await settle(page);
+  const tint = await pixelAt(page, target.x + target.width / 2, target.y + target.height / 2);
+  expect(tint.r, JSON.stringify(tint)).toBeGreaterThan(245);
+  expect(tint.r).toBeGreaterThan(tint.b + 20);
+
+  // Scroll without moving the pointer: the target slides under the strip. Its
+  // tint and dashed border must be cut at the divider.
+  await page.mouse.wheel(0, 400);
+  await page.mouse.wheel(0, -10);
+  await settle(page);
+  const hidden = await cellRect(page, 21, 3);
+  expect(hidden.y).toBeLessThan(divider);
+  expect(hidden.y + hidden.height).toBeGreaterThan(band.y);
+  expect(
+    await regionHash(page, band),
+    'the painter highlight painted inside the frozen strip',
+  ).toBe(cleanBand);
+
+  // Scroll back: the same cell is highlighted again, and the strip is still
+  // clean.
+  await page.mouse.wheel(0, -190);
+  await settle(page);
+  const visible = await cellRect(page, 21, 3);
+  expect(visible.y).toBeGreaterThanOrEqual(divider);
+  const again = await pixelAt(page, visible.x + visible.width / 2, visible.y + visible.height / 2);
+  expect(again.r, JSON.stringify(again)).toBeGreaterThan(245);
+  expect(again.r).toBeGreaterThan(again.b + 20);
+  expect(await regionHash(page, band)).toBe(cleanBand);
 });

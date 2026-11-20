@@ -32,6 +32,20 @@ async function selectRange(page: Page, address: string): Promise<void> {
   await expect(nameBox).toHaveValue(address);
 }
 
+/**
+ * Wait for the scheduled canvas paint, not just the DOM update: the header
+ * glyph pixels below are read from the canvas, which repaints on the next
+ * animation frame and can otherwise still show the previous glyph.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 test('a fresh sheet offers Freeze Panes; the label follows the split', async ({ page }) => {
   await page.goto('/?fsa=0');
   await page.getByTestId('file-menu-button').click();
@@ -135,6 +149,7 @@ test('the AutoFilter button in a header cell opens the column dropdown', async (
   const headerCell = await cellRect(page, 0, 0);
   const glyphX = headerCell.x + headerCell.width - 9;
   const glyphY = headerCell.y + headerCell.height / 2;
+  await settle(page);
   const arrowPixel = await pixelAt(page, glyphX, glyphY);
 
   // Pointer: the DOM button opens the existing dropdown, not a new surface.
@@ -163,6 +178,7 @@ test('the AutoFilter button in a header cell opens the column dropdown', async (
   const filtered = page.getByRole('button', { name: 'Filter column A, filtered' });
   await expect(filtered).toBeVisible();
   await expect(filtered).toHaveAttribute('data-filtered', 'true');
+  await settle(page);
   const funnelPixel = await pixelAt(page, glyphX, glyphY);
   expect(funnelPixel).not.toEqual(arrowPixel);
   expect(funnelPixel.r).toBeLessThan(200);

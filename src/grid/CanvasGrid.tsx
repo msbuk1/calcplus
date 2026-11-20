@@ -2186,7 +2186,8 @@ export function CanvasGrid({
       : rangeOverlayRect(projection, layout, scrollRef.current.x, scrollRef.current.y, fillPreview);
 
   // The copy marquee is the paste destination; like the fill preview it is
-  // view state and never enters the model or the undo log (ticket 31 B).
+  // view state and never enters the model or the undo log (ticket 31 B). Its
+  // border is clipped to the pane the range belongs to (ticket 46).
   const marqueeRect =
     marqueeRange === null
       ? null
@@ -2197,6 +2198,10 @@ export function CanvasGrid({
           scrollRef.current.y,
           marqueeRange,
         );
+  const marqueeClipPath =
+    marqueeRect === null || marqueeRange === null
+      ? null
+      : paneClipPath(marqueeRect, paneClipRect(projection, layout, marqueeRange, marqueeRect));
 
   // The comment popup and the link tooltip are anchored to their cells; the
   // paint re-places them every frame so they track scrolling.
@@ -2362,6 +2367,7 @@ export function CanvasGrid({
             top: `${marqueeRect.y}px`,
             width: `${marqueeRect.width}px`,
             height: `${marqueeRect.height}px`,
+            clipPath: marqueeClipPath ?? undefined,
           }}
         />
       ) : null}
@@ -2533,6 +2539,50 @@ function rangeOverlayRect(
   };
 }
 
+/**
+ * The part of an overlay rectangle its pane can show (ticket 46).
+ *
+ * The overlay element keeps its whole rectangle — that is the range it
+ * addresses — and only the painted edge is clipped. A range that starts in the
+ * scrolling rows belongs to the scrolling pane, so its overlay stops at the
+ * freeze divider; a range that starts in the frozen rows owns the frozen band.
+ * A range is contiguous, so the panes it touches always form one rectangle.
+ */
+function paneClipRect(
+  projection: SheetProjection,
+  layout: PaneLayout,
+  range: GridRange,
+  rect: CellRect,
+): CellRect {
+  const left =
+    range.startCol >= projection.freezeCols
+      ? layout.headerWidth + layout.frozenWidth
+      : layout.headerWidth;
+  const top =
+    range.startRow >= projection.freezeRows
+      ? layout.headerHeight + layout.frozenHeight
+      : layout.headerHeight;
+  const right = layout.headerWidth + layout.frozenWidth + layout.scrollRegionWidth;
+  const bottom = layout.headerHeight + layout.frozenHeight + layout.scrollRegionHeight;
+  const x = Math.max(rect.x, left);
+  const y = Math.max(rect.y, top);
+  return {
+    x,
+    y,
+    width: Math.max(0, Math.min(rect.x + rect.width, right) - x),
+    height: Math.max(0, Math.min(rect.y + rect.height, bottom) - y),
+  };
+}
+
+/** The `clip-path` inset that cuts an overlay rectangle to its pane's part. */
+function paneClipPath(rect: CellRect, clip: CellRect): string {
+  const top = Math.max(0, clip.y - rect.y);
+  const left = Math.max(0, clip.x - rect.x);
+  const right = Math.max(0, rect.x + rect.width - (clip.x + clip.width));
+  const bottom = Math.max(0, rect.y + rect.height - (clip.y + clip.height));
+  return `inset(${top}px ${right}px ${bottom}px ${left}px)`;
+}
+
 const POINTING_KEYS: ReadonlySet<string> = new Set([
   'ArrowUp',
   'ArrowDown',
@@ -2643,6 +2693,10 @@ function positionMarquee(
   element.style.top = `${rect.y}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
+  // Keep the border out of the frozen strips (ticket 46). The element keeps
+  // its full rectangle, so the marquee's geometry and the paste target do not
+  // move; only the painted edge is cut at the divider.
+  element.style.clipPath = paneClipPath(rect, paneClipRect(projection, layout, range, rect));
 }
 
 /** The rectangle a hover overlay hangs from; a link uses its merged range. */
