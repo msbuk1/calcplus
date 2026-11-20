@@ -1372,6 +1372,18 @@ export class CanvasRenderFrame implements RenderFrame {
         }
       }
       if (scrollingRowPane !== undefined) {
+        // A partially scrolled row must not paint its number over the frozen
+        // rows above the divider; clip the scrolling row header strip at the
+        // divider, exactly as the scrolling column strip is clipped at its own.
+        context.save();
+        context.beginPath();
+        context.rect(
+          0,
+          layout.headerHeight + layout.frozenHeight,
+          layout.headerWidth,
+          Math.max(0, headerBottom - layout.headerHeight - layout.frozenHeight),
+        );
+        context.clip();
         for (let row = scrollingRowPane.startRow; row <= scrollingRowPane.endRow; row += 1) {
           if (projection.isRowHidden(row)) continue;
           if (projection.rowHeight(row) <= 0) continue;
@@ -1385,6 +1397,7 @@ export class CanvasRenderFrame implements RenderFrame {
             row >= range.startRow && row <= range.endRow,
           );
         }
+        context.restore();
       }
     }
 
