@@ -40,11 +40,13 @@ const releaseDir = join(root, 'release');
 const notices = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'];
 
 const args = process.argv.slice(2);
-const knownFlags = new Set(['--windows', '--linux', '--require-go']);
+const knownFlags = new Set(['--windows', '--linux', '--require-go', '--no-build']);
 for (const argument of args) {
   if (!knownFlags.has(argument)) {
     console.error(`build-launcher: unknown option ${argument}`);
-    console.error('  Usage: node scripts/build-launcher.mjs [--windows] [--linux] [--require-go]');
+    console.error(
+      '  Usage: node scripts/build-launcher.mjs [--windows] [--linux] [--require-go] [--no-build]',
+    );
     process.exit(1);
   }
 }
@@ -76,6 +78,17 @@ if (goVersion.includes('gccgo')) {
 }
 console.log(`Using ${goVersion}`);
 
+// The app is rebuilt first so the embedded copy is never stale: the release
+// once shipped a bundle from before the ribbon icon work because dist/ was
+// left over from an earlier build. --no-build keeps the old behaviour.
+if (!args.includes('--no-build')) {
+  console.log('Building the app (npm run build) so the embedded copy is current');
+  const build = spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: false });
+  if (build.status !== 0) {
+    console.error('build-launcher: npm run build failed; nothing was packaged.');
+    process.exit(1);
+  }
+}
 if (!existsSync(join(appDist, 'index.html'))) {
   console.error('build-launcher: dist/index.html is missing. Run `npm run build` first.');
   process.exit(1);
