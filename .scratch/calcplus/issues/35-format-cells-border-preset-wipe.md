@@ -1,6 +1,6 @@
 # 35 — Format Cells border presets with no edge change wipe the cell style
 
-Status: open
+Status: resolved
 Type: defect (data loss in an accepted feature)
 Blocked by: none
 
@@ -53,3 +53,25 @@ work.
 ## Answer
 
 Pending.
+
+## Resolution (2026-11-20)
+
+The classic wipe (a null patch writing style 0) was already fixed by the
+chrome sweep (`4051f8b`). The remaining leak was subtler: a patch that
+resolved to the cell's **current appearance** still went through
+`findOrAppendStyle`, which can pick a different record with the same look —
+rewriting the cell's style id (losing its own record) and opening a spurious
+transaction.
+
+Fixed once at the shared choke point (`applyPatchForCell` in
+`src/commands/format.ts`): the patched style is compared with the cell's
+current record by `styleSignature`, and a match leaves the cell untouched.
+This closes the no-op write for every patch command — borders, font, fill,
+alignment, number format and toggles — not just the presets.
+
+Accepted limitations (pre-existing, recorded): an applied style write still
+creates a record without the source `xf` attributes outside the model (needs
+the styles-writer work in `style-table.ts`), and `formatBorderCommand`'s
+`preset` type should widen to include `'custom'` in a cleanup.
+
+Tests: `tests/m4c-format-border-noop.test.ts` (red first, green after).

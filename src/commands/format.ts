@@ -13,7 +13,12 @@ import type {
 } from '@model/types';
 import { cellIsEmpty, getCell } from '@model/types';
 import { borderEdge } from '@model/style';
-import { findOrAppendStyle, patchedStyleInput, type StylePatch } from '@model/style-table';
+import {
+  findOrAppendStyle,
+  patchedStyleInput,
+  styleSignature,
+  type StylePatch,
+} from '@model/style-table';
 import { normalizeFormatCode } from '@view/number-format';
 import type { StyleSetChange } from './types';
 import type { CommandContext, CommandDefinition, CommandResult } from './types';
@@ -495,10 +500,15 @@ function applyPatchForCell(
   const change = buildChange(target, (cell, row, col) => {
     const patch = patchFor(cell, row, col);
     if (patch === null || Object.keys(patch).length === 0) return null;
-    return findOrAppendStyle(
-      target.workbook,
-      patchedStyleInput(styleRecordForCell(target, cell), patch),
-    );
+    const base = styleRecordForCell(target, cell);
+    const next = patchedStyleInput(base, patch);
+    // A patch that resolves to the cell's current appearance is not a change.
+    // Writing it would still rewrite the cell's style id and could pick an
+    // equal-looking record from elsewhere in the table, which loses the cell's
+    // own record (and its source XML). Leave the cell untouched instead
+    // (issue 35: a border preset that changes no edge must not wipe the cell).
+    if (styleSignature(next) === styleSignature(base)) return null;
+    return findOrAppendStyle(target.workbook, next);
   });
   return change === null ? { changes: [] } : { changes: [change] };
 }
