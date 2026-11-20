@@ -129,7 +129,9 @@ function runMerge(context: CommandContext, args: MergeArgs, mode: MergeMode): Co
     const centered = centerAnchorStyle(context, sheet, plan.range);
     if (centered !== null) changes.push(centered);
   }
-  return { changes };
+  // A merged cell is one cell: the selection becomes the merged range, and the
+  // caller makes its top-left the active cell (ticket 38).
+  return { changes, selectionAfter: { ...plan.range } };
 }
 
 function runUnmerge(context: CommandContext, args: MergeArgs): CommandResult {

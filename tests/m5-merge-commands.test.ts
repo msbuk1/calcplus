@@ -92,6 +92,9 @@ describe('merge.center', () => {
 
     const result = dispatch(session, 'merge.center', sheet, selection, { confirm: true });
     expect(result.ui).toBeUndefined();
+    // A merged cell is one cell: the selection becomes the merged range, and
+    // the caller makes its top-left the active cell (ticket 38).
+    expect(result.selectionAfter).toEqual(selection);
     expect(session.transactionCount).toBe(1);
     expect(sheet.merges).toEqual([{ range: selection }]);
     expect(getCell(sheet, 0, 0)?.value).toEqual(textValue('keep'));
@@ -162,7 +165,8 @@ describe('merge.across', () => {
     const selection = range(0, 0, 1, 2);
     const before = sheetState(sheet);
 
-    dispatch(session, 'merge.across', sheet, selection, { confirm: true });
+    const result = dispatch(session, 'merge.across', sheet, selection, { confirm: true });
+    expect(result.selectionAfter).toEqual(selection);
     expect(session.transactionCount).toBe(1);
     expect(sheet.merges).toEqual([{ range: range(0, 0, 0, 2) }, { range: range(1, 0, 1, 2) }]);
     expect(getCell(sheet, 0, 0)?.value).toEqual(textValue('top'));

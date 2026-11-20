@@ -80,10 +80,26 @@ describe('projection integration seams', () => {
     expect(projection.isRowHidden(1)).toBe(false); // 'keep' passes.
     expect(projection.isRowHidden(3)).toBe(true); // manually hidden stays hidden.
 
-    // Clearing the filter reveals only the derived layer.
+    // A filter-hidden row collapses to zero height exactly like a stored hidden
+    // row, so the visible rows sit next to each other (sort-autofilter §3.3).
+    const visibleHeight = projection.rowHeight(1);
+    expect(visibleHeight).toBeGreaterThan(0);
+    expect(projection.rowHeight(2)).toBe(0);
+    expect(projection.rowHeight(3)).toBe(0);
+    expect(projection.rowY(2)).toBe(projection.rowY(1) + visibleHeight);
+    expect(projection.rowY(3)).toBe(projection.rowY(2));
+    // The hit test skips the collapsed rows: the offset at the start of the
+    // hidden run belongs to the next visible row, never to a hidden one.
+    expect(projection.rowAt(projection.rowY(2))).toBe(4);
+
+    // Clearing the filter reveals only the derived layer. The manual row stays
+    // collapsed and the filter-hidden row's own height comes back.
     sheet.autoFilter = null;
     const cleared = createSheetProjection(opened.workbook, sheet.id, { version: 2 });
     expect(cleared.isRowHidden(2)).toBe(false);
     expect(cleared.isRowHidden(3)).toBe(true);
+    expect(cleared.rowHeight(2)).toBe(visibleHeight);
+    expect(cleared.rowHeight(3)).toBe(0);
+    expect(cleared.rowY(3)).toBe(cleared.rowY(2) + visibleHeight);
   });
 });

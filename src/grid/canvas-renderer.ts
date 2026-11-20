@@ -1,5 +1,5 @@
 import type { ProjectedCell, ProjectedStyle, SheetProjection } from '@view/types';
-import type { GridCellAddress, GridRenderState, RenderFrame } from './frame';
+import type { GridCellAddress, GridRange, GridRenderState, RenderFrame } from './frame';
 import {
   cfFillColor,
   cfPaintOps,
@@ -1163,7 +1163,11 @@ export class CanvasRenderFrame implements RenderFrame {
     scrollY: number,
   ): void {
     const { context } = this;
-    const range = selectionRange(state.selection);
+    const selected = selectionRange(state.selection);
+    // A merged cell is one cell (ticket 38). A collapsed selection that lands
+    // inside a merged range paints the whole merged rectangle; otherwise the
+    // selected range is already the geometry to paint.
+    const range = selectionPaintRange(state.projection, selected);
     // A collapsed selection is one cell: the active-cell box is the selection,
     // and it keeps the single-cell look. A range leaves the active cell
     // unfilled — the grid background shows through it — with no outline of its
@@ -1539,6 +1543,24 @@ export class CanvasRenderFrame implements RenderFrame {
     this.measureCache.clear();
     this.patternCache.clear();
   }
+}
+
+/**
+ * The rectangle the selection paint covers. A collapsed selection that lands
+ * inside a merged range is one merged cell, so it covers the whole range
+ * (ticket 38); a selection that already spans cells keeps its rectangle,
+ * which contains every merged cell it covers.
+ */
+function selectionPaintRange(projection: SheetProjection, range: GridRange): GridRange {
+  if (range.startRow !== range.endRow || range.startCol !== range.endCol) return range;
+  const merge = projection.mergeAt(range.startRow, range.startCol);
+  if (merge === null) return range;
+  return {
+    startRow: merge.anchorRow,
+    startCol: merge.anchorCol,
+    endRow: merge.anchorRow + merge.rowSpan - 1,
+    endCol: merge.anchorCol + merge.colSpan - 1,
+  };
 }
 
 /**

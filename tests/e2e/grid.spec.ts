@@ -1,7 +1,19 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { cellRect, clickCell, dragSelect, openFixture, pixelAt } from './grid-helpers';
 
 const gridFixture = 'm2-grid.xlsx';
+
+/** Run one entry of the Merge split button, as the ribbon offers it. */
+async function runMerge(page: Page, label: string): Promise<void> {
+  const anchor = page.locator('[data-command="merge.center"]').first();
+  await page
+    .locator('.ribbon-split')
+    .filter({ has: anchor })
+    .locator('.ribbon-split-toggle')
+    .click();
+  await page.getByRole('menuitem', { name: label, exact: true }).click();
+}
 
 test('selects a cell and mirrors the address in the name box', async ({ page }) => {
   await openFixture(page, gridFixture);
@@ -154,6 +166,105 @@ test('a drag keeps its origin active and paints it unfilled inside the range', a
       b: 232,
     });
   }
+});
+
+test('a merged cell is one cell in the selection paint (ticket 38)', async ({ page }) => {
+  await openFixture(page, gridFixture);
+  // F10:G12 is empty in the fixture, so every sampled pixel is selection paint.
+  await dragSelect(page, 9, 5, 11, 6);
+  await runMerge(page, 'Merge Cells');
+
+  // The selection after the merge is the merged range with its top-left active.
+  await expect(page.getByTestId('name-box')).toHaveValue('F10:G12');
+  const state = await page.evaluate(() => window.__calcplus.getState());
+  expect(state.active).toEqual({ row: 9, col: 5 });
+  expect(state.selection.extent).toEqual({
+    kind: 'range',
+    range: { startRow: 9, startCol: 5, endRow: 11, endCol: 6 },
+  });
+
+  // Pressing inside the merged cell keeps it one cell: no original sub-cell is
+  // tinted on its own (the capture showed F10 tinted inside the border).
+  await clickCell(page, 10, 6);
+  await expect(page.getByTestId('name-box')).toHaveValue('F10:G12');
+  const cells: readonly (readonly [number, number])[] = [
+    [9, 5],
+    [9, 6],
+    [10, 5],
+    [10, 6],
+    [11, 5],
+    [11, 6],
+  ];
+  for (const [row, col] of cells) {
+    const rect = await cellRect(page, row, col);
+    const pixel = await pixelAt(page, rect.x + rect.width / 2, rect.y + rect.height / 2);
+    expect({ r: pixel.r, g: pixel.g, b: pixel.b }).toEqual({ r: 255, g: 255, b: 255 });
+  }
+
+  // A multi-cell selection containing the merged cell tints once: every
+  // sub-cell of the merge samples the same colour, and the active cell (E9)
+  // stays unfilled (ticket 31 A).
+  await dragSelect(page, 8, 4, 12, 7);
+  const anchor = await cellRect(page, 8, 4);
+  const anchorPixel = await pixelAt(
+    page,
+    anchor.x + anchor.width / 2,
+    anchor.y + anchor.height / 2,
+  );
+  expect({ r: anchorPixel.r, g: anchorPixel.g, b: anchorPixel.b }).toEqual({
+    r: 255,
+    g: 255,
+    b: 255,
+  });
+  const tinted: { r: number; g: number; b: number }[] = [];
+  for (const [row, col] of cells) {
+    const rect = await cellRect(page, row, col);
+    const pixel = await pixelAt(page, rect.x + rect.width / 2, rect.y + rect.height / 2);
+    tinted.push({ r: pixel.r, g: pixel.g, b: pixel.b });
+  }
+  for (const pixel of tinted) {
+    expect(pixel).toEqual(tinted[0]);
+    expect(pixel.r).toBeLessThan(255);
+    expect(pixel.b).toBeGreaterThan(pixel.r);
+  }
+});
+
+test('undoing Merge Cells restores the cells and the selected range (ticket 38)', async ({
+  page,
+}) => {
+  await openFixture(page, gridFixture);
+  await dragSelect(page, 2, 1, 3, 2);
+  const before = await page.evaluate(() => window.__calcplus.getState().selection);
+  const kept = await page.evaluate(() => window.__calcplus.getCellDisplay(2, 1));
+  const discarded = await page.evaluate(() => window.__calcplus.getCellDisplay(3, 2));
+
+  page.once('dialog', async (dialog) => dialog.accept());
+  await runMerge(page, 'Merge Cells');
+  await expect(page.getByTestId('name-box')).toHaveValue('B3:C4');
+  await expect
+    .poll(() => page.evaluate(() => window.__calcplus.getCellStyle(2, 1)?.merge))
+    .toEqual({ anchorRow: 2, anchorCol: 1, rowSpan: 2, colSpan: 2 });
+  await expect.poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(3, 2))).toBe('');
+
+  await page.keyboard.press('Control+z');
+  await expect
+    .poll(() => page.evaluate(() => window.__calcplus.getCellStyle(2, 1)?.merge))
+    .toBeNull();
+  await expect
+    .poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(3, 2)))
+    .toBe(discarded);
+  expect(await page.evaluate(() => window.__calcplus.getCellDisplay(2, 1))).toBe(kept);
+  // The selection still covers the range the merge command selected.
+  await expect(page.getByTestId('name-box')).toHaveValue('B3:C4');
+  expect(await page.evaluate(() => window.__calcplus.getState().active)).toEqual({
+    row: 2,
+    col: 1,
+  });
+  expect(before).toEqual({
+    anchor: { row: 2, col: 1 },
+    focus: { row: 3, col: 2 },
+    extent: { kind: 'cells' },
+  });
 });
 
 test('jumps to the edge of the data with Ctrl and the arrow keys', async ({ page }) => {

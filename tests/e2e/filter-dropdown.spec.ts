@@ -169,6 +169,54 @@ test('the dropdown opens on Alt+Down and applies a value checklist as one undo s
   await expect(page.getByTestId('filter-records')).toHaveText('5 of 5 records');
 });
 
+test('filter-hidden rows collapse out of the geometry (sort-autofilter §3.3)', async ({ page }) => {
+  await openCityTable(page);
+  // Row geometry with every row visible: header, five city rows.
+  const before = [];
+  for (let row = 0; row < 6; row += 1) before.push(await cellRect(page, row, 0));
+
+  await selectRange(page, 'A1:B6');
+  await enableFilter(page);
+  const dropdown = await openDropdown(page);
+  await dropdown.getByRole('checkbox', { name: 'Leeds' }).uncheck();
+  await dropdown.getByRole('checkbox', { name: 'York' }).uncheck();
+  await dropdown.getByRole('button', { name: 'Apply' }).click();
+  await expect(dropdown).toBeHidden();
+  await expect(page.getByTestId('filter-records')).toHaveText('3 of 5 records');
+
+  // Leeds and York collapse to zero height, so Bath and Cork sit together.
+  const bath = await cellRect(page, 2, 0);
+  const cork = await cellRect(page, 5, 0);
+  expect(bath.height).toBe(before[2].height);
+  expect(cork.height).toBe(before[5].height);
+  expect(cork.y).toBe(bath.y + bath.height);
+  for (const row of [3, 4]) {
+    const hidden = await cellRect(page, row, 0);
+    expect(hidden.height).toBe(0);
+    expect(hidden.y).toBe(cork.y);
+  }
+
+  // A press where a filtered row used to paint hits the visible row that moved
+  // there, never the hidden row itself.
+  const collapsed = await cellRect(page, 3, 0);
+  const canvas = await page.getByTestId('grid-canvas').boundingBox();
+  expect(canvas).not.toBeNull();
+  await page.mouse.click(
+    canvas!.x + collapsed.x + collapsed.width / 2,
+    canvas!.y + collapsed.y + 4,
+  );
+  await expect(page.getByTestId('active-cell')).toHaveText('A6');
+
+  // Clearing the filter restores every row height exactly; the manual layer is
+  // untouched and the visible rows space out again.
+  await openDropdown(page);
+  await page.getByRole('menuitem', { name: "Clear Filter from 'City'" }).click();
+  await expect(page.getByTestId('filter-records')).toHaveText('5 of 5 records');
+  for (let row = 0; row < 6; row += 1) {
+    expect(await cellRect(page, row, 0)).toEqual(before[row]);
+  }
+});
+
 test('Esc cancels the dropdown without a transaction', async ({ page }) => {
   await setupFilteredCity(page);
   const versionBefore = await page.evaluate(() => window.__calcplus.getState().version);

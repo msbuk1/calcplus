@@ -13,7 +13,16 @@ export interface DebugApi {
   getState(): {
     fileName: string | null;
     active: { row: number; col: number };
-    selection: { anchor: { row: number; col: number }; focus: { row: number; col: number } };
+    selection: {
+      anchor: { row: number; col: number };
+      focus: { row: number; col: number };
+      extent:
+        | { kind: 'cells' }
+        | {
+            kind: 'range';
+            range: { startRow: number; startCol: number; endRow: number; endCol: number };
+          };
+    };
     focusZone: string;
     status: string;
     canUndo: boolean;

@@ -1751,7 +1751,7 @@ export function CanvasGrid({
     if (event.button === 2) {
       if (!selectionContains(stateRef.current.selection, target.row, target.col)) {
         endCopyMode();
-        onSelectionChange(collapseSelection(target));
+        onSelectionChange(selectionForCell(current, address));
       }
       return;
     }
@@ -1763,7 +1763,7 @@ export function CanvasGrid({
       beginSelectionDrag(event, base.anchor, target);
       return;
     }
-    onSelectionChange(collapseSelection(target));
+    onSelectionChange(selectionForCell(current, address));
     beginSelectionDrag(event, target, target);
   };
 
@@ -2709,6 +2709,23 @@ function overCommentIndicator(
   const size = Math.max(3, Math.min(8, Math.round(5 * zoom))) + 2;
   const right = rect.x + rect.width;
   return pointX >= right - size && pointX <= right && pointY >= rect.y && pointY <= rect.y + size;
+}
+
+/**
+ * The selection a press on a cell makes. A merged cell is one cell, so a press
+ * anywhere in it selects the whole merged range with its top-left active; a
+ * plain cell collapses to itself (ticket 38).
+ */
+function selectionForCell(projection: SheetProjection, cell: GridCellAddress): GridSelection {
+  const merge = projection.mergeAt(cell.row, cell.col);
+  if (merge === null) return collapseSelection(cell);
+  const range: GridRange = {
+    startRow: merge.anchorRow,
+    startCol: merge.anchorCol,
+    endRow: merge.anchorRow + merge.rowSpan - 1,
+    endCol: merge.anchorCol + merge.colSpan - 1,
+  };
+  return selectionForRange(range, { row: range.startRow, col: range.startCol });
 }
 
 function sameAddress(left: GridCellAddress | null, right: GridCellAddress | null): boolean {

@@ -96,6 +96,11 @@ export function createSheetProjection(
       .map(([col]) => col),
   );
   const rowOverrides = rowHeightOverrides(sheet.rowDimensions, defaultRowHeight);
+  // Filter-hidden rows are derived from the criteria and never stored
+  // (sort-autofilter §3.3), so `rowHeightOverrides` cannot see them. Collapse
+  // every effective-hidden row to zero height, exactly like a stored hidden
+  // row: Excel closes the gap, it does not paint an empty row of normal height.
+  for (const row of hiddenRows) rowOverrides.set(row, 0);
   const columnOverrides = columnWidthOverrides(sheet.columnDimensions, defaultColumnWidth);
   // A drag resize is view state until the pointer is released. Overriding one
   // sparse entry keeps the painted geometry live without touching the model.
