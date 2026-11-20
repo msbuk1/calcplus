@@ -31,7 +31,6 @@ export function AppHeader({
       <div className="brand">
         <img className="brand-icon" src={appIcon} alt="" width={26} height={26} />
         <span className="brand-name">calcplus</span>
-        <span className="brand-phase">M4C chrome</span>
       </div>
       <div className="file-meta">
         <span className="file-name" data-testid="file-name">

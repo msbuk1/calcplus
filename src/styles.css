@@ -117,12 +117,6 @@ a:focus-visible,
   color: var(--text);
 }
 
-.brand-phase {
-  color: var(--disabled);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
 .file-meta {
   display: flex;
   flex: 1;

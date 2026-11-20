@@ -19,7 +19,7 @@ export function AboutDialog({ onClose }: AboutDialogProps): JSX.Element {
         <img className="about-icon" src={appIcon} alt="" width={44} height={44} />
         <div>
           <h3 className="about-name">calcplus</h3>
-          <p className="about-version">Version 0.1.0 — M4C chrome</p>
+          <p className="about-version">Version 0.1.0</p>
           <p>
             A browser-based, single-user spreadsheet that follows Excel desktop behaviour for the
             features it supports.
