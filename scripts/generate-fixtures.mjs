@@ -219,6 +219,157 @@ const identityPackage = packageEntries({
   sharedStrings: identitySharedStrings,
 });
 
+// Ticket 32: a cross-sheet link (and formula, defined name and chart series)
+// that must follow an insert/delete on another sheet. The `Links` sheet holds a
+// hyperlink and no cell that a structural edit moves, so a save that forgets a
+// sibling part leaves it pointing at the old row.
+const crossSheetWorkbookXml = `${XML_HEADER}
+<workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <workbookPr date1904="0"/>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+    <sheet name="Sheet2" sheetId="2" r:id="rId2"/>
+    <sheet name="Links" sheetId="3" r:id="rId3"/>
+  </sheets>
+  <definedNames><definedName name="TargetCell">Sheet1!$A$3</definedName></definedNames>
+  <calcPr calcId="191029" fullCalcOnLoad="0"/>
+</workbook>`;
+
+const crossSheetWorkbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="${REL_NS}/worksheet" Target="worksheets/sheet2.xml"/>
+  <Relationship Id="rId3" Type="${REL_NS}/worksheet" Target="worksheets/sheet3.xml"/>
+</Relationships>`;
+
+const crossSheetSheet1Xml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:B4"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Target</t></is></c><c r="B1" t="inlineStr"><is><t>Value</t></is></c></row>
+    <row r="2"><c r="A2" t="inlineStr"><is><t>One</t></is></c><c r="B2"><v>10</v></c></row>
+    <row r="3"><c r="A3" t="inlineStr"><is><t>Two</t></is></c><c r="B3"><v>20</v></c></row>
+    <row r="4"><c r="A4" t="inlineStr"><is><t>Three</t></is></c><c r="B4"><v>30</v></c></row>
+  </sheetData>
+</worksheet>`;
+
+const crossSheetSheet2Xml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <dimension ref="A1:C4"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Mirror</t></is></c></row>
+    <row r="2"><c r="A2"><f>Sheet1!B3</f><v>20</v></c></row>
+    <row r="3"><c r="B3" t="inlineStr"><is><t>jump</t></is></c></row>
+  </sheetData>
+  <hyperlinks><hyperlink ref="B3" location="Sheet1!A3" display="jump"/></hyperlinks>
+  <drawing r:id="rId1"/>
+</worksheet>`;
+
+const crossSheetLinksXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:B2"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Links</t></is></c></row>
+    <row r="2"><c r="B2" t="inlineStr"><is><t>go</t></is></c></row>
+  </sheetData>
+  <hyperlinks><hyperlink ref="B2" location="Sheet1!A3" display="go"/></hyperlinks>
+</worksheet>`;
+
+const crossSheetSheet2Rels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`;
+
+const crossSheetDrawingXml = `${XML_HEADER}
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="${REL_NS}">
+  <xdr:twoCellAnchor editAs="twoCell">
+    <xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>9</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>10</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Chart 1"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>
+      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId1"/></a:graphicData></a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>`;
+
+const crossSheetDrawingRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/chart" Target="../charts/chart1.xml"/>
+</Relationships>`;
+
+const crossSheetChartXml = `${XML_HEADER}
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="${REL_NS}">
+  <c:chart>
+    <c:plotArea>
+      <c:layout/>
+      <c:barChart>
+        <c:barDir val="col"/>
+        <c:ser><c:idx val="0"/><c:order val="0"/>
+          <c:cat><c:strRef><c:f>Sheet1!$A$3</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Two</c:v></c:pt></c:strCache></c:strRef></c:cat>
+          <c:val><c:numRef><c:f>Sheet1!$B$3</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="1"/><c:pt idx="0"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>
+        </c:ser>
+        <c:axId val="1"/><c:axId val="2"/>
+      </c:barChart>
+      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/></c:catAx>
+      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/></c:valAx>
+    </c:plotArea>
+    <c:legend/>
+    <c:plotVisOnly val="1"/>
+  </c:chart>
+</c:chartSpace>`;
+
+const crossSheetPackage = packageEntries({
+  workbook: crossSheetWorkbookXml,
+  workbookRels: crossSheetWorkbookRels,
+  sheets: [
+    ['xl/worksheets/sheet1.xml', crossSheetSheet1Xml],
+    ['xl/worksheets/sheet2.xml', crossSheetSheet2Xml],
+    ['xl/worksheets/sheet3.xml', crossSheetLinksXml],
+  ],
+  extra: {
+    'xl/worksheets/_rels/sheet2.xml.rels': crossSheetSheet2Rels,
+    'xl/drawings/drawing1.xml': crossSheetDrawingXml,
+    'xl/drawings/_rels/drawing1.xml.rels': crossSheetDrawingRels,
+    'xl/charts/chart1.xml': crossSheetChartXml,
+  },
+});
+
+// Ticket 32: the provisional broken-internal-link convention. The target is
+// gone and the author tool wrote `#REF!` in `location`; opening, saving and a
+// later structural edit must keep the marker rather than block the sheet. The
+// exact Excel convention is deferred until an Excel capture can confirm it.
+const brokenLinkWorkbookXml = `${XML_HEADER}
+<workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <workbookPr date1904="0"/>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="191029" fullCalcOnLoad="0"/>
+</workbook>`;
+
+const brokenLinkWorkbookRels = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+const brokenLinkSheetXml = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:B3"/>
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Broken link</t></is></c></row>
+    <row r="3"><c r="B3" t="inlineStr"><is><t>gone</t></is></c></row>
+  </sheetData>
+  <hyperlinks><hyperlink ref="B3" location="#REF!" display="gone"/></hyperlinks>
+</worksheet>`;
+
+const brokenLinkPackage = packageEntries({
+  workbook: brokenLinkWorkbookXml,
+  workbookRels: brokenLinkWorkbookRels,
+  sheets: [['xl/worksheets/sheet1.xml', brokenLinkSheetXml]],
+});
+
 // M2 grid fixture: frozen row and column, a merged range, imported row and
 // column sizes, and the font, fill, alignment and number-format styles the
 // grid renders in the grid-foundation milestone.
@@ -616,6 +767,8 @@ const manualPackage = packageEntries({
 
 writeFileSync(join(compatDir, 'm1-chart-unknown.xlsx'), m1Package);
 writeFileSync(join(compatDir, 'identity-minimal.xlsx'), identityPackage);
+writeFileSync(join(compatDir, 'cross-sheet-link.xlsx'), crossSheetPackage);
+writeFileSync(join(compatDir, 'broken-internal-link.xlsx'), brokenLinkPackage);
 writeFileSync(join(compatDir, 'm2-grid.xlsx'), m2Package);
 writeFileSync(join(compatDir, 'm2-freeze-row.xlsx'), m2FreezeRowPackage);
 writeFileSync(join(compatDir, 'm2-freeze-column.xlsx'), m2FreezeColumnPackage);
@@ -670,6 +823,8 @@ writeFileSync(
 
 console.log(`Wrote ${join(compatDir, 'm1-chart-unknown.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'identity-minimal.xlsx')}`);
+console.log(`Wrote ${join(compatDir, 'cross-sheet-link.xlsx')}`);
+console.log(`Wrote ${join(compatDir, 'broken-internal-link.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'm2-grid.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'm2-freeze-row.xlsx')}`);
 console.log(`Wrote ${join(compatDir, 'm2-freeze-column.xlsx')}`);

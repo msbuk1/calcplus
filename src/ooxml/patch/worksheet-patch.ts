@@ -11,6 +11,7 @@ import type {
 import { parseWorksheetXml } from '../worksheet-xml';
 import { AFTER_AUTO_FILTER, type AutoFilterSavePlan } from '../autofilter-xml';
 import type { ConditionalFormatSavePlan } from '../conditional-format-xml';
+import type { PaneSavePlan } from '../pane-xml';
 import { WorkbookSaveError } from '../errors';
 import { escapeXmlAttribute, isWellFormedXml } from '../xml';
 import { patchWorksheetAsTree } from './tree-patch';
@@ -40,6 +41,8 @@ export interface WorksheetSaveInput {
   readonly syncAutoFilter?: AutoFilterSavePlan;
   /** Rewrite the sheet's conditional-format elements, when they changed. */
   readonly syncConditionalFormats?: ConditionalFormatSavePlan;
+  /** Replace the sheet view's frozen pane, when the split changed. */
+  readonly syncPane?: PaneSavePlan;
   readonly sharedStringsTable: SharedStringsTable | null;
   readonly sharedStrings: SharedStringsAppender | null;
   readonly options?: WorksheetSaveOptions;
@@ -71,14 +74,19 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     !hasDirtyDimensions(input.dirtyDimensions) &&
     input.syncMerges !== true &&
     input.syncAutoFilter?.changed !== true &&
-    input.syncConditionalFormats?.changed !== true
+    input.syncConditionalFormats?.changed !== true &&
+    input.syncPane?.changed !== true
   ) {
     return { bytes: input.sourceBytes, mode: 'none' };
   }
+  // A changed freeze split is applied to the source text before the cell,
+  // dimension and element patches run. It is one small element edit, so the
+  // position path keeps working and the rest of the part stays untouched.
+  const sourceBytes = input.syncPane?.changed === true ? input.syncPane.bytes : input.sourceBytes;
   const maxFallback = input.options?.maxTreeFallbackBytes ?? MAX_TREE_PATCH_BYTES;
   if (input.options?.forceTreeFallback !== true) {
     try {
-      const parsed = parseWorksheetXml(input.sourceBytes, {
+      const parsed = parseWorksheetXml(sourceBytes, {
         sharedStrings: input.sharedStringsTable,
         partPath: input.partName,
         name: input.sheet.name,
@@ -101,15 +109,15 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     }
   }
 
-  if (input.sourceBytes.byteLength >= maxFallback) {
+  if (sourceBytes.byteLength >= maxFallback) {
     throw new WorkbookSaveError(
       'unsafe-part',
-      `The worksheet ${input.partName} could not be patched safely and is too large (${input.sourceBytes.byteLength} bytes) for the tree fallback. The file was not written.`,
+      `The worksheet ${input.partName} could not be patched safely and is too large (${sourceBytes.byteLength} bytes) for the tree fallback. The file was not written.`,
     );
   }
   const treeBytes = patchWorksheetAsTree({
     partName: input.partName,
-    sourceBytes: input.sourceBytes,
+    sourceBytes,
     sheet: input.sheet,
     dirtyCells: input.dirtyCells,
     dirtyDimensions: input.dirtyDimensions,

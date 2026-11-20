@@ -11,8 +11,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 
 - Feature-matrix IN rows: 57
 - Inventory commands: 105
-- Implemented in this build: 60
-- Planned for a later slice: 45
+- Implemented in this build: 68
+- Planned for a later slice: 37
 - Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -24,113 +24,119 @@ limitation. `format.conditionalRender` is the v1 instance.
 
 ## Commands
 
-| Command ID | Matrix row | Label | Ribbon tab → group | Menu | Shortcut | Enablement | Status |
-|---|---|---|---|---|---|---|---|
-| `selection.navigate` | 1. Grid and editing — Rectangular range selection and keyboard navigation (arrows, Tab/Enter, Shift-extend, Ctrl+arrow, Page Up/Down, Ctrl+Home/End) | Navigate selection | — | — | Arrows, Ctrl+Arrows, Home, Ctrl+Home, End, Ctrl+End, Page Up, Page Down, Shift+Arrows, Ctrl+Shift+Arrows, Ctrl+A, Ctrl+Space, Shift+Space, Ctrl+Shift+Space | A sheet is active and the grid owns the keyboard | Planned |
-| `cell.edit` | 1. Grid and editing — In-cell editing (F2, double-click, direct typing; Enter/Tab commit, Esc cancel) | Edit cell | — | — | F2, Double-click, Enter, Tab, Esc | A sheet is active and a cell is selected | Planned |
-| `cell.set` | 1. Grid and editing — Formula bar editing | Commit cell edit | — | — | Enter, Ctrl+Enter | A sheet is active | Implemented |
-| `formulaBar.cancel` | 1. Grid and editing — Formula bar editing | Cancel formula bar edit | — | — | Esc | The formula bar owns focus | Planned |
-| `edit.copy` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Copy | Home → Clipboard | Context menu | Ctrl+C | A sheet is active and a range is selected | Implemented |
-| `edit.cut` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Cut | Home → Clipboard | Context menu | Ctrl+X | A sheet is active and a range is selected | Implemented |
-| `edit.paste` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Paste | Home → Clipboard | Context menu | Ctrl+V | A sheet is active | Implemented |
-| `edit.fillDown` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill down | — | — | Ctrl+D | A sheet is active and a range is selected | Implemented |
-| `edit.fillRight` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill right | — | — | Ctrl+R | A sheet is active and a range is selected | Implemented |
-| `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | A sheet is active and the fill handle is visible | Implemented |
-| `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | A sheet is active and a range is selected | Planned |
-| `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | A sheet is active and a range is selected | Planned |
-| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | Home → Cells | Context menu (Delete) | Ctrl+- | A sheet is active and a range is selected | Implemented |
-| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | Context menu (Delete)<br>Context menu (column header) | Ctrl+- | A sheet is active | Implemented |
-| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | Context menu (Delete)<br>Context menu (row header) | Ctrl+- | A sheet is active | Implemented |
-| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | Context menu (Insert) | Ctrl+Shift+= | A sheet is active and a range is selected | Implemented |
-| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | Context menu (Insert)<br>Context menu (column header) | Ctrl+Shift+= | A sheet is active | Implemented |
-| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | Context menu (Insert)<br>Context menu (row header) | Ctrl+Shift+= | A sheet is active | Implemented |
-| `dimension.set` | 1. Grid and editing — Row/column resize by drag; autofit by double-click and menu | Row height and column width | — | — | — | A sheet is active | Implemented |
-| `merge.across` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Across | — | — | — | A sheet is active and a range is selected | Planned |
-| `merge.cells` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Cells | — | — | — | A sheet is active and a range is selected | Planned |
-| `merge.center` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge & Center | — | — | — | A sheet is active and a range is selected | Planned |
-| `merge.unmerge` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Unmerge | — | — | — | A sheet is active and a merged cell is selected | Planned |
-| `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
-| `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | — | — | Ctrl+Z | The undo history is not empty | Implemented |
-| `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace all | — | — | — | A sheet is active | Implemented |
-| `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace | Home → Editing (menu) | Context menu | Ctrl+H | A sheet is active | Implemented |
-| `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Find | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
-| `goto.goto` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go to | Home → Editing (menu) | Edit<br>Context menu | Ctrl+G | A sheet is active | Implemented |
-| `edit.clearAll` | 1. Grid and editing — Clear contents / formats / all | Clear all | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Planned |
-| `edit.clearContents` | 1. Grid and editing — Clear contents / formats / all | Clear contents | Home → Editing | Context menu | Delete, Backspace | A sheet is active and a range is selected | Implemented |
-| `format.clear` | 1. Grid and editing — Clear contents / formats / all | Clear formats | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Implemented |
-| `data.sort` | 2. Data — Sort a range (one or more keys; header row; ascending/descending) | Sort | Home → Editing<br>Data → Sort & Filter | — | — | A sheet is active and a range is selected | Implemented |
-| `data.filter` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter | Home → Editing (menu)<br>Data → Sort & Filter | — | Ctrl+Shift+L | A sheet is active and a plain range is selected | Implemented |
-| `data.filterClear` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear filter | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
-| `data.filterClearColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear Filter from '<column>' | — | — | — | The column has an active criterion | Implemented |
-| `data.filterColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter by column | — | — | — | A sheet is active and an AutoFilter is applied | Implemented |
-| `data.filterReapply` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Reapply filter | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
-| `format.bold` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Bold | Home → Font | — | Ctrl+B | A sheet is active and a range is selected | Implemented |
-| `format.font` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Font | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
-| `format.italic` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Italic | Home → Font | — | Ctrl+I | A sheet is active and a range is selected | Implemented |
-| `format.strike` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Strikethrough | Home → Font | — | Ctrl+5 | A sheet is active and a range is selected | Implemented |
-| `format.underline` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Underline | Home → Font | — | Ctrl+U | A sheet is active and a range is selected | Implemented |
-| `format.fill` | 3. Formatting — Fill: solid and pattern | Fill | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
-| `format.border` | 3. Formatting — Borders: all line styles, weights and colours; outline and inside | Borders | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
-| `format.alignment` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Alignment | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
-| `format.wrapText` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Wrap Text | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
-| `format.importedTextLayout` | 3. Formatting — Shrink to fit and text rotation | Imported shrink to fit and text rotation | — | — | — | Imported values render and round-trip; authoring arrives in v2 | Planned |
-| `painter.apply` | 3. Formatting — Format Painter | Apply picked-up format | — | — | — | A format is picked up and a target range is selected | Implemented |
-| `painter.pickup` | 3. Formatting — Format Painter | Format Painter | Home → Clipboard | Context menu | — | A sheet is active and a cell is selected | Implemented |
-| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | Home → Font (launcher)<br>Home → Alignment (launcher)<br>Home → Number (launcher) | Context menu | Ctrl+1 | A sheet is active | Implemented |
-| `format.decreaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Decrease decimal | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
-| `format.increaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Increase decimal | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
-| `format.numberFormat` | 3. Formatting — Number formats: built-in categories + full custom grammar | Number format | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
-| `format.conditionalRender` | 3. Formatting — Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules | Conditional Formatting | Home → Styles (present, disabled) | — | — | Always disabled in v1: imported rules render, authoring arrives in v2 (ticket 27) | Planned |
-| `formula.recalculate` | 4. Formulas and names — Formula bar, in-cell entry, automatic calculation | Recalculate | — | — | F9 | A sheet is active | Planned |
-| `formula.autosum` | 4. Formulas and names — AutoSum (`Alt+=`, command `formula.autosum`) | AutoSum | Home → Editing<br>Formulas → Function Library | — | Alt+= | A sheet is active and a cell is selected | Implemented |
-| `formula.autocomplete` | 4. Formulas and names — Function autocomplete and signature hints | Function autocomplete and signature hints | — | — | — | The formula editor is open | Planned |
-| `name.resolve` | 4. Formulas and names — Defined names: evaluate, preserve, use in formulas and Go To | Use defined names | — | — | — | A sheet is active and a defined name exists | Planned |
-| `formula.insertFunction` | 4. Formulas and names — Insert Function dialog (search, category, signature and description) | Insert Function | — | — | — | A sheet is active | Implemented |
-| `formula.evaluate` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Evaluate formulas | — | — | — | A sheet is active | Planned |
-| `workbook.dateSystem` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Use 1904 date system | — | — | — | A sheet is active | Implemented |
-| `file.new` | 5. Workbook and sheets — New blank workbook | New | — | File | — | No file operation is in progress | Implemented |
-| `file.close` | 5. Workbook and sheets — Open, save, save as, close | Close | — | File | — | A workbook is open | Planned |
-| `file.open` | 5. Workbook and sheets — Open, save, save as, close | Open | — | File | Ctrl+O | No file operation is in progress | Implemented |
-| `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
-| `file.saveAs` | 5. Workbook and sheets — Open, save, save as, close | Save As | — | File | Ctrl+Shift+S | A workbook is open and no file operation is in progress | Implemented |
-| `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | Sheet tab context menu | — | A visible sheet is active and more than one visible sheet exists | Implemented |
-| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |
-| `sheet.rename` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Rename sheet | — | Sheet tab context menu | F2 | A visible sheet is active | Implemented |
-| `fidelity.protection` | 5. Workbook and sheets — Shell protection / workbook protection | Preserve workbook protection | — | — | — | Imported protection XML is preserved and not enforced | Planned |
-| `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | View → Window | — | — | A sheet is active | Planned |
-| `view.zoom` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom | View → Zoom | — | — | A sheet is active | Planned |
-| `view.zoom100` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom 100% | View → Zoom | — | — | A sheet is active | Implemented |
-| `view.gridlines` | 6. View and navigation — Gridlines and headings show/hide | Gridlines | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
-| `view.headings` | 6. View and navigation — Gridlines and headings show/hide | Headings | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
-| `formulaBar.focus` | 6. View and navigation — Formula bar and name box | Edit in formula bar | — | — | F2 | A sheet is active | Planned |
-| `nameBox.navigate` | 6. View and navigation — Formula bar and name box | Go to address | — | — | Enter | A sheet is active | Implemented |
-| `status.statistics` | 6. View and navigation — Status bar: sum/average/count for the selection; zoom slider | Selection statistics | — | — | — | A sheet is active | Planned |
-| `file.compatibilityReport` | 7. File I/O and printing — `.xlsx` open and save | Compatibility Report | — | File | — | A workbook is open | Implemented |
-| `file.exportReport` | 7. File I/O and printing — `.xlsx` open and save | Export Report | — | File | — | A workbook is open | Implemented |
-| `file.openXlsx` | 7. File I/O and printing — `.xlsx` open and save | Open .xlsx | — | — | — | The file layer can read the package | Planned |
-| `file.saveXlsx` | 7. File I/O and printing — `.xlsx` open and save | Save .xlsx | — | — | — | The file layer can write the package | Planned |
-| `file.openXlsm` | 7. File I/O and printing — `.xlsm` open and save; macro parts preserved, never executed | Open .xlsm | — | — | — | The file layer can read the package | Planned |
-| `file.saveXlsm` | 7. File I/O and printing — `.xlsm` open and save; macro parts preserved, never executed | Save .xlsm | — | — | — | The file layer can write the package | Planned |
-| `file.exportCsv` | 7. File I/O and printing — CSV import and export | Export CSV | — | — | — | A workbook is open | Planned |
-| `file.importCsv` | 7. File I/O and printing — CSV import and export | Import CSV | — | — | — | A CSV parser is available | Planned |
-| `file.rejectEncrypted` | 7. File I/O and printing — Encrypted / password-protected workbooks | Reject encrypted workbook | — | — | — | The file is encrypted; it is not modified | Planned |
-| `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | Imported links are preserved and not refreshed | Planned |
-| `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | A supported file is dropped on the app | Planned |
-| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | File | — | A workbook is open | Planned |
-| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | — | File | Ctrl+P | A workbook is open | Planned |
-| `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | File | — | The recent list has entries | Planned |
-| `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | A recovery copy exists | Planned |
-| `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | Review → Comments | — | — | The sheet has imported comments | Planned |
-| `cell.followHyperlink` | 8. Read-only fidelity (render/preserve, no authoring) — Hyperlinks | Follow hyperlink | — | — | Ctrl+Click | The active cell has a hyperlink | Planned |
-| `fidelity.readOnlyProtection` | 8. Read-only fidelity (render/preserve, no authoring) — Sheet and workbook protection | Preserve sheet and workbook protection | — | — | — | Imported protection is preserved and not enforced | Planned |
-| `fidelity.hiddenState` | 8. Read-only fidelity (render/preserve, no authoring) — Hidden rows, columns and sheets | Preserve hidden state | — | — | — | Imported hidden state is respected and preserved | Planned |
-| `format.conditionalPreserve` | 8. Read-only fidelity (render/preserve, no authoring) — Conditional formatting | Preserve conditional formatting | — | — | — | Imported rules render and are preserved | Planned |
-| `fidelity.theme` | 8. Read-only fidelity (render/preserve, no authoring) — Theme colours and named styles | Preserve theme colours and named styles | — | — | — | Imported theme colours and named styles resolve and are preserved | Planned |
-| `name.preserve` | 8. Read-only fidelity (render/preserve, no authoring) — Defined names | Preserve defined names | — | — | — | Imported names evaluate and round-trip | Planned |
-| `fidelity.validation` | 8. Read-only fidelity (render/preserve, no authoring) — Data validation | Preserve data validation | — | — | — | Imported validation is preserved; enforcement arrives in v2 | Planned |
-| `fidelity.tables` | 8. Read-only fidelity (render/preserve, no authoring) — Tables | Preserve tables | — | — | — | Imported table parts are preserved | Planned |
-| `fidelity.pivotCaches` | 8. Read-only fidelity (render/preserve, no authoring) — Pivot caches / PivotTables | Preserve pivot caches | — | — | — | Imported pivot parts are preserved and not displayed | Planned |
-| `help.about` | UI chrome — About dialog (ui-chrome §4.1) | About calcplus | — | File | — | Always | Implemented |
+The Icon column names the original SVG artwork in `src/chrome/ribbon-icons.ts`. A command with
+several ribbon controls lists each distinct icon, including the icons of its split-button menu
+items; the command-level icon is the compact and quick-access fallback.
+The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar
+holds Save, Undo and Redo only; Save As stays in the File menu.
+
+| Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `selection.navigate` | 1. Grid and editing — Rectangular range selection and keyboard navigation (arrows, Tab/Enter, Shift-extend, Ctrl+arrow, Page Up/Down, Ctrl+Home/End) | Navigate selection | — | — | — | — | Arrows, Ctrl+Arrows, Home, Ctrl+Home, End, Ctrl+End, Page Up, Page Down, Shift+Arrows, Ctrl+Shift+Arrows, Ctrl+A, Ctrl+Space, Shift+Space, Ctrl+Shift+Space | A sheet is active and the grid owns the keyboard | Planned |
+| `cell.edit` | 1. Grid and editing — In-cell editing (F2, double-click, direct typing; Enter/Tab commit, Esc cancel) | Edit cell | — | — | — | — | F2, Double-click, Enter, Tab, Esc | A sheet is active and a cell is selected | Planned |
+| `cell.set` | 1. Grid and editing — Formula bar editing | Commit cell edit | — | — | — | — | Enter, Ctrl+Enter | A sheet is active | Implemented |
+| `formulaBar.cancel` | 1. Grid and editing — Formula bar editing | Cancel formula bar edit | — | — | — | — | Esc | The formula bar owns focus | Planned |
+| `edit.copy` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Copy | `copy` | — | Home → Clipboard | Context menu | Ctrl+C | A sheet is active and a range is selected | Implemented |
+| `edit.cut` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Cut | `cut` | — | Home → Clipboard | Context menu | Ctrl+X | A sheet is active and a range is selected | Implemented |
+| `edit.paste` | 1. Grid and editing — Cut/copy/paste (single range; in-app and OS clipboard) | Paste | `paste` | — | Home → Clipboard | Context menu | Ctrl+V | A sheet is active | Implemented |
+| `edit.fillDown` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill down | — | — | — | — | Ctrl+D | A sheet is active and a range is selected | Implemented |
+| `edit.fillRight` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill right | — | — | — | — | Ctrl+R | A sheet is active and a range is selected | Implemented |
+| `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | — | — | A sheet is active and the fill handle is visible | Implemented |
+| `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | — | — | A sheet is active and a range is selected | Planned |
+| `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | — | — | A sheet is active and a range is selected | Planned |
+| `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | `delete` | — | Home → Cells | Context menu (Delete) | Ctrl+- | A sheet is active and a range is selected | Implemented |
+| `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | — | — | Context menu (Delete)<br>Context menu (column header) | Ctrl+- | A sheet is active | Implemented |
+| `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | — | — | Context menu (Delete)<br>Context menu (row header) | Ctrl+- | A sheet is active | Implemented |
+| `structure.insertCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert cells | — | — | — | Context menu (Insert) | Ctrl+Shift+= | A sheet is active and a range is selected | Implemented |
+| `structure.insertColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert columns | — | — | — | Context menu (Insert)<br>Context menu (column header) | Ctrl+Shift+= | A sheet is active | Implemented |
+| `structure.insertRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Insert rows | — | — | — | Context menu (Insert)<br>Context menu (row header) | Ctrl+Shift+= | A sheet is active | Implemented |
+| `dimension.set` | 1. Grid and editing — Row/column resize by drag; autofit by double-click and menu | Row height and column width | — | — | — | — | — | A sheet is active | Implemented |
+| `merge.across` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Across | `merge` | — | Home → Alignment (menu) | — | — | A sheet is active and a range is selected | Implemented |
+| `merge.cells` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Cells | `merge` | — | Home → Alignment (menu) | — | — | A sheet is active and a range is selected | Implemented |
+| `merge.center` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge & Center | `merge` | — | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
+| `merge.unmerge` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Unmerge | `merge` | — | Home → Alignment (menu) | — | — | A sheet is active and a merged cell is selected | Implemented |
+| `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | `redo` | Yes (order 30) | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
+| `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | `undo` | Yes (order 20) | — | — | Ctrl+Z | The undo history is not empty | Implemented |
+| `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace all | — | — | — | — | — | A sheet is active | Implemented |
+| `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace | `replace` | — | Home → Editing (menu) | Context menu | Ctrl+H | A sheet is active | Implemented |
+| `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Find | `find` | — | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
+| `goto.goto` | 1. Grid and editing — Go To (Ctrl+G and name box) | Go to | `go-to` | — | Home → Editing (menu) | Edit<br>Context menu | Ctrl+G | A sheet is active | Implemented |
+| `edit.clearAll` | 1. Grid and editing — Clear contents / formats / all | Clear all | `clear` | — | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Implemented |
+| `edit.clearContents` | 1. Grid and editing — Clear contents / formats / all | Clear contents | `clear` | — | Home → Editing | Context menu | Delete, Backspace | A sheet is active and a range is selected | Implemented |
+| `format.clear` | 1. Grid and editing — Clear contents / formats / all | Clear formats | `clear` | — | Home → Editing (menu) | Context menu | — | A sheet is active and a range is selected | Implemented |
+| `data.sort` | 2. Data — Sort a range (one or more keys; header row; ascending/descending) | Sort | `sort` | — | Home → Editing<br>Data → Sort & Filter | — | — | A sheet is active and a range is selected | Implemented |
+| `data.filter` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter | `filter` | — | Home → Editing (menu)<br>Data → Sort & Filter | — | Ctrl+Shift+L | A sheet is active and a plain range is selected | Implemented |
+| `data.filterClear` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear filter | `filter-clear` | — | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
+| `data.filterClearColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Clear Filter from '<column>' | — | — | — | — | — | The column has an active criterion | Implemented |
+| `data.filterColumn` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Filter by column | — | — | — | — | — | A sheet is active and an AutoFilter is applied | Implemented |
+| `data.filterReapply` | 2. Data — AutoFilter on a plain range (value checklist; text/number/date conditions; clear) | Reapply filter | `filter-reapply` | — | Home → Editing (menu)<br>Data → Sort & Filter | — | — | A sheet is active and an AutoFilter is applied | Implemented |
+| `format.bold` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Bold | `bold` | — | Home → Font | — | Ctrl+B | A sheet is active and a range is selected | Implemented |
+| `format.font` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Font | `font-colour`, `font-family`, `font-size` | — | Home → Font (font colour picker) | — | — | A sheet is active and a range is selected | Implemented |
+| `format.italic` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Italic | `italic` | — | Home → Font | — | Ctrl+I | A sheet is active and a range is selected | Implemented |
+| `format.strike` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Strikethrough | `strikethrough` | — | Home → Font | — | Ctrl+5 | A sheet is active and a range is selected | Implemented |
+| `format.underline` | 3. Formatting — Font family, size, bold, italic, underline (single/double), strikethrough, colour | Underline | `underline` | — | Home → Font | — | Ctrl+U | A sheet is active and a range is selected | Implemented |
+| `format.fill` | 3. Formatting — Fill: solid and pattern | Fill | `fill` | — | Home → Font (fill colour picker) | — | — | A sheet is active and a range is selected | Implemented |
+| `format.border` | 3. Formatting — Borders: all line styles, weights and colours; outline and inside | Borders | `borders`, `border-bottom`, `border-top`, `border-left`, `border-right`, `border-none`, `border-all`, `border-outside`, `border-thick-outside`, `border-bottom-double`, `border-thick-bottom`, `border-top-bottom`, `border-top-thick-bottom`, `border-top-double-bottom`, `border-inside`, `border-more` | — | Home → Font | — | — | A sheet is active and a range is selected | Implemented |
+| `format.alignment` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Alignment | `align-left`, `align-centre`, `align-right`, `align-top`, `align-middle`, `align-bottom` | — | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
+| `format.wrapText` | 3. Formatting — Alignment: horizontal/vertical, indent, wrap text | Wrap Text | `wrap-text` | — | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
+| `format.importedTextLayout` | 3. Formatting — Shrink to fit and text rotation | Imported shrink to fit and text rotation | — | — | — | — | — | Imported values render and round-trip; authoring arrives in v2 | Planned |
+| `painter.apply` | 3. Formatting — Format Painter | Apply picked-up format | — | — | — | — | — | A format is picked up and a target range is selected | Implemented |
+| `painter.pickup` | 3. Formatting — Format Painter | Format Painter | `format-painter` | — | Home → Clipboard | Context menu | — | A sheet is active and a cell is selected | Implemented |
+| `format.cellsDialog` | 3. Formatting — Format Cells dialog | Format Cells | `format-cells` | — | Home → Font (launcher)<br>Home → Alignment (launcher)<br>Home → Number (launcher) | Context menu | Ctrl+1 | A sheet is active | Implemented |
+| `format.decreaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Decrease decimal | `decrease-decimal` | — | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.increaseDecimal` | 3. Formatting — Number formats: built-in categories + full custom grammar | Increase decimal | `increase-decimal` | — | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.numberFormat` | 3. Formatting — Number formats: built-in categories + full custom grammar | Number format | `percent`, `number-format`, `currency`, `comma` | — | Home → Number | — | — | A sheet is active and a range is selected | Implemented |
+| `format.conditionalRender` | 3. Formatting — Conditional formatting: render cell-value, text, date, top/bottom, duplicate/unique, data-bar, colour-scale and icon-set rules | Conditional Formatting | `conditional-formatting` | — | Home → Styles (present, disabled) | — | — | Always disabled in v1: imported rules render, authoring arrives in v2 (ticket 27) | Planned |
+| `formula.recalculate` | 4. Formulas and names — Formula bar, in-cell entry, automatic calculation | Recalculate | — | — | — | — | F9 | A sheet is active | Planned |
+| `formula.autosum` | 4. Formulas and names — AutoSum (`Alt+=`, command `formula.autosum`) | AutoSum | `autosum` | — | Home → Editing<br>Formulas → Function Library | — | Alt+= | A sheet is active and a cell is selected | Implemented |
+| `formula.autocomplete` | 4. Formulas and names — Function autocomplete and signature hints | Function autocomplete and signature hints | — | — | — | — | — | The formula editor is open | Implemented |
+| `name.resolve` | 4. Formulas and names — Defined names: evaluate, preserve, use in formulas and Go To | Use defined names | — | — | — | — | — | A sheet is active and a defined name exists | Planned |
+| `formula.insertFunction` | 4. Formulas and names — Insert Function dialog (search, category, signature and description) | Insert Function | — | — | — | — | — | A sheet is active | Implemented |
+| `formula.evaluate` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Evaluate formulas | — | — | — | — | — | A sheet is active | Planned |
+| `workbook.dateSystem` | 4. Formulas and names — Formula semantics, function coverage, errors, arrays, dates, references | Use 1904 date system | — | — | — | — | — | A sheet is active | Implemented |
+| `file.new` | 5. Workbook and sheets — New blank workbook | New | — | — | — | File | — | No file operation is in progress | Implemented |
+| `file.close` | 5. Workbook and sheets — Open, save, save as, close | Close | — | — | — | File | — | A workbook is open | Implemented |
+| `file.open` | 5. Workbook and sheets — Open, save, save as, close | Open | — | — | — | File | Ctrl+O | No file operation is in progress | Implemented |
+| `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | `save` | Yes (order 10) | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
+| `file.saveAs` | 5. Workbook and sheets — Open, save, save as, close | Save As | — | — | — | File | Ctrl+Shift+S | A workbook is open and no file operation is in progress | Implemented |
+| `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | — | — | Sheet tab context menu | — | A visible sheet is active and more than one visible sheet exists | Implemented |
+| `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | `insert` | — | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |
+| `sheet.rename` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Rename sheet | — | — | — | Sheet tab context menu | F2 | A visible sheet is active | Implemented |
+| `fidelity.protection` | 5. Workbook and sheets — Shell protection / workbook protection | Preserve workbook protection | — | — | — | — | — | Imported protection XML is preserved and not enforced | Planned |
+| `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | `freeze-panes` | — | View → Window | — | — | A sheet is active | Implemented |
+| `view.zoom` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom | `zoom` | — | View → Zoom | — | — | A sheet is active | Planned |
+| `view.zoom100` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom 100% | `zoom-100` | — | View → Zoom | — | — | A sheet is active | Implemented |
+| `view.gridlines` | 6. View and navigation — Gridlines and headings show/hide | Gridlines | `gridlines` | — | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
+| `view.headings` | 6. View and navigation — Gridlines and headings show/hide | Headings | `headings` | — | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
+| `formulaBar.focus` | 6. View and navigation — Formula bar and name box | Edit in formula bar | — | — | — | — | F2 | A sheet is active | Planned |
+| `nameBox.navigate` | 6. View and navigation — Formula bar and name box | Go to address | — | — | — | — | Enter | A sheet is active | Implemented |
+| `status.statistics` | 6. View and navigation — Status bar: sum/average/count for the selection; zoom slider | Selection statistics | — | — | — | — | — | A sheet is active | Planned |
+| `file.compatibilityReport` | 7. File I/O and printing — `.xlsx` open and save | Compatibility Report | — | — | — | File | — | A workbook is open | Implemented |
+| `file.exportReport` | 7. File I/O and printing — `.xlsx` open and save | Export Report | — | — | — | File | — | A workbook is open | Implemented |
+| `file.openXlsx` | 7. File I/O and printing — `.xlsx` open and save | Open .xlsx | — | — | — | — | — | The file layer can read the package | Planned |
+| `file.saveXlsx` | 7. File I/O and printing — `.xlsx` open and save | Save .xlsx | — | — | — | — | — | The file layer can write the package | Planned |
+| `file.openXlsm` | 7. File I/O and printing — `.xlsm` open and save; macro parts preserved, never executed | Open .xlsm | — | — | — | — | — | The file layer can read the package | Planned |
+| `file.saveXlsm` | 7. File I/O and printing — `.xlsm` open and save; macro parts preserved, never executed | Save .xlsm | — | — | — | — | — | The file layer can write the package | Planned |
+| `file.exportCsv` | 7. File I/O and printing — CSV import and export | Export CSV | — | — | — | — | — | A workbook is open | Planned |
+| `file.importCsv` | 7. File I/O and printing — CSV import and export | Import CSV | — | — | — | — | — | A CSV parser is available | Planned |
+| `file.rejectEncrypted` | 7. File I/O and printing — Encrypted / password-protected workbooks | Reject encrypted workbook | — | — | — | — | — | The file is encrypted; it is not modified | Planned |
+| `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | — | — | Imported links are preserved and not refreshed | Planned |
+| `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
+| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Planned |
+| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | — | — | — | File | Ctrl+P | A workbook is open | Planned |
+| `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Planned |
+| `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Planned |
+| `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | `show-comments` | — | Review → Comments | — | — | The sheet has imported comments | Planned |
+| `cell.followHyperlink` | 8. Read-only fidelity (render/preserve, no authoring) — Hyperlinks | Follow hyperlink | — | — | — | — | Ctrl+Click | The active cell has a hyperlink | Planned |
+| `fidelity.readOnlyProtection` | 8. Read-only fidelity (render/preserve, no authoring) — Sheet and workbook protection | Preserve sheet and workbook protection | — | — | — | — | — | Imported protection is preserved and not enforced | Planned |
+| `fidelity.hiddenState` | 8. Read-only fidelity (render/preserve, no authoring) — Hidden rows, columns and sheets | Preserve hidden state | — | — | — | — | — | Imported hidden state is respected and preserved | Planned |
+| `format.conditionalPreserve` | 8. Read-only fidelity (render/preserve, no authoring) — Conditional formatting | Preserve conditional formatting | — | — | — | — | — | Imported rules render and are preserved | Planned |
+| `fidelity.theme` | 8. Read-only fidelity (render/preserve, no authoring) — Theme colours and named styles | Preserve theme colours and named styles | — | — | — | — | — | Imported theme colours and named styles resolve and are preserved | Planned |
+| `name.preserve` | 8. Read-only fidelity (render/preserve, no authoring) — Defined names | Preserve defined names | — | — | — | — | — | Imported names evaluate and round-trip | Planned |
+| `fidelity.validation` | 8. Read-only fidelity (render/preserve, no authoring) — Data validation | Preserve data validation | — | — | — | — | — | Imported validation is preserved; enforcement arrives in v2 | Planned |
+| `fidelity.tables` | 8. Read-only fidelity (render/preserve, no authoring) — Tables | Preserve tables | — | — | — | — | — | Imported table parts are preserved | Planned |
+| `fidelity.pivotCaches` | 8. Read-only fidelity (render/preserve, no authoring) — Pivot caches / PivotTables | Preserve pivot caches | — | — | — | — | — | Imported pivot parts are preserved and not displayed | Planned |
+| `help.about` | UI chrome — About dialog (ui-chrome §4.1) | About calcplus | — | — | — | File | — | Always | Implemented |
 
 ## Out-of-scope rows
 

@@ -30,6 +30,8 @@ export interface RibbonMenuItem {
   readonly args?: Readonly<Record<string, unknown>>;
   /** The trailing shortcut text the capture shows, when it shows one. */
   readonly shortcut?: string;
+  /** A name from `src/chrome/ribbon-icons.ts`; drawn ahead of the label. */
+  readonly icon?: string;
   readonly dividerBefore?: boolean;
 }
 
@@ -44,7 +46,10 @@ export interface RibbonPlacement {
   readonly rowSpan?: number;
   readonly label?: string;
   readonly title?: string;
+  /** A name from `src/chrome/ribbon-icons.ts`; every rendered control has one. */
   readonly icon?: string;
+  /** The icon alone carries the control's visible identity; the label stays in `title`. */
+  readonly iconOnly?: boolean;
   /** Hidden below 1100 px; short labels and icons stay. */
   readonly wide?: boolean;
   /**
@@ -59,8 +64,23 @@ export interface RibbonPlacement {
   readonly menu?: readonly RibbonMenuItem[];
   /** A bold section heading above the menu's items, as Excel shows it. */
   readonly menuHeading?: string;
+  /**
+   * A colour picker in place of a preset menu: `font` edits the text colour,
+   * `fill` edits the fill colour. The picker itself is chrome-owned.
+   */
+  readonly picker?: 'font' | 'fill';
   /** Listed in the group's split/menu control but not rendered as its own control. */
   readonly menuOnly?: boolean;
+}
+
+/**
+ * The Quick Access Toolbar above the ribbon. Save, Undo and Redo are the only
+ * placements; Save As stays in the File menu.
+ */
+export interface QuickAccessPlacement {
+  readonly order?: number;
+  /** A name from `src/chrome/ribbon-icons.ts`; defaults to the command icon. */
+  readonly icon?: string;
 }
 
 export interface MenuPlacement {
@@ -75,6 +95,10 @@ export interface CompactPlacement {
   readonly order?: number;
   readonly label?: string;
   readonly title?: string;
+  /** A name from `src/chrome/ribbon-icons.ts`; defaults to the command icon. */
+  readonly icon?: string;
+  /** The icon alone carries the compact control's visible identity. */
+  readonly iconOnly?: boolean;
   readonly args?: Readonly<Record<string, unknown>>;
 }
 
@@ -124,10 +148,13 @@ export interface CommandInventoryEntry {
   readonly enablement: string;
   readonly implemented: boolean;
   readonly shortcut: readonly string[];
+  /** The command's canonical icon; the generated docs carry this reference. */
+  readonly icon?: string;
   readonly ribbon?: readonly RibbonPlacement[];
   readonly menu?: readonly MenuPlacement[];
   readonly contextMenu?: AuthoredContextMenu;
   readonly compact?: CompactPlacement;
+  readonly quickAccess?: QuickAccessPlacement;
 }
 
 export const COMMAND_INVENTORY = rawInventory as readonly CommandInventoryEntry[];

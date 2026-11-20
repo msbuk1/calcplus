@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { searchChecklist } from '@model/autofilter';
-import type { ColumnFilter, ValueChecklist } from '@model/autofilter';
+import type { ChecklistEntry, ColumnFilter, ValueChecklist } from '@model/autofilter';
 import type { SortDirection } from '@model/sort';
 import { Dialog } from './Dialog';
 import type { DialogCloseReason } from './Dialog';
@@ -11,6 +11,8 @@ import {
   conditionsDraftFrom,
   criterionFromChecklist,
   defaultConditionsDraft,
+  FILTER_ROW_HEIGHT,
+  filterListWindow,
   filterMenuLabel,
   initialChecklistState,
   operatorAcceptsRange,
@@ -26,6 +28,7 @@ import type {
   FilterChecklistState,
   FilterColumnType,
 } from './filter-dropdown-state';
+import { placeAnchoredPanel } from './viewport-placement';
 
 export interface FilterApplyOutcome {
   readonly ok: boolean;
@@ -42,7 +45,12 @@ export interface FilterDropdownProps {
   readonly filterType: FilterColumnType;
   readonly date1904: boolean;
   /** Where the overlay sits, in viewport pixels, under the column's header button. */
-  readonly anchor: { readonly top: number; readonly left: number };
+  readonly anchor: {
+    readonly top: number;
+    readonly left: number;
+    /** Top edge of the header cell, used when the panel flips above it. */
+    readonly headerTop: number;
+  };
   readonly onSort: (direction: SortDirection) => void;
   readonly onCustomSort: () => void;
   readonly onClearColumn: () => void;
@@ -82,17 +90,48 @@ export function FilterDropdown({
   onClose,
 }: FilterDropdownProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
+  const [scrollTop, setScrollTop] = useState(0);
   const [state, setState] = useState<FilterChecklistState>(() =>
     initialChecklistState(checklist.entries, checklist.hasBlanks, criterion),
   );
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [conditions, setConditions] = useState<ConditionsDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [position, setPosition] = useState(() => ({
+    top: anchor.top,
+    left: anchor.left,
+    flipped: false,
+  }));
   const unsupported = criterion !== null && criterion.kind === 'unsupported';
   const selectAll = selectAllState(state, checklist.entries);
-  const visibleEntries = searchChecklist(checklist.entries, query);
+  const visibleEntries = useMemo(
+    () => searchChecklist(checklist.entries, query),
+    [checklist.entries, query],
+  );
+  // The state is indexed by the full checklist, while the search box only
+  // narrows what is rendered. Mapping entries to their full-list index once
+  // keeps a scroll in a long list from doing an indexOf per visible row.
+  const entryIndex = useMemo(() => {
+    const index = new Map<ChecklistEntry, number>();
+    checklist.entries.forEach((entry, position) => index.set(entry, position));
+    return index;
+  }, [checklist.entries]);
+  const rowCount = visibleEntries.length + (checklist.hasBlanks ? 1 : 0);
+  const listWindow = filterListWindow(rowCount, scrollTop);
+
+  // Measure before the first paint so an anchored panel near the bottom edge
+  // is already flipped when it becomes visible.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const rect = root.getBoundingClientRect();
+    setPosition(
+      placeAnchoredPanel(anchor.top, anchor.headerTop, anchor.left, rect.width, rect.height),
+    );
+  }, [anchor.headerTop, anchor.left, anchor.top]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -102,6 +141,13 @@ export function FilterDropdown({
   useEffect(() => {
     if (selectAllRef.current !== null) selectAllRef.current.indeterminate = selectAll.some;
   }, [selectAll.some]);
+
+  // A narrower search starts the list at the top again, so the first match is
+  // visible rather than the list keeping a scroll offset from the old rows.
+  useEffect(() => {
+    setScrollTop(0);
+    if (listRef.current !== null) listRef.current.scrollTop = 0;
+  }, [query]);
 
   // A press outside closes without a transaction; the conditions window is a
   // modal of its own and owns the pointer while it is open.
@@ -115,8 +161,9 @@ export function FilterDropdown({
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
   }, [conditions, onClose]);
 
-  // The overlay is placed from the grid geometry when it opens, so any scroll
-  // or resize dismisses it rather than leaving it detached from its column.
+  // The overlay is placed from the grid geometry, so a grid scroll or a window
+  // resize dismisses it rather than leaving it detached from its column.
+  // Scrolling inside the dropdown's own value list is not a grid scroll.
   useEffect(() => {
     const dismiss = (event?: Event): void => {
       if (event?.target instanceof Node && rootRef.current?.contains(event.target) === true) return;
@@ -216,13 +263,51 @@ export function FilterDropdown({
     items[next]?.focus();
   };
 
+  // Only the rows inside the virtual window exist in the DOM. `(Blanks)` is
+  // the last slot, so it appears when the list is scrolled to the bottom.
+  const renderedRows: JSX.Element[] = [];
+  for (let row = listWindow.start; row < listWindow.end; row += 1) {
+    if (row < visibleEntries.length) {
+      const entry = visibleEntries[row]!;
+      const index = entryIndex.get(entry) ?? 0;
+      renderedRows.push(
+        <label
+          key={`value-${index}`}
+          className="filter-check"
+          style={{ height: FILTER_ROW_HEIGHT }}
+        >
+          <input
+            type="checkbox"
+            checked={state.checked.has(index)}
+            data-testid={`filter-value-${index}`}
+            onChange={() => setState(toggleChecklistEntry(state, index))}
+          />
+          <span className="filter-check-text">{entry.display}</span>
+        </label>,
+      );
+      continue;
+    }
+    renderedRows.push(
+      <label key="blanks" className="filter-check" style={{ height: FILTER_ROW_HEIGHT }}>
+        <input
+          type="checkbox"
+          checked={state.blanksChecked}
+          data-testid="filter-blanks"
+          onChange={() => setState(toggleChecklistBlanks(state))}
+        />
+        <span className="filter-check-text">(Blanks)</span>
+      </label>,
+    );
+  }
+
   return (
     <div
       ref={rootRef}
       className="filter-dropdown"
       role="dialog"
       aria-label={`Filter ${columnLabel}`}
-      style={{ top: anchor.top, left: anchor.left }}
+      style={{ top: position.top, left: position.left }}
+      data-flipped={position.flipped ? 'true' : 'false'}
       onKeyDown={onKeyDown}
       data-testid="filter-dropdown"
     >
@@ -349,46 +434,36 @@ export function FilterDropdown({
             />
           </div>
 
-          <div className="filter-checklist" data-testid="filter-checklist">
-            <label className="filter-check filter-select-all">
-              <input
-                ref={selectAllRef}
-                type="checkbox"
-                checked={selectAll.all}
-                data-testid="filter-select-all"
-                onChange={() => setState(toggleSelectAll(state, checklist.entries))}
-              />
-              Select All
-            </label>
-            {visibleEntries.length === 0 ? (
-              <p className="filter-empty">No matching values.</p>
-            ) : (
-              visibleEntries.map((entry) => {
-                const index = checklist.entries.indexOf(entry);
-                return (
-                  <label key={`${entry.display}-${index}`} className="filter-check">
-                    <input
-                      type="checkbox"
-                      checked={state.checked.has(index)}
-                      data-testid={`filter-value-${index}`}
-                      onChange={() => setState(toggleChecklistEntry(state, index))}
-                    />
-                    {entry.display}
-                  </label>
-                );
-              })
-            )}
-            {checklist.hasBlanks ? (
-              <label className="filter-check">
-                <input
-                  type="checkbox"
-                  checked={state.blanksChecked}
-                  data-testid="filter-blanks"
-                  onChange={() => setState(toggleChecklistBlanks(state))}
-                />
-                (Blanks)
-              </label>
-            ) : null}
+          <label className="filter-check filter-select-all">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={selectAll.all}
+              data-testid="filter-select-all"
+              onChange={() => setState(toggleSelectAll(state, checklist.entries))}
+            />
+            <span className="filter-check-text">Select All</span>
+          </label>
+
+          {visibleEntries.length === 0 ? <p className="filter-empty">No matching values.</p> : null}
+
+          <div
+            ref={listRef}
+            className="filter-checklist"
+            data-testid="filter-checklist"
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            <div
+              className="filter-spacer"
+              style={{ height: listWindow.leading }}
+              aria-hidden="true"
+            />
+            {renderedRows}
+            <div
+              className="filter-spacer"
+              style={{ height: listWindow.trailing }}
+              aria-hidden="true"
+            />
           </div>
 
           <div className="filter-actions">

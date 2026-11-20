@@ -518,8 +518,8 @@ function buildChange(
       const cell = getCell(target.sheet, row, col);
       const beforeId =
         cell === null || (cell.styleId === 0 && cellIsEmpty(cell)) ? null : cell.styleId;
-      const targetId = styleFor(cell, row, col) ?? 0;
-      const afterId = styleForCellAfter(cell, targetId, pruneUnstyledBlanks);
+      const targetId = styleFor(cell, row, col);
+      const afterId = styleForCellAfter(cell, beforeId, targetId, pruneUnstyledBlanks);
       beforeRow.push(beforeId);
       afterRow.push(afterId);
       if (beforeId !== afterId) changed = true;
@@ -539,9 +539,16 @@ function buildChange(
 
 function styleForCellAfter(
   cell: Cell | null,
-  targetId: StyleId,
+  beforeId: StyleId | null,
+  targetId: StyleId | null,
   pruneUnstyledBlanks: boolean,
 ): StyleId | null {
+  // A null target is a null patch: the caller has no style to write on this
+  // cell (for example an Inside preset on a single cell, which changes no
+  // edges). The cell keeps its current style. Falling back to the default
+  // style here would wipe the cell's font, fill, border, alignment and number
+  // format (issue 35).
+  if (targetId === null) return beforeId;
   if (cell === null) return targetId === 0 ? null : targetId;
   // A formatting patch may bring a blank cell back to the default style (for
   // example clearing the last underline or colour). The cell record stays so

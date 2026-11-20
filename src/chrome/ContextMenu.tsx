@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { Menu } from './Menu';
 import type { MenuItemModel } from './Menu';
+import { clampToViewport } from './viewport-placement';
 
 export interface ContextMenuProps {
   readonly x: number;
@@ -9,22 +10,6 @@ export interface ContextMenuProps {
   readonly items: readonly MenuItemModel[];
   readonly onSelect: (item: MenuItemModel) => void;
   readonly onClose: () => void;
-}
-
-const VIEWPORT_MARGIN = 8;
-
-function clampToViewport(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): { left: number; top: number } {
-  const viewportWidth = typeof window === 'undefined' ? 1024 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 768 : window.innerHeight;
-  return {
-    left: Math.max(VIEWPORT_MARGIN, Math.min(x, viewportWidth - VIEWPORT_MARGIN - width)),
-    top: Math.max(VIEWPORT_MARGIN, Math.min(y, viewportHeight - VIEWPORT_MARGIN - height)),
-  };
 }
 
 /**

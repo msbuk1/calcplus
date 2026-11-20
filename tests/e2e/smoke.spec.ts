@@ -19,7 +19,7 @@ test('opens a workbook, renders values, edits, commits and undoes', async ({ pag
   await page.keyboard.type('43');
   await expect(page.getByTestId('cell-editor')).toBeVisible();
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 
   const afterEdit = await page.evaluate(() => window.__calcplus.getCellDisplay(1, 1));
   expect(afterEdit).toBe('43');
@@ -44,7 +44,7 @@ test('edited save downloads a workbook that preserves Tier B parts', async ({ pa
   await clickCell(page, 1, 1);
   await page.keyboard.type('43');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByTestId('save-button').click();
@@ -77,7 +77,7 @@ test('creates a new blank workbook and saves it through Save As', async ({ page 
   await clickCell(page, 0, 0);
   await page.keyboard.type('Hello');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 
   await page.getByTestId('file-menu-button').click();
   const downloadPromise = page.waitForEvent('download');
@@ -102,7 +102,7 @@ test('F2 and Enter without a change does not rewrite a formula cell', async ({ p
   await page.keyboard.press('F2');
   await expect(page.getByTestId('cell-editor')).toHaveValue('B2*2');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dirty-indicator')).toHaveCount(0);
+  await expect(page.getByTestId('save-button')).not.toHaveAttribute('data-unsaved', 'true');
   const formula = await page.evaluate(
     () =>
       (
@@ -119,7 +119,7 @@ test('prompts and keeps the current document when opening with unsaved edits', a
   await clickCell(page, 0, 0);
   await page.keyboard.type('changed');
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 
   const dialogPromise = page.waitForEvent('dialog');
   await page.getByTestId('file-input').setInputFiles(fixturePath(fixtureName));
@@ -129,5 +129,5 @@ test('prompts and keeps the current document when opening with unsaved edits', a
 
   await expect(page.getByTestId('status-message')).toContainText('Unsaved changes were kept');
   await expect(page.getByTestId('file-name')).toHaveText(fixtureName);
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 });

@@ -180,7 +180,7 @@ test('Format Cells rejects an invalid colour and number code without dispatching
   await expect(colours).toBeHidden();
   await dialog.getByTestId('format-apply').click();
   await expect(dialog.getByTestId('format-error-font-color')).toHaveCount(0);
-  await expect(dialog.getByTestId('format-applied')).toHaveText('Formatting applied.');
+  await expect(dialog.getByTestId('format-applied')).toHaveText('Formatted A1.');
   await expect.poll(async () => (await styleAt(page, 0, 0))?.font.color).toBe('#FF0000');
 
   await dialog.getByRole('tab', { name: 'Number' }).click();
@@ -196,6 +196,11 @@ test('Format Cells rejects an invalid colour and number code without dispatching
   await dialog.getByTestId('format-apply').click();
   await expect.poll(async () => (await styleAt(page, 0, 0))?.numberFormat).toBe('0.00');
   await expect(dialog.getByTestId('format-error-number-code')).toHaveCount(0);
+
+  // Point 5: applying the same value again writes nothing, and the dialog says
+  // so instead of claiming it formatted the cell (issue 35).
+  await dialog.getByTestId('format-apply').click();
+  await expect(dialog.getByTestId('format-applied')).toHaveText('No formatting change for A1.');
 
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();

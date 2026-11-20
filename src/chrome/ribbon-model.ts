@@ -12,6 +12,8 @@ import type {
   RibbonTabId,
 } from '@commands/inventory';
 import type { MenuItemModel } from './Menu';
+import { isRibbonIconName } from './ribbon-icons';
+import type { RibbonIconName } from './ribbon-icons';
 
 export interface CommandState {
   readonly enabled: boolean;
@@ -37,7 +39,9 @@ export interface ResolvedRibbonControl {
   readonly commandId: string;
   readonly label: string;
   readonly title: string;
-  readonly icon?: string;
+  readonly icon?: RibbonIconName;
+  /** The icon alone is the control's visible content; `title` names it. */
+  readonly iconOnly: boolean;
   readonly wide: boolean;
   /** Present-but-disabled placement (ticket 27); the resolver cannot re-enable it. */
   readonly disabled: boolean;
@@ -51,6 +55,8 @@ export interface ResolvedRibbonControl {
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
   readonly menuHeading?: string;
+  /** A colour picker replaces the preset menu for the font and fill colours. */
+  readonly picker?: 'font' | 'fill';
 }
 
 export interface ResolvedRibbonGroup {
@@ -68,6 +74,9 @@ export interface ResolvedCompactControl {
   readonly commandId: string;
   readonly label: string;
   readonly title: string;
+  readonly icon?: RibbonIconName;
+  /** The icon alone is the compact control's visible content. */
+  readonly iconOnly: boolean;
   readonly args?: Readonly<Record<string, unknown>>;
 }
 
@@ -87,6 +96,39 @@ export const RIBBON_TABS: readonly RibbonTabDefinition[] = [
   { id: 'Review', label: 'Review' },
   { id: 'View', label: 'View' },
 ];
+
+export interface ResolvedQuickAccessControl {
+  readonly key: string;
+  readonly commandId: string;
+  readonly label: string;
+  /** The tooltip and accessible name: the command and its first shortcut. */
+  readonly title: string;
+  readonly icon?: RibbonIconName;
+  readonly order: number;
+}
+
+/**
+ * The Quick Access Toolbar above the ribbon: Save, Undo and Redo only, in map
+ * order (ui-chrome §1). Save As is not a quick-access command; it stays in the
+ * File menu. Enablement still comes from the registry at render time.
+ */
+export function quickAccessControls(): readonly ResolvedQuickAccessControl[] {
+  return COMMAND_INVENTORY.filter((entry) => entry.implemented && entry.quickAccess !== undefined)
+    .sort((left, right) => (left.quickAccess?.order ?? 100) - (right.quickAccess?.order ?? 100))
+    .map((entry) => {
+      const iconName = entry.quickAccess?.icon ?? entry.icon;
+      const icon = iconName !== undefined && isRibbonIconName(iconName) ? iconName : undefined;
+      const shortcut = entry.shortcut[0];
+      return {
+        key: entry.id,
+        commandId: entry.id,
+        label: entry.label,
+        title: shortcut === undefined ? entry.label : `${entry.label} (${shortcut})`,
+        ...(icon === undefined ? {} : { icon }),
+        order: entry.quickAccess?.order ?? 100,
+      };
+    });
+}
 
 /**
  * Excel's familiar group order. A group with no implemented IN command is
@@ -133,13 +175,18 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
         continue;
       }
       const controls = groups.get(placement.group) ?? [];
+      const placementIcon =
+        placement.icon !== undefined && isRibbonIconName(placement.icon)
+          ? placement.icon
+          : undefined;
       controls.push({
         key: `${entry.id}:${placement.controlId ?? placement.label ?? placement.kind}:${placement.order ?? 100}`,
         kind: placement.kind,
         commandId: entry.id,
         label: placement.label ?? entry.label,
         title: placement.title ?? placement.label ?? entry.label,
-        ...(placement.icon === undefined ? {} : { icon: placement.icon }),
+        ...(placementIcon === undefined ? {} : { icon: placementIcon }),
+        iconOnly: placement.iconOnly === true,
         wide: placement.wide === true,
         disabled: placement.disabled === true,
         row: placement.row ?? 1,
@@ -150,6 +197,7 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
         ...(placement.options === undefined ? {} : { options: placement.options }),
         ...(placement.menu === undefined ? {} : { menu: placement.menu }),
         ...(placement.menuHeading === undefined ? {} : { menuHeading: placement.menuHeading }),
+        ...(placement.picker === undefined ? {} : { picker: placement.picker }),
       });
       groups.set(placement.group, controls);
     }
@@ -195,12 +243,14 @@ export function ribbonMenuItems(
   const items: MenuItemModel[] = [];
   menu.forEach((item, index) => {
     if (inventoryCommand(item.commandId)?.implemented !== true) return;
+    const icon = item.icon !== undefined && isRibbonIconName(item.icon) ? item.icon : undefined;
     items.push({
       id: `${item.commandId}:${index}`,
       label: item.label,
       commandId: item.commandId,
       args: item.args,
       ...(item.shortcut === undefined ? {} : { shortcut: item.shortcut }),
+      ...(icon === undefined ? {} : { icon }),
       disabled: !resolveState(item.commandId).enabled,
       ...(item.dividerBefore === true ? { dividerBefore: true } : {}),
     });
@@ -214,14 +264,20 @@ export function compactControls(): readonly ResolvedCompactControl[] {
       entry.implemented && entry.compact !== undefined,
   )
     .sort((left, right) => (left.compact.order ?? 100) - (right.compact.order ?? 100))
-    .map((entry) => ({
-      key: entry.id,
-      kind: entry.compact.kind,
-      commandId: entry.id,
-      label: entry.compact.label ?? entry.label,
-      title: entry.compact.title ?? entry.compact.label ?? entry.label,
-      ...(entry.compact.args === undefined ? {} : { args: entry.compact.args }),
-    }));
+    .map((entry) => {
+      const iconName = entry.compact.icon ?? entry.icon;
+      const icon = iconName !== undefined && isRibbonIconName(iconName) ? iconName : undefined;
+      return {
+        key: entry.id,
+        kind: entry.compact.kind,
+        commandId: entry.id,
+        label: entry.compact.label ?? entry.label,
+        title: entry.compact.title ?? entry.compact.label ?? entry.label,
+        ...(icon === undefined ? {} : { icon }),
+        iconOnly: entry.compact.iconOnly === true,
+        ...(entry.compact.args === undefined ? {} : { args: entry.compact.args }),
+      };
+    });
 }
 
 export function menuItemsFor(

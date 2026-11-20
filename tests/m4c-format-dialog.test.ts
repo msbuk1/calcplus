@@ -303,6 +303,106 @@ describe('M4C border dialog', () => {
     });
   });
 
+  it('writes nothing when a preset changes no edges and keeps the whole style', () => {
+    const { sheet, session } = blankSession();
+    const range = rangeOf(0, 0);
+    const context = contextFor(sheet.id, range);
+    // One fully styled cell: font, fill, border, alignment and number format.
+    session.dispatch(
+      'format.font',
+      { sheetId: sheet.id, range, name: 'Georgia', size: 14, bold: true },
+      context,
+    );
+    session.dispatch(
+      'format.fill',
+      { sheetId: sheet.id, range, pattern: 'solid', color: '#ff0000' },
+      context,
+    );
+    session.dispatch(
+      'format.border',
+      { sheetId: sheet.id, range, edges: { top: borderEdge('medium', '#0000ff') } },
+      context,
+    );
+    session.dispatch(
+      'format.alignment',
+      { sheetId: sheet.id, range, horizontal: 'center' },
+      context,
+    );
+    session.dispatch('format.numberFormat', { sheetId: sheet.id, range, code: '0.00' }, context);
+    const before = styleAt(session, sheet, 0, 0);
+
+    // Inside on a single cell changes no edges. The null patch must write
+    // nothing, not a default style that wipes the cell (issue 35).
+    const inside = session.dispatch(
+      'format.border',
+      { sheetId: sheet.id, range, preset: 'inside', style: 'thick', color: '#00ff00' },
+      context,
+    );
+    expect(inside.changes).toHaveLength(0);
+    const afterInside = styleAt(session, sheet, 0, 0);
+    expect(afterInside.font).toEqual(before.font);
+    expect(afterInside.fill).toEqual(before.fill);
+    expect(afterInside.border).toEqual(before.border);
+    expect(afterInside.alignment).toEqual(before.alignment);
+    expect(afterInside.numFmtCode).toBe(before.numFmtCode);
+
+    // Outline on a 3x3 touches the edge cells only. The interior cell gets a
+    // null patch and must keep its whole style the same way.
+    const outer = rangeOf(0, 0, 2, 2);
+    const outerContext = contextFor(sheet.id, outer);
+    session.dispatch(
+      'format.font',
+      { sheetId: sheet.id, range: outer, name: 'Georgia', size: 14, bold: true },
+      outerContext,
+    );
+    session.dispatch(
+      'format.fill',
+      { sheetId: sheet.id, range: outer, pattern: 'solid', color: '#ff0000' },
+      outerContext,
+    );
+    session.dispatch(
+      'format.border',
+      { sheetId: sheet.id, range: outer, edges: { top: borderEdge('medium', '#0000ff') } },
+      outerContext,
+    );
+    session.dispatch(
+      'format.alignment',
+      { sheetId: sheet.id, range: outer, horizontal: 'center' },
+      outerContext,
+    );
+    session.dispatch(
+      'format.numberFormat',
+      { sheetId: sheet.id, range: outer, code: '0.00' },
+      outerContext,
+    );
+    const interiorBefore = styleAt(session, sheet, 1, 1);
+    const cornerBefore = styleAt(session, sheet, 0, 0);
+
+    const outline = session.dispatch(
+      'format.border',
+      { sheetId: sheet.id, range: outer, preset: 'outline', style: 'dashed', color: '#00ff00' },
+      outerContext,
+    );
+    expect(outline.changes).toHaveLength(1);
+    const interiorAfter = styleAt(session, sheet, 1, 1);
+    expect(interiorAfter.font).toEqual(interiorBefore.font);
+    expect(interiorAfter.fill).toEqual(interiorBefore.fill);
+    expect(interiorAfter.border).toEqual(interiorBefore.border);
+    expect(interiorAfter.alignment).toEqual(interiorBefore.alignment);
+    expect(interiorAfter.numFmtCode).toBe(interiorBefore.numFmtCode);
+    // A corner gets only its two named edges; the rest of the style stays.
+    const cornerAfter = styleAt(session, sheet, 0, 0);
+    expect(cornerAfter.font).toEqual(cornerBefore.font);
+    expect(cornerAfter.fill).toEqual(cornerBefore.fill);
+    expect(cornerAfter.alignment).toEqual(cornerBefore.alignment);
+    expect(cornerAfter.numFmtCode).toBe(cornerBefore.numFmtCode);
+    expect(cornerAfter.border.top).toEqual({ style: 'dashed', color: '#00FF00', weight: 'thin' });
+    expect(cornerAfter.border.left).toEqual({ style: 'dashed', color: '#00FF00', weight: 'thin' });
+    expect(cornerAfter.border.right).toEqual(cornerBefore.border.right);
+    expect(cornerAfter.border.bottom).toEqual(cornerBefore.border.bottom);
+    expect(cornerAfter.border.diagonal).toEqual(cornerBefore.border.diagonal);
+  });
+
   it('sets a style on every side when no custom edges are named', () => {
     const { sheet, session } = blankSession();
     const range = rangeOf(0, 0);

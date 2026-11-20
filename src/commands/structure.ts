@@ -173,9 +173,15 @@ function runStructure(context: CommandContext, args: StructureArgs, kind: EditKi
     return blockResult(sheet.id, edit, plan.block.message);
   }
   // The transform-or-block rule reaches the opaque parts the edit anchors
-  // (charts, drawings, comments, pivots). Their byte rewrites ride the same
+  // (charts, drawings, comments, pivots) and the sibling worksheets whose
+  // hyperlinks point into the edited sheet. Their byte rewrites ride the same
   // transaction; undo writes the `before` bytes back (workbook-model §10).
-  const opaquePatches = planOpaquePartPatches(context.workbook, edit, plan).patches;
+  let opaquePatches: readonly StructuralPartPatch[];
+  try {
+    opaquePatches = planOpaquePartPatches(context.workbook, edit, plan).patches;
+  } catch (error) {
+    return blockResult(sheet.id, edit, error instanceof Error ? error.message : String(error));
+  }
 
   const sourceBefore = context.workbook.sourceParts.get(sheet.partPath) ?? null;
   let sourceAfter: Uint8Array | null = null;
@@ -206,11 +212,26 @@ function runStructure(context: CommandContext, args: StructureArgs, kind: EditKi
     });
   }
 
-  return {
+  const result: CommandResult = {
     changes,
     selectionAfter: selectionAfter(kind, edit, selection),
     structure: payload(sheet.id, edit, plan),
   };
+  // Broken-and-marked, one notice per edit (ticket 32): the edit applies, and
+  // every reference whose target is gone already reads #REF! in the model and
+  // in the saved parts. The user is told once, not blocked.
+  if (plan.brokenReferences.length > 0) {
+    const count = plan.brokenReferences.length;
+    const first = plan.brokenReferences[0];
+    return {
+      ...result,
+      ui: {
+        type: 'toast',
+        message: `${count} reference${count === 1 ? '' : 's'} could not follow the edit and now read #REF!. The first is ${first?.label ?? 'unknown'}.`,
+      },
+    };
+  }
+  return result;
 }
 
 function buildEdit(

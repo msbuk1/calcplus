@@ -17,6 +17,7 @@ import type { EngineCellRef } from '@engine/port';
 import { collectValueChecklist, computeHiddenLayers } from '@model/autofilter';
 import type { ClipboardMode, ClipboardSnapshot } from '@model/clipboard';
 import type { FindMatch } from '@model/find';
+import { MERGE_DATA_WARNING } from '@model/merge';
 import type { SortDirection } from '@model/sort';
 import type {
   AutoFilter,
@@ -47,7 +48,12 @@ import { listPreservedParts } from '@ooxml/part-policy';
 import { buildCompatibilityReport, buildExportReport } from '@ooxml/report';
 import type { CompatibilityReport, ExportReport } from '@ooxml/report';
 import { compatibilityReportSummary, exportReportSummary } from '@ooxml/report';
-import { confirmReplaceDocument, planMacroSave, planSignatureSave } from '@io/confirm';
+import {
+  confirmCloseDocument,
+  confirmReplaceDocument,
+  planMacroSave,
+  planSignatureSave,
+} from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
 import { checkExternalLink, internalLocationText, parseInternalLocation } from '@view/hyperlinks';
 import { firstVisibleSheetId, isSheetVisible, visibleSheetCount } from '@view/sheet-visibility';
@@ -190,7 +196,7 @@ export function App(): JSX.Element {
   // opening it and typing in its search box never create a transaction (§3.8).
   const [filterDropdown, setFilterDropdown] = useState<{
     readonly column: number;
-    readonly anchor: { readonly top: number; readonly left: number };
+    readonly anchor: { readonly top: number; readonly left: number; readonly headerTop: number };
   } | null>(null);
   // Functions inserted this session, most recent first. View state only: it
   // feeds the dialog's "Recently used" category and never enters the workbook.
@@ -217,6 +223,7 @@ export function App(): JSX.Element {
     readonly end: number;
   } | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
   const clipboardRef = useRef<ClipboardSnapshot | null>(null);
   const focusGridAfterDialogRef = useRef(false);
@@ -363,6 +370,39 @@ export function App(): JSX.Element {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const closeWorkbook = (): void => {
+    if (document === null || busy) return;
+    // Persistence §4: an unsaved workbook asks before the session is discarded.
+    if (!confirmCloseDocument(document.session.hasUnsavedChanges)) {
+      setStatus('Close cancelled. Unsaved changes were kept.');
+      return;
+    }
+    document.calculation.dispose();
+    setDocument(null);
+    setSheetViews({});
+    setSelection(collapseSelection({ row: 0, col: 0 }));
+    setFocusZone('grid');
+    setLiveEditText(null);
+    setBarDraft(null);
+    setBarCaretRequest(null);
+    setDimensionPreview(null);
+    setContextMenu(null);
+    setDialog(null);
+    setSortRequest(null);
+    setFilterDropdown(null);
+    setPainter(null);
+    setCopyMarquee(null);
+    setRibbonTab('Home');
+    setLastExportReport(null);
+    setVersion((value) => value + 1);
+    setStatus('Closed the workbook.');
+    setCalcWarning(null);
+    recoveryRef.current = null;
+    barEditAddressRef.current = null;
+    barPointingRef.current = null;
+    clipboardRef.current = null;
   };
 
   const openFile = async (): Promise<void> => {
@@ -870,6 +910,8 @@ export function App(): JSX.Element {
       'font-family': activeProjected?.style.font.name ?? 'Calibri',
       'font-size': activeProjected === null ? '11' : String(activeProjected.style.font.size),
       'number-format': activeProjected?.style.numberFormat ?? 'General',
+      'font-color': activeProjected?.style.font.color ?? '',
+      'fill-color': activeProjected?.style.fill.color ?? '',
     }),
     [activeProjected],
   );
@@ -1053,7 +1095,13 @@ export function App(): JSX.Element {
       return;
     }
     const target = narrow && !ribbonExpanded ? compactRef.current : ribbonRef.current;
-    if (target !== null && !target.contains(window.document.activeElement)) target.focus();
+    if (
+      target !== null &&
+      !target.contains(window.document.activeElement) &&
+      !headerRef.current?.contains(window.document.activeElement)
+    ) {
+      target.focus();
+    }
   }, [focusZone, narrow, ribbonExpanded]);
 
   interface NavigationTarget {
@@ -2069,10 +2117,12 @@ export function App(): JSX.Element {
       }
       if (result.changes.length > 0) setVersion((current) => current + 1);
       const label = formatRangeAddress(range, false, false);
-      setStatus(
-        result.changes.length === 0 ? `No formatting change for ${label}.` : `Formatted ${label}.`,
-      );
-      return { ok: true, message: null };
+      const message =
+        result.changes.length === 0 ? `No formatting change for ${label}.` : `Formatted ${label}.`;
+      setStatus(message);
+      // The dialog shows this same line when Apply keeps the dialog open, so a
+      // no-change apply never claims it wrote something (issue 35).
+      return { ok: true, message };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(message);
@@ -2164,7 +2214,7 @@ export function App(): JSX.Element {
       setStatus('That column is outside the AutoFilter range.');
       return;
     }
-    const anchor = filterDropdownAnchor(projection, column);
+    const anchor = filterDropdownAnchor(projection, column, filter.range.startRow);
     if (anchor === null) return;
     setFilterDropdown({ column, anchor });
   };
@@ -2329,6 +2379,9 @@ export function App(): JSX.Element {
       case 'file.saveAs':
         void saveFile(true).finally(focusGridUnlessEditing);
         return null;
+      case 'file.close':
+        closeWorkbook();
+        return null;
       case 'edit.undo':
         undo();
         focusGrid();
@@ -2346,6 +2399,45 @@ export function App(): JSX.Element {
       case 'edit.paste':
         pasteClipboard();
         return null;
+      case 'merge.center':
+      case 'merge.across':
+      case 'merge.cells':
+      case 'merge.unmerge': {
+        if (document === null) return null;
+        const first = dispatchSheetCommand(commandId, args);
+        if (first === null) return null;
+        if (first.ui?.type === 'dialog') {
+          // Discarding covered data asks first, like the sheet delete. The
+          // second dispatch carries the answer into the same one transaction.
+          const confirmed =
+            typeof window === 'undefined' || window.confirm(first.ui.message ?? MERGE_DATA_WARNING);
+          if (!confirmed) {
+            setStatus('Merge cancelled. No cells were changed.');
+            focusGrid();
+            return null;
+          }
+          const second = dispatchSheetCommand(commandId, {
+            ...(typeof args === 'object' && args !== null ? args : {}),
+            confirm: true,
+          });
+          if (second !== null) {
+            setStatus(
+              second.changes.length > 0
+                ? (second.ui?.message ?? mergeStatusMessage(commandId))
+                : (second.ui?.message ?? 'The merge made no change.'),
+            );
+          }
+          if (second?.ui?.type !== 'dialog') focusGrid();
+          return null;
+        }
+        if (first.changes.length > 0) {
+          setStatus(first.ui?.message ?? mergeStatusMessage(commandId));
+        } else if (first.ui?.message === undefined) {
+          setStatus('The merge made no change.');
+        }
+        focusGrid();
+        return null;
+      }
       case 'sheet.insert':
         insertSheet();
         return null;
@@ -2473,10 +2565,10 @@ export function App(): JSX.Element {
       <AppHeader
         fileName={document?.fileName ?? null}
         dirty={dirty}
-        canSave={resolveState('file.save').enabled}
-        canUndo={resolveState('edit.undo').enabled}
-        canRedo={resolveState('edit.redo').enabled}
+        resolveState={resolveState}
         onCommand={runCommand}
+        onFocus={() => setFocusZone('ribbon')}
+        headerRef={headerRef}
       />
 
       {narrow ? (
@@ -2630,6 +2722,7 @@ export function App(): JSX.Element {
             onPainterApply={applyPainter}
             onFill={handleFill}
             onFollowHyperlink={followHyperlink}
+            onFilterHeader={openFilterDropdown}
             marquee={
               copyMarquee === null
                 ? undefined
@@ -2752,7 +2845,7 @@ export function App(): JSX.Element {
           criterion={filterPanel.criterion}
           filterType={filterPanel.filterType}
           date1904={filterPanel.date1904}
-          anchor={filterDropdown?.anchor ?? { top: 0, left: 0 }}
+          anchor={filterDropdown?.anchor ?? { top: 0, left: 0, headerTop: 0 }}
           onSort={(direction) => sortFilterColumn(filterPanel.column, direction)}
           onCustomSort={() => {
             setFilterDropdown(null);
@@ -2849,6 +2942,12 @@ function goToTargetArgument(args: unknown): string | null {
 
 function findErrorOutcome(message: string): FindOutcome {
   return { error: message, message: null, matches: [], total: 0, replaced: 0 };
+}
+
+/** The status line a completed merge command reports. */
+function mergeStatusMessage(commandId: string): string {
+  if (commandId === 'merge.unmerge') return 'Unmerged the selected cells.';
+  return 'Merged the selected cells.';
 }
 
 /**
@@ -3097,17 +3196,20 @@ function contextMenuRegion(
 function filterDropdownAnchor(
   view: SheetProjection,
   column: number,
-): { readonly top: number; readonly left: number } | null {
+  headerRow: number,
+): { readonly top: number; readonly left: number; readonly headerTop: number } | null {
   const canvas = window.document.querySelector<HTMLElement>('[data-testid="grid-canvas"]');
   const layout = gridDebugState.layout;
   if (canvas === null || layout === null) return null;
-  const rect = cellRect(view, layout, gridDebugState.scrollX, gridDebugState.scrollY, 0, column);
-  const box = canvas.getBoundingClientRect();
-  const width = 248;
-  const edge = 8;
-  const left = Math.min(
-    Math.max(box.left + rect.x, edge),
-    Math.max(edge, window.innerWidth - width - edge),
+  const rect = cellRect(
+    view,
+    layout,
+    gridDebugState.scrollX,
+    gridDebugState.scrollY,
+    headerRow,
+    column,
   );
-  return { top: box.top + layout.headerHeight + 1, left };
+  const box = canvas.getBoundingClientRect();
+  const headerTop = box.top + rect.y;
+  return { top: headerTop + rect.height + 1, left: box.left + rect.x, headerTop };
 }

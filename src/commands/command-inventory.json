@@ -71,11 +71,13 @@
         "order": 20,
         "row": 1,
         "label": "Cut",
-        "title": "Cut (Ctrl+X)"
+        "title": "Cut (Ctrl+X)",
+        "icon": "cut"
       }
     ],
     "contextMenu": { "order": 10 },
-    "compact": { "kind": "button", "order": 30, "label": "Cut" }
+    "compact": { "kind": "button", "order": 30, "label": "Cut" },
+    "icon": "cut"
   },
   {
     "id": "edit.copy",
@@ -94,11 +96,13 @@
         "order": 30,
         "row": 2,
         "label": "Copy",
-        "title": "Copy (Ctrl+C)"
+        "title": "Copy (Ctrl+C)",
+        "icon": "copy"
       }
     ],
     "contextMenu": { "order": 20 },
-    "compact": { "kind": "button", "order": 31, "label": "Copy" }
+    "compact": { "kind": "button", "order": 31, "label": "Copy" },
+    "icon": "copy"
   },
   {
     "id": "edit.paste",
@@ -118,11 +122,13 @@
         "row": 1,
         "rowSpan": 3,
         "label": "Paste",
-        "title": "Paste (Ctrl+V)"
+        "title": "Paste (Ctrl+V)",
+        "icon": "paste"
       }
     ],
     "contextMenu": { "order": 30 },
-    "compact": { "kind": "button", "order": 32, "label": "Paste" }
+    "compact": { "kind": "button", "order": 32, "label": "Paste" },
+    "icon": "paste"
   },
   {
     "id": "fill.handle",
@@ -344,9 +350,11 @@
             "args": { "shift": "left" }
           },
           { "label": "Delete Sheet", "commandId": "sheet.delete" }
-        ]
+        ],
+        "icon": "delete"
       }
-    ]
+    ],
+    "icon": "delete"
   },
   {
     "id": "dimension.set",
@@ -365,8 +373,29 @@
     "label": "Merge & Center",
     "category": "format",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "split",
+        "order": 70,
+        "row": 2,
+        "label": "Merge & Center",
+        "title": "Merge & Center",
+        "args": {},
+        "menu": [
+          { "label": "Merge & Center", "commandId": "merge.center", "args": {} },
+          { "label": "Merge Across", "commandId": "merge.across", "args": {} },
+          { "label": "Merge Cells", "commandId": "merge.cells", "args": {} },
+          { "label": "Unmerge", "commandId": "merge.unmerge", "args": {} }
+        ],
+        "icon": "merge",
+        "wide": true
+      }
+    ],
+    "icon": "merge"
   },
   {
     "id": "merge.across",
@@ -375,8 +404,20 @@
     "label": "Merge Across",
     "category": "format",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 71,
+        "label": "Merge Across",
+        "menuOnly": true,
+        "icon": "merge"
+      }
+    ],
+    "icon": "merge"
   },
   {
     "id": "merge.cells",
@@ -385,8 +426,20 @@
     "label": "Merge Cells",
     "category": "format",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 72,
+        "label": "Merge Cells",
+        "menuOnly": true,
+        "icon": "merge"
+      }
+    ],
+    "icon": "merge"
   },
   {
     "id": "merge.unmerge",
@@ -395,8 +448,20 @@
     "label": "Unmerge",
     "category": "format",
     "enablement": "A sheet is active and a merged cell is selected",
-    "implemented": false,
-    "shortcut": []
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Home",
+        "group": "Alignment",
+        "kind": "button",
+        "order": 73,
+        "label": "Unmerge",
+        "menuOnly": true,
+        "icon": "merge"
+      }
+    ],
+    "icon": "merge"
   },
   {
     "id": "edit.undo",
@@ -406,7 +471,9 @@
     "category": "edit",
     "enablement": "The undo history is not empty",
     "implemented": true,
-    "shortcut": ["Ctrl+Z"]
+    "shortcut": ["Ctrl+Z"],
+    "icon": "undo",
+    "quickAccess": { "order": 20 }
   },
   {
     "id": "edit.redo",
@@ -416,7 +483,9 @@
     "category": "edit",
     "enablement": "The redo history is not empty",
     "implemented": true,
-    "shortcut": ["Ctrl+Y", "Ctrl+Shift+Z"]
+    "shortcut": ["Ctrl+Y", "Ctrl+Shift+Z"],
+    "icon": "redo",
+    "quickAccess": { "order": 30 }
   },
   {
     "id": "find.search",
@@ -440,11 +509,13 @@
           { "label": "Find", "commandId": "find.search", "shortcut": "Ctrl+F" },
           { "label": "Replace", "commandId": "find.replaceOne" },
           { "label": "Go to", "commandId": "goto.goto", "shortcut": "Ctrl+G" }
-        ]
+        ],
+        "icon": "find"
       }
     ],
     "contextMenu": { "order": 80 },
-    "compact": { "kind": "button", "order": 40, "label": "Find" }
+    "compact": { "kind": "button", "order": 40, "label": "Find" },
+    "icon": "find"
   },
   {
     "id": "find.replaceOne",
@@ -462,11 +533,13 @@
         "kind": "button",
         "order": 50,
         "label": "Replace",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "replace"
       }
     ],
     "contextMenu": { "order": 90 },
-    "compact": { "kind": "button", "order": 41, "label": "Replace" }
+    "compact": { "kind": "button", "order": 41, "label": "Replace" },
+    "icon": "replace"
   },
   {
     "id": "find.replaceAll",
@@ -494,12 +567,14 @@
         "kind": "button",
         "order": 60,
         "label": "Go to",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "go-to"
       }
     ],
     "menu": [{ "menu": "Edit", "order": 100 }],
     "contextMenu": { "order": 100 },
-    "compact": { "kind": "button", "order": 42, "label": "Go to" }
+    "compact": { "kind": "button", "order": 42, "label": "Go to" },
+    "icon": "go-to"
   },
   {
     "id": "edit.clearContents",
@@ -523,11 +598,13 @@
           { "label": "Clear All", "commandId": "edit.clearAll" },
           { "label": "Clear Contents", "commandId": "edit.clearContents", "args": {} },
           { "label": "Clear Formats", "commandId": "format.clear", "args": {} }
-        ]
+        ],
+        "icon": "clear"
       }
     ],
     "contextMenu": { "order": 40 },
-    "compact": { "kind": "button", "order": 16, "label": "Clear" }
+    "compact": { "kind": "button", "order": 16, "label": "Clear" },
+    "icon": "clear"
   },
   {
     "id": "format.clear",
@@ -545,10 +622,12 @@
         "kind": "button",
         "order": 30,
         "label": "Clear Formats",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "clear"
       }
     ],
-    "contextMenu": { "order": 50 }
+    "contextMenu": { "order": 50 },
+    "icon": "clear"
   },
   {
     "id": "edit.clearAll",
@@ -557,7 +636,7 @@
     "label": "Clear all",
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "ribbon": [
       {
@@ -566,10 +645,12 @@
         "kind": "button",
         "order": 30,
         "label": "Clear All",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "clear"
       }
     ],
-    "contextMenu": { "order": 70 }
+    "contextMenu": { "order": 70 },
+    "icon": "clear"
   },
   {
     "id": "data.sort",
@@ -604,10 +685,19 @@
           { "label": "Filter", "commandId": "data.filter", "dividerBefore": true },
           { "label": "Clear", "commandId": "data.filterClear" },
           { "label": "Reapply", "commandId": "data.filterReapply" }
-        ]
+        ],
+        "icon": "sort"
       },
-      { "tab": "Data", "group": "Sort & Filter", "kind": "button", "order": 10, "label": "Sort" }
-    ]
+      {
+        "tab": "Data",
+        "group": "Sort & Filter",
+        "kind": "button",
+        "order": 10,
+        "label": "Sort",
+        "icon": "sort"
+      }
+    ],
+    "icon": "sort"
   },
   {
     "id": "data.filter",
@@ -625,16 +715,19 @@
         "kind": "button",
         "order": 35,
         "label": "Filter",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "filter"
       },
       {
         "tab": "Data",
         "group": "Sort & Filter",
         "kind": "toggle",
         "order": 20,
-        "label": "Filter"
+        "label": "Filter",
+        "icon": "filter"
       }
-    ]
+    ],
+    "icon": "filter"
   },
   {
     "id": "data.filterColumn",
@@ -672,16 +765,19 @@
         "kind": "button",
         "order": 36,
         "label": "Clear",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "filter-clear"
       },
       {
         "tab": "Data",
         "group": "Sort & Filter",
         "kind": "button",
         "order": 30,
-        "label": "Clear"
+        "label": "Clear",
+        "icon": "filter-clear"
       }
-    ]
+    ],
+    "icon": "filter-clear"
   },
   {
     "id": "data.filterReapply",
@@ -699,16 +795,19 @@
         "kind": "button",
         "order": 37,
         "label": "Reapply",
-        "menuOnly": true
+        "menuOnly": true,
+        "icon": "filter-reapply"
       },
       {
         "tab": "Data",
         "group": "Sort & Filter",
         "kind": "button",
         "order": 40,
-        "label": "Reapply"
+        "label": "Reapply",
+        "icon": "filter-reapply"
       }
-    ]
+    ],
+    "icon": "filter-reapply"
   },
   {
     "id": "format.font",
@@ -740,7 +839,8 @@
             "args": { "name": "Times New Roman" }
           },
           { "label": "Courier New", "value": "Courier New", "args": { "name": "Courier New" } }
-        ]
+        ],
+        "icon": "font-family"
       },
       {
         "tab": "Home",
@@ -765,7 +865,8 @@
           { "label": "24", "value": "24", "args": { "size": 24 } },
           { "label": "28", "value": "28", "args": { "size": 28 } },
           { "label": "36", "value": "36", "args": { "size": 36 } }
-        ]
+        ],
+        "icon": "font-size"
       },
       {
         "tab": "Home",
@@ -777,15 +878,12 @@
         "label": "A",
         "title": "Font Colour",
         "args": { "color": "#C00000" },
-        "menu": [
-          { "label": "Automatic", "commandId": "format.font", "args": { "color": null } },
-          { "label": "Red", "commandId": "format.font", "args": { "color": "#C00000" } },
-          { "label": "Green", "commandId": "format.font", "args": { "color": "#107C41" } },
-          { "label": "Blue", "commandId": "format.font", "args": { "color": "#1A73E8" } },
-          { "label": "Black", "commandId": "format.font", "args": { "color": "#000000" } }
-        ]
+        "picker": "font",
+        "icon": "font-colour",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "font-colour"
   },
   {
     "id": "format.bold",
@@ -804,10 +902,13 @@
         "order": 20,
         "row": 2,
         "label": "B",
-        "title": "Bold (Ctrl+B)"
+        "title": "Bold (Ctrl+B)",
+        "icon": "bold",
+        "iconOnly": true
       }
     ],
-    "compact": { "kind": "toggle", "order": 10, "label": "B", "title": "Bold" }
+    "compact": { "kind": "toggle", "order": 10, "label": "B", "title": "Bold", "iconOnly": true },
+    "icon": "bold"
   },
   {
     "id": "format.italic",
@@ -826,10 +927,13 @@
         "order": 30,
         "row": 2,
         "label": "I",
-        "title": "Italic (Ctrl+I)"
+        "title": "Italic (Ctrl+I)",
+        "icon": "italic",
+        "iconOnly": true
       }
     ],
-    "compact": { "kind": "toggle", "order": 11, "label": "I", "title": "Italic" }
+    "compact": { "kind": "toggle", "order": 11, "label": "I", "title": "Italic", "iconOnly": true },
+    "icon": "italic"
   },
   {
     "id": "format.underline",
@@ -848,10 +952,19 @@
         "order": 40,
         "row": 2,
         "label": "U",
-        "title": "Underline (Ctrl+U)"
+        "title": "Underline (Ctrl+U)",
+        "icon": "underline",
+        "iconOnly": true
       }
     ],
-    "compact": { "kind": "toggle", "order": 12, "label": "U", "title": "Underline" }
+    "compact": {
+      "kind": "toggle",
+      "order": 12,
+      "label": "U",
+      "title": "Underline",
+      "iconOnly": true
+    },
+    "icon": "underline"
   },
   {
     "id": "format.strike",
@@ -870,9 +983,12 @@
         "order": 50,
         "row": 2,
         "label": "S",
-        "title": "Strikethrough (Ctrl+5)"
+        "title": "Strikethrough (Ctrl+5)",
+        "icon": "strikethrough",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "strikethrough"
   },
   {
     "id": "format.fill",
@@ -894,33 +1010,9 @@
         "title": "Fill Colour",
         "wide": true,
         "args": { "pattern": "solid", "color": "#FFF2CC" },
-        "menu": [
-          {
-            "label": "Yellow",
-            "commandId": "format.fill",
-            "args": { "pattern": "solid", "color": "#FFF2CC" }
-          },
-          {
-            "label": "Green",
-            "commandId": "format.fill",
-            "args": { "pattern": "solid", "color": "#C6EFCE" }
-          },
-          {
-            "label": "Blue",
-            "commandId": "format.fill",
-            "args": { "pattern": "solid", "color": "#BDD7EE" }
-          },
-          {
-            "label": "Red",
-            "commandId": "format.fill",
-            "args": { "pattern": "solid", "color": "#FFC7CE" }
-          },
-          {
-            "label": "No Fill",
-            "commandId": "format.fill",
-            "args": { "pattern": "none", "color": null }
-          }
-        ]
+        "picker": "fill",
+        "icon": "fill",
+        "iconOnly": true
       }
     ],
     "compact": {
@@ -928,7 +1020,8 @@
       "order": 13,
       "label": "Fill",
       "args": { "pattern": "solid", "color": "#FFF2CC" }
-    }
+    },
+    "icon": "fill"
   },
   {
     "id": "format.border",
@@ -952,24 +1045,138 @@
         "args": { "preset": "all", "style": "thin", "color": "#000000" },
         "menu": [
           {
+            "label": "Bottom Border",
+            "commandId": "format.border",
+            "icon": "border-bottom",
+            "args": {
+              "edges": {
+                "bottom": { "style": "thin", "color": "#000000", "weight": "thin" }
+              }
+            }
+          },
+          {
+            "label": "Top Border",
+            "commandId": "format.border",
+            "icon": "border-top",
+            "args": {
+              "edges": { "top": { "style": "thin", "color": "#000000", "weight": "thin" } }
+            }
+          },
+          {
+            "label": "Left Border",
+            "commandId": "format.border",
+            "icon": "border-left",
+            "args": {
+              "edges": { "left": { "style": "thin", "color": "#000000", "weight": "thin" } }
+            }
+          },
+          {
+            "label": "Right Border",
+            "commandId": "format.border",
+            "icon": "border-right",
+            "args": {
+              "edges": {
+                "right": { "style": "thin", "color": "#000000", "weight": "thin" }
+              }
+            }
+          },
+          {
+            "label": "No Border",
+            "commandId": "format.border",
+            "icon": "border-none",
+            "args": { "preset": "none" }
+          },
+          {
             "label": "All Borders",
             "commandId": "format.border",
+            "icon": "border-all",
+            "dividerBefore": true,
             "args": { "preset": "all", "style": "thin", "color": "#000000" }
           },
           {
             "label": "Outside Borders",
             "commandId": "format.border",
+            "icon": "border-outside",
             "args": { "preset": "outline", "style": "thin", "color": "#000000" }
+          },
+          {
+            "label": "Thick Outside Borders",
+            "commandId": "format.border",
+            "icon": "border-thick-outside",
+            "args": { "preset": "outline", "style": "thick", "color": "#000000" }
+          },
+          {
+            "label": "Bottom Double Border",
+            "commandId": "format.border",
+            "icon": "border-bottom-double",
+            "args": {
+              "edges": {
+                "bottom": { "style": "double", "color": "#000000", "weight": "thick" }
+              }
+            }
+          },
+          {
+            "label": "Thick Bottom Border",
+            "commandId": "format.border",
+            "icon": "border-thick-bottom",
+            "args": {
+              "edges": {
+                "bottom": { "style": "thick", "color": "#000000", "weight": "thick" }
+              }
+            }
+          },
+          {
+            "label": "Top and Bottom Border",
+            "commandId": "format.border",
+            "icon": "border-top-bottom",
+            "args": {
+              "edges": {
+                "top": { "style": "thin", "color": "#000000", "weight": "thin" },
+                "bottom": { "style": "thin", "color": "#000000", "weight": "thin" }
+              }
+            }
+          },
+          {
+            "label": "Top and Thick Bottom Border",
+            "commandId": "format.border",
+            "icon": "border-top-thick-bottom",
+            "args": {
+              "edges": {
+                "top": { "style": "thin", "color": "#000000", "weight": "thin" },
+                "bottom": { "style": "thick", "color": "#000000", "weight": "thick" }
+              }
+            }
+          },
+          {
+            "label": "Top and Double Bottom Border",
+            "commandId": "format.border",
+            "icon": "border-top-double-bottom",
+            "args": {
+              "edges": {
+                "top": { "style": "thin", "color": "#000000", "weight": "thin" },
+                "bottom": { "style": "double", "color": "#000000", "weight": "thick" }
+              }
+            }
           },
           {
             "label": "Inside Borders",
             "commandId": "format.border",
+            "icon": "border-inside",
             "args": { "preset": "inside", "style": "thin", "color": "#000000" }
           },
-          { "label": "No Border", "commandId": "format.border", "args": { "preset": "none" } }
-        ]
+          {
+            "label": "More Borders...",
+            "commandId": "format.cellsDialog",
+            "icon": "border-more",
+            "dividerBefore": true,
+            "args": { "tab": "border" }
+          }
+        ],
+        "icon": "borders",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "borders"
   },
   {
     "id": "format.alignment",
@@ -989,7 +1196,9 @@
         "row": 1,
         "label": "L",
         "title": "Align Left",
-        "args": { "horizontal": "left" }
+        "args": { "horizontal": "left" },
+        "icon": "align-left",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -999,7 +1208,9 @@
         "row": 1,
         "label": "C",
         "title": "Centre",
-        "args": { "horizontal": "center" }
+        "args": { "horizontal": "center" },
+        "icon": "align-centre",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1009,7 +1220,9 @@
         "row": 1,
         "label": "R",
         "title": "Align Right",
-        "args": { "horizontal": "right" }
+        "args": { "horizontal": "right" },
+        "icon": "align-right",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1019,7 +1232,9 @@
         "row": 2,
         "label": "Top",
         "title": "Align Top",
-        "args": { "vertical": "top" }
+        "args": { "vertical": "top" },
+        "icon": "align-top",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1029,7 +1244,9 @@
         "row": 2,
         "label": "Middle",
         "title": "Align Middle",
-        "args": { "vertical": "center" }
+        "args": { "vertical": "center" },
+        "icon": "align-middle",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1039,9 +1256,12 @@
         "row": 2,
         "label": "Bottom",
         "title": "Align Bottom",
-        "args": { "vertical": "bottom" }
+        "args": { "vertical": "bottom" },
+        "icon": "align-bottom",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "align-left"
   },
   {
     "id": "format.wrapText",
@@ -1060,9 +1280,11 @@
         "order": 70,
         "row": 1,
         "label": "Wrap Text",
-        "title": "Wrap Text"
+        "title": "Wrap Text",
+        "icon": "wrap-text"
       }
-    ]
+    ],
+    "icon": "wrap-text"
   },
   {
     "id": "format.importedTextLayout",
@@ -1091,10 +1313,12 @@
         "order": 40,
         "row": 3,
         "label": "Format Painter",
-        "title": "Format Painter"
+        "title": "Format Painter",
+        "icon": "format-painter"
       }
     ],
-    "contextMenu": { "order": 35 }
+    "contextMenu": { "order": 35 },
+    "icon": "format-painter"
   },
   {
     "id": "painter.apply",
@@ -1138,7 +1362,8 @@
         "title": "Number Settings"
       }
     ],
-    "contextMenu": { "order": 55 }
+    "contextMenu": { "order": 55 },
+    "icon": "format-cells"
   },
   {
     "id": "format.numberFormat",
@@ -1171,7 +1396,8 @@
           { "label": "Time", "value": "h:mm AM/PM", "args": { "code": "h:mm AM/PM" } },
           { "label": "Scientific", "value": "0.00E+00", "args": { "code": "0.00E+00" } },
           { "label": "Text", "value": "@", "args": { "code": "@" } }
-        ]
+        ],
+        "icon": "number-format"
       },
       {
         "tab": "Home",
@@ -1181,7 +1407,9 @@
         "row": 2,
         "label": "$",
         "title": "Currency",
-        "args": { "code": "\"$\"#,##0.00" }
+        "args": { "code": "\"$\"#,##0.00" },
+        "icon": "currency",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1191,7 +1419,9 @@
         "row": 2,
         "label": "%",
         "title": "Percent",
-        "args": { "code": "0.00%" }
+        "args": { "code": "0.00%" },
+        "icon": "percent",
+        "iconOnly": true
       },
       {
         "tab": "Home",
@@ -1201,7 +1431,9 @@
         "row": 2,
         "label": ",",
         "title": "Comma",
-        "args": { "code": "#,##0" }
+        "args": { "code": "#,##0" },
+        "icon": "comma",
+        "iconOnly": true
       }
     ],
     "compact": {
@@ -1209,8 +1441,10 @@
       "order": 15,
       "label": "%",
       "title": "Percent",
-      "args": { "code": "0.00%" }
-    }
+      "args": { "code": "0.00%" },
+      "iconOnly": true
+    },
+    "icon": "percent"
   },
   {
     "id": "format.increaseDecimal",
@@ -1229,10 +1463,12 @@
         "order": 40,
         "row": 2,
         "label": ".00",
-        "icon": "←",
-        "title": "Increase Decimal"
+        "title": "Increase Decimal",
+        "icon": "increase-decimal",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "increase-decimal"
   },
   {
     "id": "format.decreaseDecimal",
@@ -1251,10 +1487,12 @@
         "order": 50,
         "row": 2,
         "label": ".00",
-        "icon": "→",
-        "title": "Decrease Decimal"
+        "title": "Decrease Decimal",
+        "icon": "decrease-decimal",
+        "iconOnly": true
       }
-    ]
+    ],
+    "icon": "decrease-decimal"
   },
   {
     "id": "format.conditionalRender",
@@ -1273,9 +1511,11 @@
         "order": 10,
         "disabled": true,
         "label": "Conditional Formatting",
-        "title": "Conditional Formatting — authoring arrives in v2"
+        "title": "Conditional Formatting — authoring arrives in v2",
+        "icon": "conditional-formatting"
       }
-    ]
+    ],
+    "icon": "conditional-formatting"
   },
   {
     "id": "formula.recalculate",
@@ -1305,9 +1545,9 @@
         "row": 1,
         "label": "AutoSum",
         "title": "AutoSum (Alt+=)",
-        "icon": "Σ",
         "args": {},
-        "menu": [{ "label": "AutoSum", "commandId": "formula.autosum", "args": {} }]
+        "menu": [{ "label": "AutoSum", "commandId": "formula.autosum", "args": {} }],
+        "icon": "autosum"
       },
       {
         "tab": "Formulas",
@@ -1316,10 +1556,17 @@
         "order": 10,
         "label": "AutoSum",
         "title": "AutoSum (Alt+=)",
-        "icon": "Σ"
+        "icon": "autosum"
       }
     ],
-    "compact": { "kind": "button", "order": 17, "label": "Σ", "title": "AutoSum" }
+    "compact": {
+      "kind": "button",
+      "order": 17,
+      "label": "Σ",
+      "title": "AutoSum",
+      "iconOnly": true
+    },
+    "icon": "autosum"
   },
   {
     "id": "formula.autocomplete",
@@ -1328,7 +1575,7 @@
     "label": "Function autocomplete and signature hints",
     "category": "formula",
     "enablement": "The formula editor is open",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {
@@ -1402,7 +1649,9 @@
     "enablement": "A workbook is open and no file operation is in progress",
     "implemented": true,
     "shortcut": ["Ctrl+S"],
-    "menu": [{ "menu": "File", "order": 30 }]
+    "icon": "save",
+    "menu": [{ "menu": "File", "order": 30 }],
+    "quickAccess": { "order": 10 }
   },
   {
     "id": "file.saveAs",
@@ -1422,7 +1671,7 @@
     "label": "Close",
     "category": "file",
     "enablement": "A workbook is open",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "menu": [{ "menu": "File", "order": 45 }]
   },
@@ -1468,9 +1717,11 @@
             "args": { "shift": "down" }
           },
           { "label": "Insert Sheet", "commandId": "sheet.insert" }
-        ]
+        ],
+        "icon": "insert"
       }
-    ]
+    ],
+    "icon": "insert"
   },
   {
     "id": "sheet.delete",
@@ -1511,7 +1762,7 @@
     "label": "Freeze Panes",
     "category": "view",
     "enablement": "A sheet is active",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "ribbon": [
       {
@@ -1519,9 +1770,11 @@
         "group": "Window",
         "kind": "button",
         "order": 10,
-        "label": "Freeze Panes"
+        "label": "Freeze Panes",
+        "icon": "freeze-panes"
       }
-    ]
+    ],
+    "icon": "freeze-panes"
   },
   {
     "id": "view.zoom",
@@ -1532,7 +1785,17 @@
     "enablement": "A sheet is active",
     "implemented": false,
     "shortcut": [],
-    "ribbon": [{ "tab": "View", "group": "Zoom", "kind": "button", "order": 20, "label": "Zoom" }]
+    "ribbon": [
+      {
+        "tab": "View",
+        "group": "Zoom",
+        "kind": "button",
+        "order": 20,
+        "label": "Zoom",
+        "icon": "zoom"
+      }
+    ],
+    "icon": "zoom"
   },
   {
     "id": "view.zoom100",
@@ -1543,7 +1806,17 @@
     "enablement": "A sheet is active",
     "implemented": true,
     "shortcut": [],
-    "ribbon": [{ "tab": "View", "group": "Zoom", "kind": "button", "order": 10, "label": "100%" }]
+    "ribbon": [
+      {
+        "tab": "View",
+        "group": "Zoom",
+        "kind": "button",
+        "order": 10,
+        "label": "100%",
+        "icon": "zoom-100"
+      }
+    ],
+    "icon": "zoom-100"
   },
   {
     "id": "view.gridlines",
@@ -1560,10 +1833,19 @@
         "group": "Sheet Options",
         "kind": "toggle",
         "order": 10,
-        "label": "Gridlines"
+        "label": "Gridlines",
+        "icon": "gridlines"
       },
-      { "tab": "View", "group": "Show", "kind": "toggle", "order": 10, "label": "Gridlines" }
-    ]
+      {
+        "tab": "View",
+        "group": "Show",
+        "kind": "toggle",
+        "order": 10,
+        "label": "Gridlines",
+        "icon": "gridlines"
+      }
+    ],
+    "icon": "gridlines"
   },
   {
     "id": "view.headings",
@@ -1580,10 +1862,19 @@
         "group": "Sheet Options",
         "kind": "toggle",
         "order": 20,
-        "label": "Headings"
+        "label": "Headings",
+        "icon": "headings"
       },
-      { "tab": "View", "group": "Show", "kind": "toggle", "order": 20, "label": "Headings" }
-    ]
+      {
+        "tab": "View",
+        "group": "Show",
+        "kind": "toggle",
+        "order": 20,
+        "label": "Headings",
+        "icon": "headings"
+      }
+    ],
+    "icon": "headings"
   },
   {
     "id": "nameBox.navigate",
@@ -1785,9 +2076,11 @@
         "group": "Comments",
         "kind": "button",
         "order": 10,
-        "label": "Show Comments"
+        "label": "Show Comments",
+        "icon": "show-comments"
       }
-    ]
+    ],
+    "icon": "show-comments"
   },
   {
     "id": "cell.followHyperlink",

@@ -129,6 +129,22 @@ export interface AttachmentRenumber<T> {
   readonly after: readonly (readonly [string, T])[];
 }
 
+/**
+ * One sheet's hyperlink map after a structural edit. The edited sheet's map is
+ * `RangeTransformPlan.hyperlinks`; every other sheet whose internal target
+ * moved appears here, so all sheets are renumbered by the same edit (ticket 32).
+ */
+export interface CrossSheetHyperlinkRenumber extends AttachmentRenumber<HyperlinkRecord> {
+  readonly sheetId: SheetId;
+  readonly changed: boolean;
+}
+
+/** One reference the edit had to break; it now reads `#REF!`. */
+export interface BrokenReference {
+  readonly kind: 'formula' | 'name' | 'hyperlink' | 'chart';
+  readonly label: string;
+}
+
 export interface ConditionalFormatRenumber {
   readonly before: readonly ConditionalFormatRecord[];
   readonly after: readonly ConditionalFormatRecord[];
@@ -219,7 +235,12 @@ export interface RangeTransformPlan {
   readonly rowDimensions: DimensionRenumber<RowDimension>;
   readonly columnDimensions: DimensionRenumber<ColumnDimension>;
   readonly comments: AttachmentRenumber<CommentRecord>;
+  /** The edited sheet's hyperlinks, moved with their cells and targets. */
   readonly hyperlinks: AttachmentRenumber<HyperlinkRecord>;
+  /** Other sheets whose hyperlink target points into the edited sheet. */
+  readonly crossSheetHyperlinks: readonly CrossSheetHyperlinkRenumber[];
+  /** Every reference the edit could not keep; it now reads `#REF!`. */
+  readonly brokenReferences: readonly BrokenReference[];
   readonly validation: ValidationRenumber;
   readonly conditionalFormats: ConditionalFormatRenumber;
   readonly autoFilter: AutoFilterRenumber;
@@ -523,6 +544,7 @@ export function planRangeTransform(
   const formulaRewrites: FormulaRewrite[] = [];
   const formulaAfterByKey = new Map<string, string>();
   const cellMoves: CellMove[] = [];
+  const brokenReferences: BrokenReference[] = [];
   let groupedFormulaCount = 0;
   let block: TransformBlock | null = null;
 
@@ -553,6 +575,12 @@ export function planRangeTransform(
           formulaRewrites.push({ sheetId: sheet.id, row, col, before: cell.formula, after });
           formulaAfterByKey.set(`${sheet.id}\u0000${key}`, after);
           afterFormula = after;
+          if (breaksReference(cell.formula, after)) {
+            brokenReferences.push({
+              kind: 'formula',
+              label: `the formula in ${formatCellRef(row, col)} on ${sheet.name}`,
+            });
+          }
         }
       }
       if (!isTarget) {
@@ -618,6 +646,9 @@ export function planRangeTransform(
         before: name.formula,
         after,
       });
+      if (breaksReference(name.formula, after)) {
+        brokenReferences.push({ kind: 'name', label: `the defined name ${name.name}` });
+      }
     }
   }
   for (const sheet of workbook.sheets) {
@@ -637,6 +668,12 @@ export function planRangeTransform(
           before: name.formula,
           after,
         });
+        if (breaksReference(name.formula, after)) {
+          brokenReferences.push({
+            kind: 'name',
+            label: `the defined name ${name.name} on ${sheet.name}`,
+          });
+        }
       }
     }
   }
@@ -646,8 +683,22 @@ export function planRangeTransform(
   const comments = attachmentRenumber(targetSheet.comments, edit);
   // A hyperlink carries a reference (its internal `location`) as well as a cell
   // key, so it is transformed rather than only renumbered (file-compat §4).
-  const hyperlinks = planHyperlinkRenumber(workbook, targetSheet, edit, options);
+  const hyperlinks = planHyperlinkRenumber(targetSheet, edit, options);
   if (hyperlinks.block !== null) block ??= hyperlinks.block;
+  for (const label of hyperlinks.broken) {
+    brokenReferences.push({ kind: 'hyperlink', label });
+  }
+  // A link on another sheet can point into the edited sheet. It is a reference
+  // exactly like a formula's, so it moves in the same transaction (ticket 32).
+  const crossSheetHyperlinks: CrossSheetHyperlinkRenumber[] = [];
+  for (const sheet of workbook.sheets) {
+    if (sheet.id === targetSheet.id) continue;
+    const cross = planCrossSheetHyperlinkRenumber(sheet, edit, options);
+    if (cross.entry !== null) crossSheetHyperlinks.push(cross.entry);
+    for (const label of cross.broken) {
+      brokenReferences.push({ kind: 'hyperlink', label });
+    }
+  }
 
   const validationAfter = transformRecords(targetSheet.validation, (record) =>
     transformValidationRecord(record, edit, options, targetSheet.id),
@@ -663,6 +714,9 @@ export function planRangeTransform(
 
   const opaque = planOpaquePartTransforms(workbook, edit, options);
   if (opaque.block !== null) block ??= opaque.block;
+  for (let index = 0; index < opaque.broken; index += 1) {
+    brokenReferences.push({ kind: 'chart', label: 'a chart series' });
+  }
 
   const changed =
     formulaRewrites.length > 0 ||
@@ -673,6 +727,7 @@ export function planRangeTransform(
     dimensionsChanged(columnDimensions) ||
     attachmentChanged(comments) ||
     hyperlinks.changed ||
+    crossSheetHyperlinks.length > 0 ||
     validationAfter.changed ||
     conditionalFormatsAfter.changed ||
     autoFilter.changed ||
@@ -688,6 +743,8 @@ export function planRangeTransform(
     columnDimensions,
     comments,
     hyperlinks,
+    crossSheetHyperlinks,
+    brokenReferences,
     validation: { before: targetSheet.validation, after: validationAfter.records },
     conditionalFormats: {
       before: targetSheet.conditionalFormats,
@@ -821,40 +878,54 @@ export function transformHyperlinkLocation(
   return { ok: true, location: rewritten, changed: rewritten !== location };
 }
 
+interface CrossSheetHyperlinkPlan {
+  readonly entry: CrossSheetHyperlinkRenumber | null;
+  readonly broken: readonly string[];
+}
+
 /**
- * Whether a hyperlink stored on another sheet would be left pointing at the
- * wrong cells by this edit. Its `location` is a reference into the edited sheet
- * just like a formula's, but the structural patch rewrites only the edited
- * sheet's part, so it cannot be transformed here: the edit is blocked instead
- * (file-compat §4). A location that does not parse, or one that does not name a
- * sheet, cannot be attributed to the edited sheet and is left alone.
+ * Rewrite the hyperlink targets held on a sheet other than the edited one. The
+ * anchor cell does not move, so only `location` participates. A location that
+ * does not parse cannot be attributed to the edited sheet and is left alone; a
+ * 3D, structured or otherwise unsupported reference is not guessed at either.
+ * A target the edit removes collapses to `#REF!` and is reported once (ticket
+ * 32: broken and marked, never silently stale).
  */
-function foreignLocationChanges(
-  workbook: Workbook,
+function planCrossSheetHyperlinkRenumber(
+  sheet: Sheet,
   edit: StructuralEdit,
-): { readonly sheetName: string; readonly location: string } | null {
-  for (const sheet of workbook.sheets) {
-    if (sheet.id === edit.sheetId) continue;
-    for (const record of sheet.hyperlinks.values()) {
-      const location = record.location;
-      if (location === undefined) continue;
-      const parsed = parseLocationArea(location);
-      if (parsed === null) continue;
-      const { area } = parsed;
-      if (area.sheetName === null) continue;
-      if (findSheetIdByName(workbook, area.sheetName) !== edit.sheetId) continue;
-      const transformed = transformArea(area, edit);
-      if (transformed === null || !areasEqual(transformed, area)) {
-        return { sheetName: sheet.name, location };
+  options: RangeTransformOptions,
+): CrossSheetHyperlinkPlan {
+  const before: (readonly [string, HyperlinkRecord])[] = [];
+  const after: (readonly [string, HyperlinkRecord])[] = [];
+  const broken: string[] = [];
+  let changed = false;
+  for (const [key, record] of sheet.hyperlinks) {
+    before.push([key, record]);
+    let value = record;
+    if (record.location !== undefined) {
+      // `transformHyperlinkLocation` leaves a bare target alone (it belongs to
+      // the sheet that holds the link) and only rewrites a target that names
+      // the edited sheet. A location it cannot parse is not this edit's to fix.
+      const outcome = transformHyperlinkLocation(record.location, edit, options, sheet.id);
+      if (outcome.ok && outcome.changed) {
+        value = { ...record, location: outcome.location };
+        changed = true;
+        if (breaksReference(record.location, outcome.location)) {
+          broken.push(`a hyperlink on ${sheet.name}`);
+        }
       }
     }
+    after.push([key, value]);
   }
-  return null;
+  if (!changed) return { entry: null, broken };
+  return { entry: { sheetId: sheet.id, before, after, changed }, broken };
 }
 
 interface HyperlinkRenumber extends AttachmentRenumber<HyperlinkRecord> {
   readonly changed: boolean;
   readonly block: TransformBlock | null;
+  readonly broken: readonly string[];
 }
 
 /**
@@ -863,13 +934,13 @@ interface HyperlinkRenumber extends AttachmentRenumber<HyperlinkRecord> {
  * anywhere leaves the edit refused rather than saved half-transformed.
  */
 function planHyperlinkRenumber(
-  workbook: Workbook,
   sheet: Sheet,
   edit: StructuralEdit,
   options: RangeTransformOptions,
 ): HyperlinkRenumber {
   const before: (readonly [string, HyperlinkRecord])[] = [];
   const after: (readonly [string, HyperlinkRecord])[] = [];
+  const broken: string[] = [];
   let changed = false;
   let block: TransformBlock | null = null;
   for (const [key, record] of sheet.hyperlinks) {
@@ -887,19 +958,24 @@ function planHyperlinkRenumber(
       else if (outcome.changed) {
         value = { ...record, location: outcome.location };
         changed = true;
+        if (breaksReference(record.location, outcome.location)) {
+          broken.push(`a hyperlink on ${sheet.name}`);
+        }
       }
     }
     if (next.row !== address.row || next.col !== address.col) changed = true;
     after.push([cellKey(next.row, next.col), value]);
   }
-  const foreign = block === null ? foreignLocationChanges(workbook, edit) : null;
-  if (foreign !== null) {
-    block = {
-      code: 'anchor-untransformable',
-      message: `${HYPERLINK_LOCATION_BLOCK_MESSAGE} (a hyperlink on ${foreign.sheetName} points at ${foreign.location}, which this edit cannot rewrite.)`,
-    };
-  }
-  return { before, after, changed, block };
+  return { before, after, changed, block, broken };
+}
+
+/** Whether a rewrite added a broken marker, even if the text already had one. */
+function breaksReference(before: string, after: string): boolean {
+  return brokenMarkerCount(after) > brokenMarkerCount(before);
+}
+
+function brokenMarkerCount(text: string): number {
+  return text.match(/#REF!/gi)?.length ?? 0;
 }
 
 export interface AutoFilterTransformResult {
@@ -1189,12 +1265,20 @@ function attachmentChanged<T>(renumber: AttachmentRenumber<T>): boolean {
  * edit must be refused rather than saved with a stale anchor (file-compat §4).
  */
 export type PartTransformResult =
-  | { readonly ok: true; readonly xml: string; readonly changed: boolean }
+  | {
+      readonly ok: true;
+      readonly xml: string;
+      readonly changed: boolean;
+      /** References this rewrite had to break; they now read `#REF!`. */
+      readonly broken?: number;
+    }
   | { readonly ok: false; readonly block: TransformBlock };
 
 export interface OpaquePartTransformPlan {
   readonly rewrites: readonly OpaquePartRewrite[];
   readonly block: TransformBlock | null;
+  /** References the edit had to break across these parts. */
+  readonly broken: number;
 }
 
 const DRAWING_PATH = /^xl\/drawings\/(?!_rels\/)[^/]+\.xml$/i;
@@ -1416,6 +1500,7 @@ export function transformChartXml(
 ): PartTransformResult {
   let block: TransformBlock | null = null;
   let changed = false;
+  let broken = 0;
   // `c:f` is the first child of numRef/strRef/multiLvlStrRef (ECMA-376
   // CT_NumRef/CT_StrRef/CT_MultiLvlStrRef). Matching the parent avoids an
   // unrelated `f` element in a chart extension.
@@ -1436,11 +1521,12 @@ export function transformChartXml(
       }
       if (outcome === decoded) return whole;
       changed = true;
+      if (breaksReference(decoded, outcome)) broken += 1;
       return whole.replace(text, escapeXmlText(outcome));
     },
   );
   if (block !== null) return { ok: false, block };
-  return { ok: true, xml: output, changed };
+  return { ok: true, xml: output, changed, broken };
 }
 
 function transformChartSource(
@@ -1636,7 +1722,7 @@ export function planOpaquePartTransforms(
   options: RangeTransformOptions = { workbook },
 ): OpaquePartTransformPlan {
   const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
-  if (sheet === undefined) return { rewrites: [], block: null };
+  if (sheet === undefined) return { rewrites: [], block: null, broken: 0 };
 
   const owners = resolvePartOwners(workbook);
   const candidates = new Map<string, Uint8Array>();
@@ -1657,6 +1743,7 @@ export function planOpaquePartTransforms(
 
   const rewrites: OpaquePartRewrite[] = [];
   let block: TransformBlock | null = null;
+  let broken = 0;
   for (const path of [...candidates.keys()].sort()) {
     const bytes = candidates.get(path);
     if (bytes === undefined) continue;
@@ -1688,6 +1775,7 @@ export function planOpaquePartTransforms(
       block ??= transformed.block;
       continue;
     }
+    broken += transformed.broken ?? 0;
     if (!transformed.changed) continue;
     rewrites.push({
       path,
@@ -1697,8 +1785,8 @@ export function planOpaquePartTransforms(
     });
   }
   // A blocked edit applies nothing, so a blocked plan carries no rewrites.
-  if (block !== null) return { rewrites: [], block };
-  return { rewrites, block };
+  if (block !== null) return { rewrites: [], block, broken: 0 };
+  return { rewrites, block, broken };
 }
 
 function opaqueKindForPath(path: string): OpaquePartKind {

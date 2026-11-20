@@ -6,8 +6,11 @@ import type {
   RefObject,
 } from 'react';
 import { flushSync } from 'react-dom';
+import type { FunctionCatalogEntry } from '@engine/function-catalog';
 import type { HyperlinkRecord } from '@model/types';
 import type { SheetProjection } from '@view/types';
+import { FormulaSuggestions } from './FormulaSuggestions';
+import { useFormulaCompletion } from './useFormulaCompletion';
 import { autofitColumnWidth, autofitRowHeight, type AutofitTarget } from './autofit';
 import { CanvasRenderFrame, cellAtPoint } from './canvas-renderer';
 import { gridDebugState } from './debug';
@@ -24,6 +27,7 @@ import {
   type EditorCommitDirection,
   type EditorSession,
 } from './editor';
+import { filterButtonRect, pointInFilterButton } from './filter-affordance';
 import {
   GRID_METRICS,
   type GridCellAddress,
@@ -129,6 +133,12 @@ export interface CanvasGridProps {
    */
   readonly onFollowHyperlink?: (link: HyperlinkRecord, address: GridCellAddress) => void;
   /**
+   * Open the AutoFilter dropdown for a header column (sort-autofilter §3.8).
+   * The grid owns the affordance and its hit test; the application owns the
+   * dropdown and the filter commands.
+   */
+  readonly onFilterHeader?: (column: number) => void;
+  /**
    * Copy mode (ticket 31 B). The dashed marquee marks the copy's destination:
    * the arrow keys move it without moving the selection, Enter pastes there and
    * Esc — or any other key or pointer action that moves the selection — ends
@@ -180,6 +190,7 @@ export function CanvasGrid({
   onPainterApply,
   onFill,
   onFollowHyperlink,
+  onFilterHeader,
   marquee,
   shellRef,
   onFocusZone,
@@ -207,6 +218,8 @@ export function CanvasGrid({
     readonly anchor: GridCellAddress;
     focus: GridCellAddress;
   } | null>(null);
+  /** Stops the animation-frame loop that owns edge auto-scroll for one drag. */
+  const autoScrollCleanupRef = useRef<(() => void) | null>(null);
   const painterTargetRef = useRef<GridRange | null>(null);
   const painterCleanupRef = useRef<(() => void) | null>(null);
   const painterDragRef = useRef<{
@@ -241,11 +254,27 @@ export function CanvasGrid({
   const pendingCaretRef = useRef<number | null>(null);
   const [viewport, setViewport] = useState<Viewport>({ width: 800, height: 480 });
   const [editor, setEditor] = useState<EditorSession | null>(null);
+  /** The in-cell caret, so the function suggestions follow the typed token. */
+  const [editorCaret, setEditorCaret] = useState<number | null>(null);
+  const editorCompletion = useFormulaCompletion({
+    text: editor?.text ?? '',
+    caret: editorCaret,
+    formula: editor !== null && isFormulaEntry(editor),
+    enabled: editor !== null && !editor.composing,
+  });
   /** The live destination outline while the fill handle is dragged. */
   const [fillPreview, setFillPreview] = useState<GridRange | null>(null);
   /** The copy marquee's overlay, kept over its range while the sheet scrolls. */
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const marqueeRangeRef = useRef<GridRange | null>(null);
+  /**
+   * The visible filter-header columns. The canvas paints the arrow and funnel;
+   * transparent DOM buttons over the same rectangles carry the accessible name
+   * and the pointer/keyboard target.
+   */
+  const [filterHeaderColumns, setFilterHeaderColumns] = useState<readonly number[]>([]);
+  const filterHeaderSignatureRef = useRef('');
+  const filterButtonRefs = useRef(new Map<number, HTMLButtonElement>());
   /**
    * The transient hover overlays: a comment popup over a noted cell and a plain
    * tooltip over a linked cell. They are view-only and never touch the model or
@@ -259,6 +288,87 @@ export function CanvasGrid({
   }>({ comment: null, link: null });
   const [hover, setHover] = useState(hoverRef.current);
 
+  /**
+   * The filter header columns currently on screen: the frozen strip plus the
+   * scrolling columns between the current scroll offset and the right edge.
+   * Scanning those two ranges avoids walking a filter range that spans the
+   * whole sheet on every paint.
+   */
+  const syncFilterHeaderColumns = useCallback(
+    (
+      projection: SheetProjection,
+      layout: PaneLayout,
+      scroll: { readonly x: number; readonly y: number },
+    ): void => {
+      const filter = projection.autoFilter;
+      const columns: number[] = [];
+      if (
+        filter !== null &&
+        filter.range.startRow >= 0 &&
+        filter.range.startRow < projection.rowCount &&
+        !projection.isRowHidden(filter.range.startRow)
+      ) {
+        const frozenEnd = Math.min(filter.range.endCol, projection.freezeCols - 1);
+        const scrollingStart = Math.max(filter.range.startCol, projection.columnAt(scroll.x));
+        const scrollingEnd = Math.min(
+          filter.range.endCol,
+          projection.columnAt(scroll.x + layout.scrollRegionWidth),
+        );
+        for (let col = Math.max(0, filter.range.startCol); col <= frozenEnd; col += 1) {
+          if (projection.isColumnHidden(col) || projection.columnWidth(col) <= 0) continue;
+          columns.push(col);
+        }
+        for (let col = scrollingStart; col <= scrollingEnd; col += 1) {
+          if (projection.isColumnHidden(col) || projection.columnWidth(col) <= 0) continue;
+          columns.push(col);
+        }
+      }
+      const signature = columns.join(',');
+      if (signature === filterHeaderSignatureRef.current) return;
+      filterHeaderSignatureRef.current = signature;
+      setFilterHeaderColumns(columns);
+    },
+    [],
+  );
+
+  /** Keep the DOM buttons over their painted rectangles while the sheet scrolls. */
+  const positionFilterButtons = useCallback(
+    (
+      projection: SheetProjection,
+      layout: PaneLayout,
+      scroll: { readonly x: number; readonly y: number },
+    ): void => {
+      const filter = projection.autoFilter;
+      if (filter === null) return;
+      const bodyRight = layout.headerWidth + layout.frozenWidth + layout.scrollRegionWidth;
+      const bodyBottom = layout.headerHeight + layout.frozenHeight + layout.scrollRegionHeight;
+      for (const [col, button] of filterButtonRefs.current) {
+        if (projection.isColumnHidden(col) || projection.columnWidth(col) <= 0) {
+          button.style.visibility = 'hidden';
+          continue;
+        }
+        const cell = cellRect(projection, layout, scroll.x, scroll.y, filter.range.startRow, col);
+        const rect = filterButtonRect(cell, projection.zoom);
+        const visible =
+          rect.width >= 8 &&
+          rect.height >= 6 &&
+          rect.x >= layout.headerWidth &&
+          rect.x + rect.width <= bodyRight + 0.5 &&
+          rect.y >= layout.headerHeight &&
+          rect.y + rect.height <= bodyBottom + 0.5;
+        if (!visible) {
+          button.style.visibility = 'hidden';
+          continue;
+        }
+        button.style.visibility = 'visible';
+        button.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
+        button.style.width = `${rect.width}px`;
+        button.style.height = `${rect.height}px`;
+      }
+    },
+    [],
+  );
+
   const paint = useCallback((): void => {
     const frame = frameRef.current;
     if (frame === null) return;
@@ -269,6 +379,8 @@ export function CanvasGrid({
     // area, so a sheet with frozen panes starts at the first scrolling row.
     const scroll = clampScroll(layout, scrollRef.current.x, scrollRef.current.y);
     scrollRef.current = scroll;
+    syncFilterHeaderColumns(current.projection, layout, scroll);
+    positionFilterButtons(current.projection, layout, scroll);
     gridDebugState.layout = layout;
     gridDebugState.scrollX = scroll.x;
     gridDebugState.scrollY = scroll.y;
@@ -322,7 +434,7 @@ export function CanvasGrid({
       scroll,
       viewport,
     );
-  }, [viewport]);
+  }, [viewport, syncFilterHeaderColumns, positionFilterButtons]);
 
   const schedulePaint = useCallback((): void => {
     if (pendingPaintRef.current) return;
@@ -387,6 +499,14 @@ export function CanvasGrid({
     schedulePaint();
   }, [projection, selection, schedulePaint]);
 
+  // New filter buttons mount after the paint that named their columns; place
+  // them once React has committed the nodes.
+  useLayoutEffect(() => {
+    const layout = layoutRef.current;
+    if (layout === null) return;
+    positionFilterButtons(projection, layout, scrollRef.current);
+  }, [projection, filterHeaderColumns, viewport, positionFilterButtons]);
+
   // Any gesture that changes the selection — a click, a key, a jump or a sheet
   // switch — dismisses the hover overlays, as Excel does.
   useEffect(() => {
@@ -409,6 +529,8 @@ export function CanvasGrid({
 
   useEffect(() => {
     return () => {
+      autoScrollCleanupRef.current?.();
+      autoScrollCleanupRef.current = null;
       painterCleanupRef.current?.();
       painterCleanupRef.current = null;
       fillCleanupRef.current?.();
@@ -531,6 +653,7 @@ export function CanvasGrid({
   const updateEditorSession = (session: EditorSession | null): void => {
     editorSessionRef.current = session;
     setEditor(session);
+    if (session === null) setEditorCaret(null);
     onEditorChange?.(session?.text ?? null);
   };
 
@@ -547,10 +670,11 @@ export function CanvasGrid({
     const session = startEdit(target, formula ?? text, commitIfChanged, formula !== null);
     pointingRangeRef.current = null;
     pendingCaretRef.current = null;
+    setEditorCaret(session.text.length);
     updateEditorSession(session);
   };
 
-  const updateEditorText = (text: string): void => {
+  const updateEditorText = (text: string, caret: number): void => {
     const session = editorSessionRef.current;
     if (session === null) return;
     // Typing ends the pointing gesture: the next reference starts at the caret
@@ -558,6 +682,7 @@ export function CanvasGrid({
     const next = { ...session, text, pointing: null };
     pointingRangeRef.current = null;
     pendingCaretRef.current = null;
+    setEditorCaret(caret);
     updateEditorSession(next);
     schedulePaint();
   };
@@ -641,9 +766,29 @@ export function CanvasGrid({
     updateEditorSession(next);
     pointingRangeRef.current = pointingRange(anchor, focus);
     pendingCaretRef.current = next.pointing?.end ?? null;
+    setEditorCaret(next.pointing?.end ?? null);
     revealPointedCell(focus);
     schedulePaint();
     return next;
+  };
+
+  /**
+   * Insert a suggested function name at the caret token and leave the caret
+   * after `(`. The session keeps its `formulaEntry` flag, so a formula shown
+   * without `=` still commits with one.
+   */
+  const acceptEditorCompletion = (entry?: FunctionCatalogEntry): boolean => {
+    const session = editorSessionRef.current;
+    if (session === null) return false;
+    const choice = entry === undefined ? editorCompletion.accept() : editorCompletion.choose(entry);
+    if (choice === null) return false;
+    const next: EditorSession = { ...session, text: choice.text, pointing: null };
+    pointingRangeRef.current = null;
+    pendingCaretRef.current = choice.caret;
+    setEditorCaret(choice.caret);
+    updateEditorSession(next);
+    schedulePaint();
+    return true;
   };
 
   /** The cell under a viewport pointer position, for a drag gesture. */
@@ -660,6 +805,128 @@ export function CanvasGrid({
       scrollRef.current.x,
       scrollRef.current.y,
     );
+  };
+
+  /**
+   * The cell under a drag point, including a point past the grid body's edge.
+   * A drag that leaves the body still names a cell: the nearest cell along the
+   * scrolling panes, so the selection can extend while edge scrolling reveals
+   * more rows or columns. A point over a frozen pane keeps its own frozen cell;
+   * a point outside the body targets the scrolling pane, because the frozen
+   * strip never scrolls.
+   */
+  const dragCellAtClientPoint = (clientX: number, clientY: number): GridCellAddress | null => {
+    const canvas = canvasRef.current;
+    const layout = layoutRef.current;
+    if (canvas === null || layout === null) return null;
+    const rect = canvas.getBoundingClientRect();
+    const pointX = clientX - rect.left;
+    const pointY = clientY - rect.top;
+    const bodyLeft = layout.headerWidth;
+    const bodyTop = layout.headerHeight;
+    const bodyRight = bodyLeft + layout.frozenWidth + layout.scrollRegionWidth;
+    const bodyBottom = bodyTop + layout.frozenHeight + layout.scrollRegionHeight;
+    const x =
+      pointX < bodyLeft
+        ? bodyLeft + layout.frozenWidth
+        : Math.min(pointX, Math.max(bodyLeft, bodyRight - 1));
+    const y =
+      pointY < bodyTop
+        ? bodyTop + layout.frozenHeight
+        : Math.min(pointY, Math.max(bodyTop, bodyBottom - 1));
+    return cellAtPoint(
+      stateRef.current.projection,
+      layout,
+      x,
+      y,
+      scrollRef.current.x,
+      scrollRef.current.y,
+    );
+  };
+
+  /**
+   * Start the edge auto-scroll loop for one pointer drag. The loop lives for
+   * the whole gesture and runs whether or not the pointer moves: while its
+   * last position is past a body edge, every animation frame scrolls toward
+   * that edge and re-applies the focus cell, so the selection follows the
+   * rows or columns the scroll reveals. Speed grows with the distance past
+   * the edge, as Excel accelerates near the edge.
+   *
+   * The body edges include the frozen strips: a pointer over a frozen pane
+   * names a frozen cell and must not scroll it. The scroll offset itself is
+   * clamped by `clampScroll`, so the sheet stops at its first and last row or
+   * column instead of wrapping.
+   */
+  const beginDragAutoScroll = (
+    initialClientX: number,
+    initialClientY: number,
+    applyFocus: (clientX: number, clientY: number) => void,
+  ): { readonly move: (clientX: number, clientY: number) => void; readonly stop: () => void } => {
+    // A gesture that never received its release must not keep scrolling.
+    autoScrollCleanupRef.current?.();
+    let clientX = initialClientX;
+    let clientY = initialClientY;
+    let lastTime: number | null = null;
+    let frame: number | null = null;
+
+    const stop = (): void => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      if (autoScrollCleanupRef.current === stop) autoScrollCleanupRef.current = null;
+    };
+
+    const tick = (time: number): void => {
+      frame = requestAnimationFrame(tick);
+      const layout = layoutRef.current;
+      const canvas = canvasRef.current;
+      if (layout === null || canvas === null) return;
+      const rect = canvas.getBoundingClientRect();
+      const pointX = clientX - rect.left;
+      const pointY = clientY - rect.top;
+      const bodyLeft = layout.headerWidth;
+      const bodyTop = layout.headerHeight;
+      const bodyRight = bodyLeft + layout.frozenWidth + layout.scrollRegionWidth;
+      const bodyBottom = bodyTop + layout.frozenHeight + layout.scrollRegionHeight;
+      let velocityX = 0;
+      let velocityY = 0;
+      if (pointX < bodyLeft) velocityX = -autoScrollSpeed(bodyLeft - pointX);
+      else if (pointX > bodyRight) velocityX = autoScrollSpeed(pointX - bodyRight);
+      if (pointY < bodyTop) velocityY = -autoScrollSpeed(bodyTop - pointY);
+      else if (pointY > bodyBottom) velocityY = autoScrollSpeed(pointY - bodyBottom);
+      // Cap a long frame (a background tab or a slow paint) so a resume does
+      // not jump the sheet by a second's worth of travel at once.
+      const elapsed = lastTime === null ? 0 : Math.min(100, time - lastTime);
+      lastTime = time;
+      let scrolled = false;
+      if (elapsed > 0 && (velocityX !== 0 || velocityY !== 0)) {
+        const before = scrollRef.current;
+        const next = clampScroll(
+          layout,
+          before.x + (velocityX * elapsed) / 1000,
+          before.y + (velocityY * elapsed) / 1000,
+        );
+        if (next.x !== before.x || next.y !== before.y) {
+          scrollRef.current = next;
+          schedulePaint();
+          scrolled = true;
+        }
+      }
+      // Re-map the held pointer at the new offset: the cell under it changes
+      // as the sheet moves, even when the pointer itself does not. A press
+      // that has not moved and not scrolled has already named its own cell.
+      if (scrolled) applyFocus(clientX, clientY);
+    };
+
+    frame = requestAnimationFrame(tick);
+    autoScrollCleanupRef.current = stop;
+    return {
+      move: (nextX: number, nextY: number): void => {
+        clientX = nextX;
+        clientY = nextY;
+        applyFocus(clientX, clientY);
+      },
+      stop,
+    };
   };
 
   /**
@@ -800,14 +1067,18 @@ export function CanvasGrid({
     fillDragRef.current = drag;
     setFillPreview(source);
 
-    const move = (moveEvent: PointerEvent): void => {
-      if (moveEvent.pointerId !== drag.pointerId) return;
-      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+    const applyFocus = (clientX: number, clientY: number): void => {
+      const address = dragCellAtClientPoint(clientX, clientY);
       if (address === null) return;
       const focus = mergeAnchor(stateRef.current.projection, address);
       if (focus.row === drag.focus.row && focus.col === drag.focus.col) return;
       drag.focus = focus;
       setFillPreview(fillTarget(drag.source, focus));
+    };
+    const autoScroll = beginDragAutoScroll(event.clientX, event.clientY, applyFocus);
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      autoScroll.move(moveEvent.clientX, moveEvent.clientY);
     };
     const end = (upEvent: PointerEvent): void => {
       if (upEvent.pointerId !== drag.pointerId) return;
@@ -832,6 +1103,7 @@ export function CanvasGrid({
       abandon();
     }
     function stopTracking(): void {
+      autoScroll.stop();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', cancel);
@@ -853,25 +1125,42 @@ export function CanvasGrid({
     if (event.button !== 0) return;
     const drag = { pointerId: event.pointerId, anchor, focus };
     selectionDragRef.current = drag;
-    const move = (moveEvent: PointerEvent): void => {
-      if (moveEvent.pointerId !== drag.pointerId) return;
-      const address = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+    const applyFocus = (clientX: number, clientY: number): void => {
+      const address = dragCellAtClientPoint(clientX, clientY);
       if (address === null) return;
       const target = mergeAnchor(stateRef.current.projection, address);
       if (target.row === drag.focus.row && target.col === drag.focus.col) return;
       drag.focus = target;
       onSelectionChange(extendSelection(collapseSelection(drag.anchor), target));
     };
+    const autoScroll = beginDragAutoScroll(event.clientX, event.clientY, applyFocus);
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      autoScroll.move(moveEvent.clientX, moveEvent.clientY);
+    };
     const end = (upEvent: PointerEvent): void => {
       if (upEvent.pointerId !== drag.pointerId) return;
       if (selectionDragRef.current === drag) selectionDragRef.current = null;
+      autoScroll.stop();
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
+      window.removeEventListener('blur', onWindowBlur);
     };
+    function onWindowBlur(): void {
+      // A window that loses focus may never deliver the release, and the loop
+      // must not keep scrolling the sheet behind the user's back.
+      if (selectionDragRef.current === drag) selectionDragRef.current = null;
+      autoScroll.stop();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('blur', onWindowBlur);
+    }
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
+    window.addEventListener('blur', onWindowBlur);
   };
 
   /** Drag across a row or column header strip to select a contiguous run. */
@@ -1199,6 +1488,31 @@ export function CanvasGrid({
     fillPressOriginRef.current = null;
     clearHoverOverlays();
 
+    // The AutoFilter button owns its press: it opens the column dropdown and
+    // never moves the selection or starts an edit (sort-autofilter §3.8). The
+    // DOM overlay normally takes the press first; this is the canvas fallback.
+    if (event.button === 0 && onFilterHeader !== undefined) {
+      const filter = current.autoFilter;
+      if (filter !== null) {
+        const address = cellAtPoint(current, layout, pointX, pointY, scroll.x, scroll.y);
+        if (
+          address !== null &&
+          address.row === filter.range.startRow &&
+          address.col >= filter.range.startCol &&
+          address.col <= filter.range.endCol &&
+          !current.isColumnHidden(address.col)
+        ) {
+          const cell = cellRect(current, layout, scroll.x, scroll.y, address.row, address.col);
+          if (pointInFilterButton(cell, current.zoom, pointX, pointY)) {
+            event.preventDefault();
+            endCopyMode();
+            onFilterHeader(address.col);
+            return;
+          }
+        }
+      }
+    }
+
     // Format Painter: a press starts one target range, a drag extends it and
     // the release submits a single apply command. It never changes the
     // document selection or opens the in-cell editor.
@@ -1212,15 +1526,19 @@ export function CanvasGrid({
       painterTargetRef.current = painterRange(anchor, anchor);
       schedulePaint();
 
-      const move = (moveEvent: PointerEvent): void => {
-        if (moveEvent.pointerId !== drag.pointerId) return;
-        const nextAddress = cellAtClientPoint(moveEvent.clientX, moveEvent.clientY);
+      const applyFocus = (clientX: number, clientY: number): void => {
+        const nextAddress = dragCellAtClientPoint(clientX, clientY);
         if (nextAddress === null) return;
         const focus = mergeAnchor(stateRef.current.projection, nextAddress);
         if (focus.row === drag.focus.row && focus.col === drag.focus.col) return;
         drag.focus = focus;
         painterTargetRef.current = painterRange(drag.anchor, focus);
         schedulePaint();
+      };
+      const autoScroll = beginDragAutoScroll(event.clientX, event.clientY, applyFocus);
+      const move = (moveEvent: PointerEvent): void => {
+        if (moveEvent.pointerId !== drag.pointerId) return;
+        autoScroll.move(moveEvent.clientX, moveEvent.clientY);
       };
       const end = (upEvent: PointerEvent): void => {
         if (upEvent.pointerId !== drag.pointerId) return;
@@ -1241,6 +1559,7 @@ export function CanvasGrid({
         schedulePaint();
       };
       const stopTracking = (): void => {
+        autoScroll.stop();
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', end);
         window.removeEventListener('pointercancel', cancel);
@@ -1636,6 +1955,31 @@ export function CanvasGrid({
     event.stopPropagation();
     const session = editorSessionRef.current;
     if (session === null) return;
+    // Function suggestions own the navigation keys while their list is open.
+    // Enter/Tab insert the highlighted name instead of committing the cell.
+    if (!session.composing && !event.nativeEvent.isComposing && editorCompletion.listOpen) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        editorCompletion.move(1);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        editorCompletion.move(-1);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        editorCompletion.dismiss();
+        return;
+      }
+      if (event.key === 'Tab' || (event.key === 'Enter' && !event.ctrlKey)) {
+        if (acceptEditorCompletion()) {
+          event.preventDefault();
+          return;
+        }
+      }
+    }
     const action = resolveEditorAction(session, {
       key: event.key,
       shiftKey: event.shiftKey,
@@ -1815,6 +2159,25 @@ export function CanvasGrid({
           padding: `0 ${Math.max(2, 4 * projection.zoom)}px`,
         };
 
+  // The suggestion popup opens below the editor unless that would leave the
+  // grid viewport, in which case it opens above.
+  const suggestionHeight = 232;
+  const suggestionTop =
+    editorRect === null
+      ? 0
+      : editorRect.y + editorRect.height + 2 + suggestionHeight <= viewport.height
+        ? editorRect.y + editorRect.height + 2
+        : Math.max(2, editorRect.y - suggestionHeight - 2);
+  const suggestionStyle =
+    editorRect === null
+      ? undefined
+      : {
+          position: 'absolute' as const,
+          left: `${Math.max(2, Math.min(editorRect.x, viewport.width - 300))}px`,
+          top: `${suggestionTop}px`,
+          width: `${Math.max(280, Math.min(460, viewport.width - 16))}px`,
+        };
+
   // The fill destination outline follows the pointer; it is view state and
   // never enters the model or the undo log.
   const fillPreviewRect =
@@ -1858,6 +2221,8 @@ export function CanvasGrid({
       ? null
       : overlayAnchorRect(projection, layout, scrollRef.current, hover.link);
 
+  const activeFilter = projection.autoFilter;
+
   return (
     <div
       ref={setShellRef}
@@ -1894,6 +2259,45 @@ export function CanvasGrid({
         onDoubleClick={handleDoubleClick}
         data-testid="grid-canvas"
       />
+      {activeFilter !== null
+        ? filterHeaderColumns.map((col) => {
+            const label = projection.columnLabel(col);
+            const filtered =
+              activeFilter.filteredColumns.has(col) || activeFilter.unsupportedColumns.has(col);
+            const name = filtered ? `Filter column ${label}, filtered` : `Filter column ${label}`;
+            return (
+              <button
+                key={col}
+                type="button"
+                className="filter-header-button"
+                data-testid={`filter-header-${label}`}
+                data-filtered={filtered ? 'true' : 'false'}
+                aria-label={name}
+                aria-haspopup="dialog"
+                title={name}
+                ref={(element) => {
+                  if (element === null) filterButtonRefs.current.delete(col);
+                  else filterButtonRefs.current.set(col, element);
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  endCopyMode();
+                  onFilterHeader?.(col);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onFilterHeader?.(col);
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    containerRef.current?.focus();
+                  }
+                }}
+              />
+            );
+          })
+        : null}
       <div
         className="grid-scrollbar grid-scrollbar-vertical"
         style={{
@@ -2007,10 +2411,13 @@ export function CanvasGrid({
           className="cell-editor"
           style={editorStyle}
           value={editor.text}
-          onChange={(event) => updateEditorText(event.target.value)}
+          onChange={(event) => updateEditorText(event.target.value, event.target.selectionStart)}
           onCompositionStart={() => setComposing(true)}
           onCompositionEnd={() => setComposing(false)}
           onKeyDown={handleEditorKeyDown}
+          onSelect={(event) => setEditorCaret(event.currentTarget.selectionStart)}
+          onClick={(event) => setEditorCaret(event.currentTarget.selectionStart)}
+          onKeyUp={(event) => setEditorCaret(event.currentTarget.selectionStart)}
           onBlur={() => {
             const session = editorSessionRef.current;
             if (session === null) return;
@@ -2026,12 +2433,44 @@ export function CanvasGrid({
           data-testid="cell-editor"
         />
       ) : null}
+      {editorCompletion.completion !== null && suggestionStyle !== undefined ? (
+        <FormulaSuggestions
+          id="cell-formula-suggestions"
+          completion={editorCompletion.completion}
+          activeIndex={editorCompletion.activeIndex}
+          activeEntry={editorCompletion.activeEntry}
+          style={suggestionStyle}
+          onChoose={(entry) => acceptEditorCompletion(entry)}
+        />
+      ) : null}
     </div>
   );
 }
 
 /** Movement below this is a click, so a header double-click can autofit. */
 const RESIZE_DRAG_THRESHOLD_PIXELS = 3;
+
+/**
+ * Edge auto-scroll speed in CSS pixels per second. A drag at the edge starts at
+ * the minimum speed; it accelerates toward the maximum over the first
+ * `AUTOSCROLL_ACCELERATION_DISTANCE` pixels past the edge, so a pointer held
+ * just outside moves gently and one far outside races. Excel has the same
+ * near-edge acceleration.
+ */
+const AUTOSCROLL_MIN_SPEED_PIXELS_PER_SECOND = 120;
+const AUTOSCROLL_MAX_SPEED_PIXELS_PER_SECOND = 1800;
+const AUTOSCROLL_ACCELERATION_DISTANCE_PIXELS = 160;
+
+function autoScrollSpeed(distancePastEdge: number): number {
+  const ratio = Math.min(
+    1,
+    Math.max(0, distancePastEdge) / AUTOSCROLL_ACCELERATION_DISTANCE_PIXELS,
+  );
+  return (
+    AUTOSCROLL_MIN_SPEED_PIXELS_PER_SECOND +
+    (AUTOSCROLL_MAX_SPEED_PIXELS_PER_SECOND - AUTOSCROLL_MIN_SPEED_PIXELS_PER_SECOND) * ratio
+  );
+}
 
 /** The fill handle is six pixels wide; a couple of pixels of slack help the press. */
 const FILL_HANDLE_HIT_MARGIN_PIXELS = 2;

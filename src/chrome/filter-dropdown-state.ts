@@ -16,6 +16,65 @@ import { cellValueEquals, cloneCellValue } from '@model/value';
 
 export type FilterColumnType = 'text' | 'number' | 'date';
 
+/**
+ * The value checklist is virtualised so a column with thousands of distinct
+ * values does not build a row for every entry. These numbers must match the
+ * row height the dropdown sets inline and the list's CSS `max-height` in
+ * `styles.css`.
+ */
+export const FILTER_ROW_HEIGHT = 21;
+
+/** The value list's CSS `max-height`, in CSS pixels. */
+export const FILTER_LIST_HEIGHT = 210;
+
+/** Rows drawn outside the viewport so a scroll does not reveal blank space. */
+export const FILTER_ROW_OVERSCAN = 4;
+
+/** Which slice of the checklist rows to render, and the spacer heights around it. */
+export interface FilterListWindow {
+  /** First rendered row slot, inclusive. */
+  readonly start: number;
+  /** Last rendered row slot, exclusive. */
+  readonly end: number;
+  /** Total row slots: every matching value plus `(Blanks)` when offered. */
+  readonly total: number;
+  /** Height of the spacer above the rendered rows. */
+  readonly leading: number;
+  /** Height of the spacer below the rendered rows. */
+  readonly trailing: number;
+}
+
+/**
+ * The virtual window for a fixed-height row list. The top is clamped to the
+ * scrollable range so a stale scroll position after the search box narrows
+ * the list still renders the first rows rather than nothing.
+ */
+export function filterListWindow(
+  totalRows: number,
+  scrollTop: number,
+  viewportHeight: number = FILTER_LIST_HEIGHT,
+  rowHeight: number = FILTER_ROW_HEIGHT,
+  overscan: number = FILTER_ROW_OVERSCAN,
+): FilterListWindow {
+  const total = Math.max(0, Math.trunc(totalRows));
+  if (total === 0 || rowHeight <= 0 || viewportHeight <= 0) {
+    return { start: 0, end: 0, total, leading: 0, trailing: 0 };
+  }
+  const maxScroll = Math.max(0, total * rowHeight - viewportHeight);
+  const top = Math.min(Math.max(0, scrollTop), maxScroll);
+  const first = Math.floor(top / rowHeight);
+  const visible = Math.ceil(viewportHeight / rowHeight) + 1;
+  const start = Math.max(0, first - Math.max(0, Math.trunc(overscan)));
+  const end = Math.min(total, first + visible + Math.max(0, Math.trunc(overscan)));
+  return {
+    start,
+    end,
+    total,
+    leading: start * rowHeight,
+    trailing: (total - end) * rowHeight,
+  };
+}
+
 /** Which checklist entries the user has ticked, by index into the full list. */
 export interface FilterChecklistState {
   readonly checked: ReadonlySet<number>;

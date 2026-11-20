@@ -7,6 +7,9 @@ import {
   criterionFromChecklist,
   defaultConditionsDraft,
   detectFilterColumnType,
+  FILTER_LIST_HEIGHT,
+  FILTER_ROW_HEIGHT,
+  filterListWindow,
   filterMenuLabel,
   filterRecordCount,
   initialChecklistState,
@@ -170,6 +173,47 @@ describe('value checklist state', () => {
       kind: 'values',
       selected: [numberValue(10.001), numberValue(10.002)],
       includeBlanks: false,
+    });
+  });
+});
+
+describe('value checklist virtual window', () => {
+  it('renders one viewport of rows plus overscan at the top', () => {
+    const window = filterListWindow(600, 0);
+    const visibleRows = Math.ceil(FILTER_LIST_HEIGHT / FILTER_ROW_HEIGHT);
+    expect(window.start).toBe(0);
+    expect(window.end).toBeGreaterThanOrEqual(visibleRows);
+    expect(window.end).toBeLessThan(60);
+    expect(window.leading).toBe(0);
+    expect(window.trailing).toBe((600 - window.end) * FILTER_ROW_HEIGHT);
+  });
+
+  it('moves the window with the scroll and clamps past the end', () => {
+    const middle = filterListWindow(600, 2100);
+    expect(middle.start).toBeGreaterThan(0);
+    expect(middle.end).toBeLessThan(600);
+    expect(middle.leading).toBe(middle.start * FILTER_ROW_HEIGHT);
+
+    const bottom = filterListWindow(600, 999_999);
+    expect(bottom.end).toBe(600);
+    expect(bottom.trailing).toBe(0);
+    expect(bottom.start).toBeLessThan(600);
+  });
+
+  it('keeps a short list whole and handles an empty list', () => {
+    expect(filterListWindow(5, 0)).toEqual({
+      start: 0,
+      end: 5,
+      total: 5,
+      leading: 0,
+      trailing: 0,
+    });
+    expect(filterListWindow(0, 0)).toEqual({
+      start: 0,
+      end: 0,
+      total: 0,
+      leading: 0,
+      trailing: 0,
     });
   });
 });

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import type { CSSProperties } from 'react';
+import { RibbonIcon } from './RibbonIcon';
+import type { RibbonIconName } from './ribbon-icons';
 
 export interface MenuItemModel {
   readonly id: string;
@@ -8,6 +10,8 @@ export interface MenuItemModel {
   readonly commandId?: string;
   readonly args?: unknown;
   readonly shortcut?: string;
+  /** A name from `src/chrome/ribbon-icons.ts`, drawn ahead of the label. */
+  readonly icon?: RibbonIconName;
   readonly disabled?: boolean;
   readonly checked?: boolean;
   readonly dividerBefore?: boolean;
@@ -410,6 +414,11 @@ function MenuRow({ item, itemRef, onActivate, onHover, expanded }: MenuRowProps)
         <span className="menu-check" aria-hidden="true">
           {item.checked === true ? '✓' : ''}
         </span>
+        {item.icon === undefined ? null : (
+          <span className="menu-icon" aria-hidden="true">
+            <RibbonIcon name={item.icon} />
+          </span>
+        )}
         <span className="menu-label">{item.label}</span>
         {hasItems ? (
           <span className="menu-shortcut" aria-hidden="true">

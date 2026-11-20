@@ -1,7 +1,14 @@
 import { Buffer } from 'node:buffer';
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
-import { cityTableXlsx } from './data-tools-fixture';
+import type { Locator, Page } from '@playwright/test';
+import {
+  cityTableXlsx,
+  deepHeaderTableXlsx,
+  longValueTableXlsx,
+  manyValuesTableXlsx,
+  wideTableXlsx,
+} from './data-tools-fixture';
+import { cellRect } from './grid-helpers';
 
 /**
  * The AutoFilter dropdown (sort-autofilter §3.8; design-refs
@@ -11,15 +18,19 @@ import { cityTableXlsx } from './data-tools-fixture';
  * out-of-scope entries.
  */
 
-async function openCityTable(page: Page): Promise<void> {
+async function openTable(page: Page, name: string, bytes: Uint8Array): Promise<void> {
   await page.goto('/?fsa=0');
   await page.getByTestId('file-input').setInputFiles({
-    name: 'filter-table.xlsx',
+    name,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: Buffer.from(cityTableXlsx()),
+    buffer: Buffer.from(bytes),
   });
-  await expect(page.getByTestId('file-name')).toHaveText('filter-table.xlsx');
+  await expect(page.getByTestId('file-name')).toHaveText(name);
   await expect(page.getByTestId('grid-canvas')).toBeVisible();
+}
+
+async function openCityTable(page: Page): Promise<void> {
+  await openTable(page, 'filter-table.xlsx', cityTableXlsx());
 }
 
 async function selectRange(page: Page, address: string): Promise<void> {
@@ -40,11 +51,52 @@ async function enableFilter(page: Page): Promise<void> {
 }
 
 /** Alt+Down opens the dropdown for the active cell's column (§3.8). */
-async function openDropdown(page: Page) {
+async function openDropdown(page: Page, columnLabel = 'City') {
   await page.keyboard.press('Alt+ArrowDown');
-  const dropdown = page.getByRole('dialog', { name: 'Filter City' });
+  const dropdown = page.getByRole('dialog', { name: `Filter ${columnLabel}` });
   await expect(dropdown).toBeVisible();
   return dropdown;
+}
+
+/** Every edge of the panel, including its footer, is inside the window. */
+async function expectInsideViewport(page: Page, panel: Locator): Promise<void> {
+  const box = await panel.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+}
+
+/** The filter header's top edge in document coordinates. */
+async function headerTop(page: Page, headerRow: number): Promise<number> {
+  const canvas = page.getByTestId('grid-canvas');
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  const rect = await cellRect(page, headerRow, 0);
+  return canvasBox!.y + rect.y;
+}
+
+/**
+ * Put a deep filter header in the lower part of the window. Selecting the
+ * range already scrolls near it; a small wheel adjusts the rest.
+ */
+async function moveHeaderNearBottom(page: Page, headerRow: number): Promise<void> {
+  const canvas = page.getByTestId('grid-canvas');
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  const current = await headerTop(page, headerRow);
+  const target = 560;
+  if (current < target - 8) {
+    await page.mouse.move(
+      canvasBox!.x + canvasBox!.width / 2,
+      canvasBox!.y + canvasBox!.height / 2,
+    );
+    await page.mouse.wheel(0, current - target);
+  }
+  await expect.poll(() => headerTop(page, headerRow)).toBeGreaterThan(400);
 }
 
 async function columnValues(page: Page, column: number, rows: number): Promise<(string | null)[]> {
@@ -225,4 +277,203 @@ test('Text Filters opens the Custom AutoFilter window and applies two fields', a
   await reopened.getByTestId('filter-type-contains').click();
   const prefilled = page.getByRole('dialog', { name: 'Custom AutoFilter' });
   await expect(prefilled.getByLabel('Value 1')).toHaveValue('is');
+});
+
+test('a long value stays on one row and truncates with an ellipsis', async ({ page }) => {
+  const longValue =
+    'This deliberately long filter value must truncate at the dropdown edge rather than wrap character by character';
+  await openTable(page, 'long-filter.xlsx', longValueTableXlsx(longValue));
+  await selectRange(page, 'A1:A3');
+  await enableFilter(page);
+  await selectRange(page, 'A2');
+
+  const dropdown = await openDropdown(page, 'Value');
+  const row = dropdown.locator('.filter-check').filter({ hasText: 'deliberately long' });
+  await expect(row).toBeVisible();
+
+  const layout = await row.evaluate((label) => {
+    const text = label.querySelector<HTMLElement>('.filter-check-text');
+    if (text === null) throw new Error('The value text is not wrapped in its own element.');
+    const style = getComputedStyle(text);
+    return {
+      labelHeight: label.getBoundingClientRect().height,
+      lineRects: text.getClientRects().length,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+      minWidth: style.minWidth,
+      scrollWidth: text.scrollWidth,
+      clientWidth: text.clientWidth,
+    };
+  });
+
+  // A squashed flex item used to collapse this row to a few pixels and draw
+  // the text over its neighbours. One line, clipped, is the Excel shape.
+  expect(layout.labelHeight).toBeGreaterThanOrEqual(20);
+  expect(layout.lineRects).toBe(1);
+  expect(layout.textOverflow).toBe('ellipsis');
+  expect(layout.whiteSpace).toBe('nowrap');
+  expect(layout.minWidth).toBe('0px');
+  expect(layout.scrollWidth).toBeGreaterThan(layout.clientWidth);
+});
+
+test('a column with many distinct values keeps the dropdown usable and Select All covers them all', async ({
+  page,
+}) => {
+  const valueCount = 600;
+  await openTable(page, 'many-filter.xlsx', manyValuesTableXlsx(valueCount));
+  await selectRange(page, `A1:A${valueCount + 1}`);
+  await enableFilter(page);
+  await selectRange(page, 'A2');
+
+  const dropdown = await openDropdown(page, 'Value');
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0001' })).toBeVisible();
+  // The model offers every value, but the list renders only its viewport
+  // window, not one DOM row per value.
+  expect(await dropdown.locator('.filter-checklist .filter-check').count()).toBeLessThan(60);
+
+  // The search box narrows the list, and clearing it restores the full list at
+  // the top.
+  await dropdown.getByLabel('Search values').fill('Value 0600');
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0600' })).toBeVisible();
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0001' })).toHaveCount(0);
+  await dropdown.getByLabel('Search values').fill('');
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0001' })).toBeVisible();
+
+  // The last value is reachable, so no value was silently capped away.
+  await dropdown.getByTestId('filter-checklist').evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+  });
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0600' })).toBeVisible();
+
+  // Select All ticks the full model list while most values are outside the
+  // DOM. Unchecking one row then leaves every other row visible.
+  await dropdown.getByTestId('filter-select-all').uncheck();
+  await dropdown.getByTestId('filter-select-all').check();
+  await dropdown.getByRole('checkbox', { name: 'Value 0600' }).uncheck();
+  await dropdown.getByRole('button', { name: 'Apply' }).click();
+  await expect(dropdown).toBeHidden();
+  await expect(page.getByTestId('filter-records')).toHaveText('599 of 600 records');
+});
+
+test('(Blanks) still appears when the column has blank rows', async ({ page }) => {
+  await openCityTable(page);
+  // A1:B7 reaches one row past the city table, so the Sales column has a blank.
+  await selectRange(page, 'A1:B7');
+  await enableFilter(page);
+  await selectRange(page, 'B2');
+
+  const dropdown = await openDropdown(page, 'Sales');
+  const blanks = dropdown.getByRole('checkbox', { name: '(Blanks)' });
+  await expect(blanks).toBeVisible();
+  await expect(blanks).toBeChecked();
+  // It is the last checklist row, after the values.
+  await expect(dropdown.locator('.filter-check').last()).toContainText('(Blanks)');
+});
+
+test('the dropdown stays on screen when it opens near the top', async ({ page }) => {
+  await openCityTable(page);
+  await selectRange(page, 'A1:B6');
+  await enableFilter(page);
+  await selectRange(page, 'A2');
+
+  const dropdown = await openDropdown(page);
+  await expectInsideViewport(page, dropdown);
+  await expect(dropdown).toHaveAttribute('data-flipped', 'false');
+  await expect(dropdown.getByRole('button', { name: 'Apply' })).toBeVisible();
+});
+
+test('the dropdown flips above a header near the bottom and Apply still works', async ({
+  page,
+}) => {
+  await openTable(page, 'deep-filter.xlsx', deepHeaderTableXlsx(100));
+  await selectRange(page, 'A100:A105');
+  await enableFilter(page);
+  await moveHeaderNearBottom(page, 99);
+  const header = await headerTop(page, 99);
+
+  const dropdown = await openDropdown(page, 'Value');
+  await expectInsideViewport(page, dropdown);
+  await expect(dropdown).toHaveAttribute('data-flipped', 'true');
+  const box = await dropdown.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(header + 1);
+
+  // The footer is the part that must never leave the window.
+  const apply = dropdown.getByRole('button', { name: 'Apply' });
+  await expect(apply).toBeVisible();
+  await dropdown.getByRole('checkbox', { name: 'Leeds' }).uncheck();
+  await apply.click();
+  await expect(dropdown).toBeHidden();
+  await expect(page.getByTestId('filter-records')).toHaveText('4 of 5 records');
+});
+
+test('the dropdown stays on screen when it opens near the right edge', async ({ page }) => {
+  await openTable(page, 'wide-filter.xlsx', wideTableXlsx());
+  await selectRange(page, 'Z1:Z2');
+  await enableFilter(page);
+
+  const dropdown = await openDropdown(page, 'Column 26');
+  await expectInsideViewport(page, dropdown);
+  const box = await dropdown.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+  await expect(dropdown.getByRole('button', { name: 'Apply' })).toBeVisible();
+});
+
+test('a window resize dismisses the dropdown rather than leaving it detached', async ({ page }) => {
+  await openCityTable(page);
+  await selectRange(page, 'A1:B6');
+  await enableFilter(page);
+  await selectRange(page, 'A2');
+
+  const dropdown = await openDropdown(page);
+  await page.setViewportSize({ width: 900, height: 400 });
+  await expect(dropdown).toBeHidden();
+  await expect(page.getByTestId('grid-shell')).toBeFocused();
+});
+
+test('a short window clamps the panel and the value list takes the scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 360 });
+  await openTable(page, 'short-window.xlsx', manyValuesTableXlsx(100));
+  await selectRange(page, 'A1:A101');
+  await enableFilter(page);
+  await selectRange(page, 'A2');
+
+  const dropdown = await openDropdown(page, 'Value');
+  await expectInsideViewport(page, dropdown);
+  // It fits on neither side of the anchor, so it is clamped rather than flipped.
+  await expect(dropdown).toHaveAttribute('data-flipped', 'false');
+  const sizes = await dropdown.getByTestId('filter-checklist').evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(sizes.scrollHeight).toBeGreaterThan(sizes.clientHeight);
+  await expect(dropdown.getByRole('button', { name: 'Apply' })).toBeVisible();
+});
+
+test('the value list scrolls while the footer stays put', async ({ page }) => {
+  const valueCount = 200;
+  await openTable(page, 'scroll-filter.xlsx', manyValuesTableXlsx(valueCount));
+  await selectRange(page, `A1:A${valueCount + 1}`);
+  await enableFilter(page);
+
+  const dropdown = await openDropdown(page, 'Value');
+  const list = dropdown.getByTestId('filter-checklist');
+  const apply = dropdown.getByRole('button', { name: 'Apply' });
+  const footerBefore = await apply.boundingBox();
+  const scrolling = await list.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(scrolling.scrollHeight).toBeGreaterThan(scrolling.clientHeight);
+
+  await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(dropdown.getByRole('checkbox', { name: 'Value 0200' })).toBeVisible();
+  const footerAfter = await apply.boundingBox();
+  expect(footerAfter).toEqual(footerBefore);
+  await expectInsideViewport(page, dropdown);
 });

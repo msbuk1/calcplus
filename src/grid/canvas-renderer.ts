@@ -10,6 +10,7 @@ import {
   type CfTextPaint,
 } from './cf-paint';
 import { gridDebugState } from './debug';
+import { filterButtonRect } from './filter-affordance';
 import { mergedBorderStyle } from './merged-borders';
 import {
   cellRect,
@@ -372,6 +373,10 @@ export class CanvasRenderFrame implements RenderFrame {
       const icon = opOfKind(visible.cf, 'icon');
       if (icon !== undefined) paintCfIcon(this.context, icon);
     }
+
+    // The AutoFilter dropdown button sits inside each header cell of the filter
+    // range (sort-autofilter §3.8); a filtered column shows the funnel form.
+    this.paintFilterHeaders(pane, projection, layout, scrollX, scrollY);
 
     // File-compat §9 F12: the note/comment indicator is a small red triangle in
     // the cell's top-right corner, painted last so a fill or CF never hides it.
@@ -1403,6 +1408,88 @@ export class CanvasRenderFrame implements RenderFrame {
     context.moveTo(layout.headerWidth + 0.5, 0);
     context.lineTo(layout.headerWidth + 0.5, headerBottom);
     context.stroke();
+  }
+
+  /**
+   * The AutoFilter affordance inside the filter range's header cells
+   * (sort-autofilter §3.8). The DOM overlay in `CanvasGrid` gives the same
+   * rectangle its accessible name and keyboard target.
+   */
+  private paintFilterHeaders(
+    pane: Pane,
+    projection: SheetProjection,
+    layout: PaneLayout,
+    scrollX: number,
+    scrollY: number,
+  ): void {
+    const filter = projection.autoFilter;
+    if (filter === null) return;
+    const headerRow = filter.range.startRow;
+    if (headerRow < pane.startRow || headerRow > pane.endRow) return;
+    if (projection.isRowHidden(headerRow)) return;
+    const firstCol = Math.max(pane.startCol, filter.range.startCol);
+    const lastCol = Math.min(pane.endCol, filter.range.endCol);
+    for (let col = firstCol; col <= lastCol; col += 1) {
+      if (projection.isColumnHidden(col) || projection.columnWidth(col) <= 0) continue;
+      const cell = cellRect(projection, layout, scrollX, scrollY, headerRow, col);
+      if (cell.width < 10 || cell.height < 8) continue;
+      this.paintFilterButton(
+        filterButtonRect(cell, projection.zoom),
+        filter.filteredColumns.has(col) || filter.unsupportedColumns.has(col),
+        projection.zoom,
+      );
+    }
+  }
+
+  private paintFilterButton(
+    rect: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    },
+    filtered: boolean,
+    zoom: number,
+  ): void {
+    const { context } = this;
+    context.save();
+    context.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    context.strokeStyle = '#b7b7b7';
+    context.lineWidth = 1;
+    context.strokeRect(
+      Math.round(rect.x) + 0.5,
+      Math.round(rect.y) + 0.5,
+      Math.max(0, Math.round(rect.width) - 1),
+      Math.max(0, Math.round(rect.height) - 1),
+    );
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    const halfWidth = Math.max(2, rect.width * 0.26);
+    const halfHeight = Math.max(2, rect.height * 0.24);
+    context.fillStyle = COLORS.headerText;
+    context.strokeStyle = COLORS.headerText;
+    context.lineWidth = Math.max(1, 1.2 * zoom);
+    if (filtered) {
+      // A funnel: wide mouth, two sloping sides and a short stem.
+      context.beginPath();
+      context.moveTo(centerX - halfWidth, centerY - halfHeight);
+      context.lineTo(centerX + halfWidth, centerY - halfHeight);
+      context.lineTo(centerX + halfWidth * 0.24, centerY + halfHeight * 0.05);
+      context.lineTo(centerX + halfWidth * 0.24, centerY + halfHeight);
+      context.lineTo(centerX - halfWidth * 0.24, centerY + halfHeight * 0.65);
+      context.lineTo(centerX - halfWidth * 0.24, centerY + halfHeight * 0.05);
+      context.closePath();
+      context.fill();
+    } else {
+      // A chevron, Excel's unfiltered dropdown mark.
+      context.beginPath();
+      context.moveTo(centerX - halfWidth, centerY - halfHeight * 0.45);
+      context.lineTo(centerX, centerY + halfHeight * 0.55);
+      context.lineTo(centerX + halfWidth, centerY - halfHeight * 0.45);
+      context.stroke();
+    }
+    context.restore();
   }
 
   private paintColumnHeader(

@@ -106,6 +106,18 @@ export interface SelectionStatistics {
 }
 
 /**
+ * The AutoFilter state the grid paints (sort-autofilter §3.8): the range
+ * includes the header row, and the column sets are absolute sheet columns.
+ * `unsupportedColumns` keep their imported criteria read-only; the dropdown
+ * shows its notice for them.
+ */
+export interface ProjectedAutoFilter {
+  readonly range: GridRange;
+  readonly filteredColumns: ReadonlySet<number>;
+  readonly unsupportedColumns: ReadonlySet<number>;
+}
+
+/**
  * Conditional formatting resolved for painting (conditional formatting §2,
  * §5 and §6). The projection owns the rule index and its caches, so the grid
  * reads paint-ready overlays and never evaluates a rule or touches the model.
@@ -147,6 +159,12 @@ export interface SheetProjection {
    */
   readonly zoom: number;
   readonly date1904: boolean;
+  /**
+   * The sheet's AutoFilter, reduced to what the grid paints (sort-autofilter
+   * §3.8): the range and the absolute columns with a criterion. `null` when
+   * the sheet has no filter.
+   */
+  readonly autoFilter: ProjectedAutoFilter | null;
   cellAt(row: number, col: number): ProjectedCell | null;
   window(startRow: number, endRow: number, startCol: number, endCol: number): ProjectedCell[];
   rowHeight(row: number): number;

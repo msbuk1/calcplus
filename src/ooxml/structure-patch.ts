@@ -1,4 +1,4 @@
-import type { GridRange, OpaquePart, Workbook } from '@model/types';
+import type { GridRange, HyperlinkRecord, OpaquePart, SheetId, Workbook } from '@model/types';
 import { formatCellRef } from '@model/types';
 import {
   planOpaquePartTransforms,
@@ -7,6 +7,7 @@ import {
   transformMergeRange,
   transformRange,
   transformRangeBearingXml,
+  type CrossSheetHyperlinkRenumber,
   type OpaquePartKind,
   type OpaquePartRewrite,
   type RangeTransformPlan,
@@ -101,11 +102,79 @@ export function renumberWorksheetPart(input: StructurePartInput): StructurePartR
   return { bytes: new TextEncoder().encode(next), changed: next !== xml };
 }
 
+export interface HyperlinkPartInput {
+  readonly bytes: Uint8Array;
+  readonly partName: string;
+  readonly sheetName: string;
+  readonly sheetId: SheetId;
+  readonly edit: StructuralEdit;
+  readonly workbook: Workbook;
+}
+
+/**
+ * Rewrite only the internal `location` attributes of a worksheet part whose
+ * hyperlinks point into the sheet being edited. This is the sibling-sheet half
+ * of the structural save: the anchor cells do not move, so `<row>`/`<c>` stay
+ * byte-identical and only the target reference changes (ticket 32).
+ *
+ * A location the transformer cannot parse is left byte-identical. It cannot be
+ * attributed to the edited sheet, and an unrelated free-text `location` on
+ * another sheet must not block the edit from here.
+ */
+export function renumberHyperlinkLocationsPart(input: HyperlinkPartInput): StructurePartResult {
+  let parsed: ParsedWorksheet;
+  try {
+    parsed = parseWorksheetXml(input.bytes, {
+      sharedStrings: null,
+      partPath: input.partName,
+      name: input.sheetName,
+    });
+  } catch (error) {
+    throw new WorkbookSaveError(
+      'unsafe-part',
+      `The worksheet ${input.partName} could not be read for a structural edit: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const container = parsed.rootChildren.find((child) => child.local === 'hyperlinks');
+  if (container === undefined) return { bytes: input.bytes, changed: false };
+  const xml = parsed.xml;
+  const slice = xml.slice(container.start, container.end);
+  const patched = patchElements(slice, scanElements(slice, 'hyperlink'), (text) => {
+    const match = /(\blocation\s*=\s*)(["'])([^"']*)\2/.exec(text);
+    if (match === null) return text;
+    const outcome = transformHyperlinkLocation(
+      decodeXmlAttributeValue(match[3] ?? ''),
+      input.edit,
+      { workbook: input.workbook },
+      input.sheetId,
+    );
+    if (!outcome.ok || !outcome.changed) return text;
+    return replaceAttribute(text, match, outcome.location);
+  });
+  if (patched === slice) return { bytes: input.bytes, changed: false };
+  const next = `${xml.slice(0, container.start)}${patched}${xml.slice(container.end)}`;
+  return { bytes: new TextEncoder().encode(next), changed: true };
+}
+
 // ---------------------------------------------------------------------------
 // Tier B parts (drawings, charts, comments, pivots)
 // ---------------------------------------------------------------------------
 
 export type StructuralPartKind = 'worksheet' | OpaquePartKind;
+
+/**
+ * Hyperlink maps that ride a worksheet part patch. A link on another sheet has
+ * no cell in the edited sheet to move, but its internal target is still a
+ * reference: the same transaction records its before/after map so undo restores
+ * the exact link (ticket 32).
+ */
+export interface StructuralHyperlinkChange {
+  readonly sheetId: SheetId;
+  readonly before: readonly (readonly [string, HyperlinkRecord])[];
+  readonly after: readonly (readonly [string, HyperlinkRecord])[];
+}
 
 export interface StructuralPartPatch {
   readonly path: string;
@@ -113,6 +182,8 @@ export interface StructuralPartPatch {
   /** The part exactly as it was saved, for the transaction's inverse. */
   readonly before: Uint8Array;
   readonly after: Uint8Array;
+  /** Present when the patch also moves a sheet's internal hyperlink targets. */
+  readonly hyperlinks?: StructuralHyperlinkChange;
 }
 
 export interface StructuralPartPlan {
@@ -121,10 +192,10 @@ export interface StructuralPartPlan {
 }
 
 /**
- * Plan the renumbering of every non-worksheet part the edit touches. This is
- * the minimal hook for the structural command: pass the plan the command
- * already computed, store the patches in the same transaction, and undo writes
- * `before` back.
+ * Plan the renumbering of every opaque part the edit touches, plus the sibling
+ * worksheets whose hyperlinks point into the edited sheet. This is the minimal
+ * hook for the structural command: pass the plan the command already computed,
+ * store the patches in the same transaction, and undo writes `before` back.
  */
 export function planOpaquePartPatches(
   workbook: Workbook,
@@ -135,10 +206,52 @@ export function planOpaquePartPatches(
     plan === null
       ? planOpaquePartTransforms(workbook, edit, { workbook })
       : { rewrites: plan.opaqueParts, block: plan.block };
+  const patches = opaque.rewrites.map(partPatch);
+  if (plan !== null) patches.push(...planCrossSheetHyperlinkPatches(workbook, edit, plan));
   return {
-    patches: opaque.rewrites.map(partPatch),
+    patches,
     block: opaque.block,
   };
+}
+
+/**
+ * Rewrite each sibling worksheet part whose hyperlinks point into the edited
+ * sheet. The modified bytes and the matching model maps ride one
+ * `StructuralPartPatch`, so a save writes the part and undo restores both.
+ */
+export function planCrossSheetHyperlinkPatches(
+  workbook: Workbook,
+  edit: StructuralEdit,
+  plan: RangeTransformPlan,
+): StructuralPartPatch[] {
+  const patches: StructuralPartPatch[] = [];
+  for (const entry of plan.crossSheetHyperlinks) {
+    const sheet = workbook.sheets.find((candidate) => candidate.id === entry.sheetId);
+    if (sheet === undefined) continue;
+    const before = workbook.sourceParts.get(sheet.partPath);
+    if (before === undefined) continue;
+    const result = renumberHyperlinkLocationsPart({
+      bytes: before,
+      partName: sheet.partPath,
+      sheetName: sheet.name,
+      sheetId: sheet.id,
+      edit,
+      workbook,
+    });
+    if (!result.changed) continue;
+    patches.push({
+      path: sheet.partPath,
+      kind: 'worksheet',
+      before,
+      after: result.bytes,
+      hyperlinks: hyperlinkChange(entry),
+    });
+  }
+  return patches;
+}
+
+function hyperlinkChange(entry: CrossSheetHyperlinkRenumber): StructuralHyperlinkChange {
+  return { sheetId: entry.sheetId, before: entry.before, after: entry.after };
 }
 
 /**
@@ -191,6 +304,15 @@ export function applyStructuralPartPatches(
 ): void {
   for (const patch of patches) {
     const bytes = direction === 'after' ? patch.after : patch.before;
+    if (patch.hyperlinks !== undefined) {
+      const sheet = workbook.sheets.find((candidate) => candidate.id === patch.hyperlinks!.sheetId);
+      if (sheet !== undefined) {
+        replaceHyperlinkMap(
+          sheet.hyperlinks,
+          direction === 'after' ? patch.hyperlinks.after : patch.hyperlinks.before,
+        );
+      }
+    }
     if (patch.kind === 'worksheet') {
       workbook.sourceParts.set(patch.path, bytes);
       continue;
@@ -217,6 +339,14 @@ function partPatch(rewrite: OpaquePartRewrite): StructuralPartPatch {
     before: rewrite.before,
     after: rewrite.after,
   };
+}
+
+function replaceHyperlinkMap(
+  map: Map<string, HyperlinkRecord>,
+  entries: readonly (readonly [string, HyperlinkRecord])[],
+): void {
+  map.clear();
+  for (const [key, record] of entries) map.set(key, { ...record });
 }
 
 // ---------------------------------------------------------------------------

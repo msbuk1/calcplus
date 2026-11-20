@@ -15,6 +15,19 @@ export function confirmReplaceDocument(
   );
 }
 
+/**
+ * Persistence §4: closing the document session discards anything unsaved, so a
+ * dirty workbook asks first. A clean workbook closes without a prompt.
+ */
+export function confirmCloseDocument(
+  hasUnsavedChanges: boolean,
+  confirmFn: (message: string) => boolean = (message) =>
+    typeof window === 'undefined' ? false : window.confirm(message),
+): boolean {
+  if (!hasUnsavedChanges) return true;
+  return confirmFn('This workbook has unsaved changes. Discard them and close the workbook?');
+}
+
 export interface MacroSavePlan {
   /** The format the save writes; `xlsx` from a macro workbook drops the macros. */
   readonly format: SavedFormat;

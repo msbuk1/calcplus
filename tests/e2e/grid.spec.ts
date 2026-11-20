@@ -38,7 +38,7 @@ test('commits an edit from the formula bar', async ({ page }) => {
   await page.keyboard.type('99');
   await page.keyboard.press('Enter');
   expect(await page.evaluate(() => window.__calcplus.getCellDisplay(2, 1))).toBe('99.00');
-  await expect(page.getByTestId('dirty-indicator')).toBeVisible();
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
 });
 
 test('moves down after a formula-bar commit and stays on Ctrl+Enter', async ({ page }) => {

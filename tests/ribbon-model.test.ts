@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { COMMAND_INVENTORY, inventoryCommand } from '@commands/inventory';
-import { RIBBON_TABS, menuItemsFor, ribbonGroupsFor, ribbonMenuItems } from '@chrome/ribbon-model';
+import {
+  RIBBON_TABS,
+  menuItemsFor,
+  quickAccessControls,
+  ribbonGroupsFor,
+  ribbonMenuItems,
+} from '@chrome/ribbon-model';
 import type { ResolvedRibbonControl, ResolvedRibbonGroup } from '@chrome/ribbon-model';
 
 /**
@@ -106,11 +112,83 @@ describe('Font group', () => {
     expect(control(font, 'format.fill').title).toBe('Fill Colour');
     // The font colour control is the split "A", not one of the selects.
     expect(font.controls.find((entry) => entry.title === 'Font Colour')?.kind).toBe('split');
+    // Both colour split buttons open the shared picker, not a preset menu.
+    expect(control(font, 'format.fill')).toMatchObject({ picker: 'fill' });
+    expect(control(font, 'format.fill').menu).toBeUndefined();
+    expect(font.controls.find((entry) => entry.title === 'Font Colour')).toMatchObject({
+      picker: 'font',
+    });
+    expect(font.controls.find((entry) => entry.title === 'Font Colour')?.menu).toBeUndefined();
+  });
+
+  it('gives the Borders split button Excel 365s fifteen-item submenu', () => {
+    const borders = control(group('Home', 'Font'), 'format.border');
+    expect(borders.kind).toBe('split');
+    // All Borders stays the split button's default action.
+    expect(borders.args).toEqual({ preset: 'all', style: 'thin', color: '#000000' });
+    expect(borders.menu?.map((item) => item.label)).toEqual([
+      'Bottom Border',
+      'Top Border',
+      'Left Border',
+      'Right Border',
+      'No Border',
+      'All Borders',
+      'Outside Borders',
+      'Thick Outside Borders',
+      'Bottom Double Border',
+      'Thick Bottom Border',
+      'Top and Bottom Border',
+      'Top and Thick Bottom Border',
+      'Top and Double Bottom Border',
+      'Inside Borders',
+      'More Borders...',
+    ]);
+    expect(borders.menu?.map((item) => item.icon)).toEqual([
+      'border-bottom',
+      'border-top',
+      'border-left',
+      'border-right',
+      'border-none',
+      'border-all',
+      'border-outside',
+      'border-thick-outside',
+      'border-bottom-double',
+      'border-thick-bottom',
+      'border-top-bottom',
+      'border-top-thick-bottom',
+      'border-top-double-bottom',
+      'border-inside',
+      'border-more',
+    ]);
+    // Dividers open the pattern group and the dialog entry.
+    expect(
+      (borders.menu ?? []).flatMap((item, index) => (item.dividerBefore === true ? [index] : [])),
+    ).toEqual([5, 14]);
+    // More Borders opens the Format Cells dialog on its Border tab.
+    expect(borders.menu?.[14]?.commandId).toBe('format.cellsDialog');
+    expect(borders.menu?.[14]?.args).toEqual({ tab: 'border' });
+    // The single-edge and thick/double items carry the style the command accepts.
+    expect(borders.menu?.[0]?.args).toEqual({
+      edges: { bottom: { style: 'thin', color: '#000000', weight: 'thin' } },
+    });
+    expect(borders.menu?.[7]?.args).toEqual({
+      preset: 'outline',
+      style: 'thick',
+      color: '#000000',
+    });
+    expect(borders.menu?.[8]?.args).toEqual({
+      edges: { bottom: { style: 'double', color: '#000000', weight: 'thick' } },
+    });
+    // Every item is implemented, so the rendered menu keeps all fifteen rows
+    // and copies each artwork name.
+    const rendered = ribbonMenuItems(borders.menu ?? [], alwaysEnabled);
+    expect(rendered).toHaveLength(15);
+    expect(rendered.map((item) => item.icon)).toEqual(borders.menu?.map((item) => item.icon));
   });
 });
 
 describe('Alignment group', () => {
-  it('renders the six implemented quick aligns plus Wrap Text, with no Merge control', () => {
+  it('renders the quick aligns, the Merge & Center split button and Wrap Text', () => {
     const alignment = group('Home', 'Alignment');
     expect(alignment.controls.map((entry) => entry.title)).toEqual([
       'Align Left',
@@ -119,12 +197,43 @@ describe('Alignment group', () => {
       'Align Top',
       'Align Middle',
       'Align Bottom',
+      'Merge & Center',
       'Wrap Text',
     ]);
-    // The merge family is unimplemented, so Merge & Centre is absent, not greyed.
-    expect(alignment.controls.some((entry) => entry.commandId.startsWith('merge.'))).toBe(false);
+    // Merge sits in row 2 after the vertical aligns, as Excel places it.
+    const merge = control(alignment, 'merge.center');
+    expect(merge).toMatchObject({ kind: 'split', row: 2, icon: 'merge', wide: true });
+    expect(merge.menu?.map((item) => item.label)).toEqual([
+      'Merge & Center',
+      'Merge Across',
+      'Merge Cells',
+      'Unmerge',
+    ]);
+    expect(merge.menu?.map((item) => item.commandId)).toEqual([
+      'merge.center',
+      'merge.across',
+      'merge.cells',
+      'merge.unmerge',
+    ]);
+    // Every item is live now, so the rendered menu keeps all four rows.
+    expect(ribbonMenuItems(merge.menu ?? [], alwaysEnabled).map((item) => item.label)).toEqual([
+      'Merge & Center',
+      'Merge Across',
+      'Merge Cells',
+      'Unmerge',
+    ]);
     expect(control(alignment, 'format.wrapText').kind).toBe('toggle');
     expect(control(alignment, 'format.wrapText').row).toBe(1);
+    // The six quick aligns render icons, not the old letter labels.
+    expect(alignment.controls.slice(0, 6).map((entry) => entry.icon)).toEqual([
+      'align-left',
+      'align-centre',
+      'align-right',
+      'align-top',
+      'align-middle',
+      'align-bottom',
+    ]);
+    expect(alignment.controls.slice(0, 6).every((entry) => entry.iconOnly)).toBe(true);
   });
 });
 
@@ -143,11 +252,11 @@ describe('Number group', () => {
         row: entry.row,
       }));
     expect(quick).toEqual([
-      { label: '$', title: 'Currency', icon: undefined, row: 2 },
-      { label: '%', title: 'Percent', icon: undefined, row: 2 },
-      { label: ',', title: 'Comma', icon: undefined, row: 2 },
-      { label: '.00', title: 'Increase Decimal', icon: '←', row: 2 },
-      { label: '.00', title: 'Decrease Decimal', icon: '→', row: 2 },
+      { label: '$', title: 'Currency', icon: 'currency', row: 2 },
+      { label: '%', title: 'Percent', icon: 'percent', row: 2 },
+      { label: ',', title: 'Comma', icon: 'comma', row: 2 },
+      { label: '.00', title: 'Increase Decimal', icon: 'increase-decimal', row: 2 },
+      { label: '.00', title: 'Decrease Decimal', icon: 'decrease-decimal', row: 2 },
     ]);
   });
 });
@@ -270,14 +379,17 @@ describe('Cells and Editing groups', () => {
     expect(find.menu?.[2]?.commandId).toBe('goto.goto');
   });
 
-  it('hides Clear All inside the Clear menu until the command exists', () => {
+  it('lists Clear All, Clear Contents and Clear Formats in the Clear menu', () => {
     const clear = control(group('Home', 'Editing'), 'edit.clearContents');
     expect(clear.kind).toBe('split');
-    // The map keeps the planned entry so the menu does not move later.
-    expect(clear.menu?.map((item) => item.label)).toContain('Clear All');
-    expect(inventoryCommand('edit.clearAll')?.implemented).toBe(false);
-    // The rendered menu drops it: hidden, not greyed.
+    expect(clear.menu?.map((item) => item.label)).toEqual([
+      'Clear All',
+      'Clear Contents',
+      'Clear Formats',
+    ]);
+    expect(inventoryCommand('edit.clearAll')?.implemented).toBe(true);
     expect(ribbonMenuItems(clear.menu ?? [], alwaysEnabled).map((item) => item.label)).toEqual([
+      'Clear All',
       'Clear Contents',
       'Clear Formats',
     ]);
@@ -296,6 +408,40 @@ describe('Data tab', () => {
   });
 });
 
+describe('quick access toolbar (ticket 34)', () => {
+  it('holds Save, Undo and Redo in oracle order with shortcut tooltips', () => {
+    const controls = quickAccessControls();
+    expect(controls.map((entry) => entry.commandId)).toEqual([
+      'file.save',
+      'edit.undo',
+      'edit.redo',
+    ]);
+    expect(controls.map((entry) => entry.title)).toEqual([
+      'Save (Ctrl+S)',
+      'Undo (Ctrl+Z)',
+      'Redo (Ctrl+Y)',
+    ]);
+    for (const control of controls) {
+      expect(control.icon).toBeDefined();
+      expect(control.title).toContain(control.label);
+    }
+  });
+
+  it('keeps Save As out of the toolbar and in the File menu', () => {
+    expect(quickAccessControls().some((entry) => entry.commandId === 'file.saveAs')).toBe(false);
+    expect(inventoryCommand('file.saveAs')?.quickAccess).toBeUndefined();
+    expect(menuItemsFor('File', alwaysEnabled).map((item) => item.commandId)).toContain(
+      'file.saveAs',
+    );
+  });
+
+  it('draws its icon from the shared original artwork', () => {
+    for (const control of quickAccessControls()) {
+      expect(inventoryCommand(control.commandId)?.icon).toBeDefined();
+    }
+  });
+});
+
 describe('hidden-not-greyed outside the registered commands', () => {
   it('renders no control for a command that is only planned', () => {
     const rendered = new Set<string>();
@@ -311,7 +457,7 @@ describe('hidden-not-greyed outside the registered commands', () => {
       if (!entry.implemented) expect(commandId).toBe('format.conditionalRender');
     }
     // Spot-check the neighbours that must stay out of the chrome.
-    for (const hidden of ['merge.center', 'structure.deleteRows', 'edit.clearAll', 'view.freeze']) {
+    for (const hidden of ['structure.deleteRows', 'view.zoom']) {
       expect(rendered.has(hidden)).toBe(false);
     }
   });

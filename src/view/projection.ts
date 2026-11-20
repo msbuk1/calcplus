@@ -1,4 +1,4 @@
-import type { Cell, Sheet, Workbook } from '@model/types';
+import type { AutoFilter, Cell, Sheet, Workbook } from '@model/types';
 import { cellKey, columnToLetters } from '@model/types';
 import { computeHiddenLayers } from '@model/autofilter';
 import type { CfCellSource } from '@model/conditional-format';
@@ -16,6 +16,7 @@ import { buildSheetIndex, type SheetIndex } from './sheet-index';
 import { createSheetConditionalFormatting } from './cf-projection';
 import type {
   MergeSpan,
+  ProjectedAutoFilter,
   ProjectedCell,
   ProjectedConditionalFormatting,
   ProjectedStyle,
@@ -291,6 +292,7 @@ export function createSheetProjection(
       format: (value, code) => formatter.format(value, code, workbook.date1904),
       inputs: options.conditionalFormats,
     });
+  const autoFilter = projectAutoFilter(sheet.autoFilter, columnCount);
 
   return {
     sheetId,
@@ -304,6 +306,7 @@ export function createSheetProjection(
     showHeadings: options.showHeadings ?? sheet.view.showHeadings,
     zoom,
     date1904: workbook.date1904,
+    autoFilter,
     conditionalFormatting,
     commentCells: new Set(sheet.comments.keys()),
     commentAt(row, col) {
@@ -516,6 +519,31 @@ function columnWidthOverrides(
     if (pixels > 0 && pixels !== defaultWidth) overrides.set(column, pixels);
   }
   return overrides;
+}
+
+/**
+ * Reduce the sheet's AutoFilter to the paint-ready form. Columns outside the
+ * addressable sheet are dropped; the criteria map is keyed by offset from the
+ * range's first column, so adding that offset gives the header column.
+ */
+function projectAutoFilter(
+  filter: AutoFilter | null,
+  columnCount: number,
+): ProjectedAutoFilter | null {
+  if (filter === null) return null;
+  const filteredColumns = new Set<number>();
+  const unsupportedColumns = new Set<number>();
+  for (const [offset, column] of filter.columns) {
+    const col = filter.range.startCol + offset;
+    if (col < 0 || col >= columnCount) continue;
+    if (column.kind === 'unsupported') unsupportedColumns.add(col);
+    else filteredColumns.add(col);
+  }
+  return {
+    range: { ...filter.range },
+    filteredColumns,
+    unsupportedColumns,
+  };
 }
 
 function valueKey(cell: Cell): string {

@@ -47,6 +47,7 @@ import {
   planConditionalFormatsSave,
   type ConditionalFormatSavePlan,
 } from './conditional-format-xml';
+import { planPaneSave, type PaneSavePlan } from './pane-xml';
 import { WorkbookSaveError } from './errors';
 import { planPartPolicy, removeMacroParts, isMacroPartPath, type SavedFormat } from './part-policy';
 import { validatePatchedPart } from './xml';
@@ -169,6 +170,18 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     parsedSheets,
   );
   const removedSheetIds = new Set(sheetPlan?.removals.map((removal) => removal.sheetId) ?? []);
+  // A structural part patch can give a worksheet new source bytes without a
+  // dirty cell — a hyperlink target on a sibling sheet is the case ticket 32
+  // fixes. The source part is the exact bytes the save must write, so compare
+  // it with the package instead of requiring a cell marker.
+  const sourcePartChangedSheetIds = input.workbook.sheets
+    .filter((sheet) => {
+      if (newSheetIds.has(sheet.id)) return false;
+      const source = input.workbook.sourceParts.get(sheet.partPath);
+      const original = input.package.entries.get(sheet.partPath);
+      return source !== undefined && original !== undefined && !bytesEqual(source, original);
+    })
+    .map((sheet) => sheet.id);
   const definedNamesChanged =
     sourceWorkbookBytes !== undefined &&
     patchWorkbookDefinedNames({
@@ -218,6 +231,16 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     const plan = planConditionalFormatsSave(sheet, sourceBytes);
     if (plan.changed) conditionalFormatPlans.set(sheet.id, plan);
   }
+  // Freeze panes are document state in the sheet view. Comparing the model's
+  // split with the source pane lets a freeze-only change reach the worksheet
+  // while an untouched split leaves the part byte-identical.
+  const panePlans = new Map<SheetId, PaneSavePlan>();
+  for (const sheet of input.workbook.sheets) {
+    if (newSheetIds.has(sheet.id)) continue;
+    const sourceBytes = input.workbook.sourceParts.get(sheet.partPath) ?? null;
+    const plan = planPaneSave(sheet, sourceBytes);
+    if (plan.changed) panePlans.set(sheet.id, plan);
+  }
   // Print setup is document state too (file-compat §3): while the model still
   // describes the parsed source, the sheet's elements are never rewritten.
   const printSetupSheetIds = input.workbook.sheets
@@ -228,8 +251,10 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       ...dirtyCellSheetIds,
       ...dirtyDimensionSheetIds,
       ...dirtyMergeSheetIds,
+      ...sourcePartChangedSheetIds,
       ...autoFilterPlans.keys(),
       ...conditionalFormatPlans.keys(),
+      ...panePlans.keys(),
     ]),
   ].filter(
     (sheetId) =>
@@ -238,6 +263,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
 
   if (
     dirtySheetIds.length === 0 &&
+    sourcePartChangedSheetIds.length === 0 &&
     !dateSystemChanged &&
     !stylesNeedAppend &&
     sheetPlan?.changed !== true &&
@@ -383,14 +409,25 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       syncMerges,
       syncAutoFilter,
       syncConditionalFormats: conditionalFormatPlans.get(sheetId),
+      syncPane: panePlans.get(sheetId),
       sharedStringsTable: input.package.sharedStrings,
       sharedStrings: appender,
       options: input.options?.worksheet,
     });
     entries.set(sheet.partPath, result.bytes);
+    // Keep the retained source part equal to what was just written. A later
+    // edit (and a second save without an explicit adopt) patches against the
+    // bytes in the package, not the pre-edit skeleton.
+    input.workbook.sourceParts.set(sheet.partPath, result.bytes);
     if (result.mode !== 'none') {
       patchedParts.push(sheet.partPath);
       modeByPart.set(sheet.partPath, result.mode);
+    } else if (sourcePartChangedSheetIds.includes(sheetId)) {
+      // The structural part patch already wrote the new source bytes; the
+      // worksheet patch had nothing else to add. Record the part as written so
+      // the export report and package adoption see it.
+      patchedParts.push(sheet.partPath);
+      modeByPart.set(sheet.partPath, 'position');
     }
   }
 
@@ -405,6 +442,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     const plan = planPrintSetupSave(sheet, current, sheet.partPath);
     if (!plan.changed) continue;
     entries.set(sheet.partPath, plan.bytes);
+    input.workbook.sourceParts.set(sheet.partPath, plan.bytes);
     if (!patchedParts.includes(sheet.partPath)) patchedParts.push(sheet.partPath);
     modeByPart.set(sheet.partPath, 'position');
   }
@@ -464,7 +502,9 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
           `The worksheet part ${sheet.partPath} already exists. The file was not written.`,
         );
       }
-      entries.set(sheet.partPath, createWorksheetBytes(sheet, appender));
+      const created = createWorksheetBytes(sheet, appender);
+      entries.set(sheet.partPath, created);
+      input.workbook.sourceParts.set(sheet.partPath, created);
       patchedParts.push(sheet.partPath);
       modeByPart.set(sheet.partPath, 'position');
     }

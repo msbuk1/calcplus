@@ -59,6 +59,19 @@ const fileSaveAsCommand: CommandDefinition<void> = {
   },
 };
 
+const fileCloseCommand: CommandDefinition<void> = {
+  id: 'file.close',
+  label: 'Close',
+  category: 'file',
+  keybindings: [],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0 && context.busy !== true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
 const viewGridlinesCommand: CommandDefinition<void> = {
   id: 'view.gridlines',
   label: 'Gridlines',
@@ -156,18 +169,38 @@ const fileExportReportCommand: CommandDefinition<void> = {
   },
 };
 
+/**
+ * The formula autocomplete surface is chrome-owned: the editor and the formula
+ * bar render the suggestion list themselves from the published catalogue. The
+ * registry entry keeps the command addressable and enablement has one source.
+ */
+const formulaAutocompleteCommand: CommandDefinition<void> = {
+  id: 'formula.autocomplete',
+  label: 'Function autocomplete and signature hints',
+  category: 'formula',
+  keybindings: [],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
 export function chromeCommands(): readonly CommandDefinition<never>[] {
   return [
     fileNewCommand,
     fileOpenCommand,
     fileSaveCommand,
     fileSaveAsCommand,
+    fileCloseCommand,
     viewGridlinesCommand,
     viewHeadingsCommand,
     viewZoom100Command,
     nameBoxNavigateCommand,
     fileCompatibilityReportCommand,
     fileExportReportCommand,
+    formulaAutocompleteCommand,
     helpAboutCommand,
   ] as unknown as readonly CommandDefinition<never>[];
 }

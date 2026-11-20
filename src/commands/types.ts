@@ -238,6 +238,19 @@ export interface WorkbookDateSystemChange {
 }
 
 /**
+ * A sheet's frozen-pane split (feature matrix §6 "Freeze panes"). Freezing is
+ * document state because it round-trips in the sheet view, so it travels as a
+ * range-free patch with the exact row and column counts on both sides. Undo
+ * restores the prior split in one step.
+ */
+export interface SheetFreezeChange {
+  readonly type: 'sheet.freeze';
+  readonly sheetId: SheetId;
+  readonly before: { readonly rows: number; readonly cols: number };
+  readonly after: { readonly rows: number; readonly cols: number };
+}
+
+/**
  * A merged-range patch. Merge authoring has no per-cell before/after shape;
  * the sheet's merge list is the document state, so the change carries the
  * exact list on both sides. Undo restores the previous list in one step.
@@ -434,6 +447,7 @@ export type CommandChange =
   | CellSetChange
   | StyleSetChange
   | WorkbookDateSystemChange
+  | SheetFreezeChange
   | DimensionSetChange
   | MergeSetChange
   | SheetAddChange
@@ -489,6 +503,8 @@ export function inverseChange(change: CommandChange): CommandChange {
       return { ...change, before: change.after, after: change.before };
     case 'workbook.dateSystem':
       return { ...change, before: change.after, after: change.before };
+    case 'sheet.freeze':
+      return { ...change, before: change.after, after: change.before };
     case 'dimension.set':
       return { ...change, before: change.after, after: change.before };
     case 'merge.set':
@@ -543,10 +559,18 @@ export function inverseChange(change: CommandChange): CommandChange {
         },
         autoFilter: { before: change.autoFilter.after, after: change.autoFilter.before },
         parts: change.parts.map((patch) => ({
-          path: patch.path,
-          kind: patch.kind,
+          ...patch,
           before: patch.after,
           after: patch.before,
+          ...(patch.hyperlinks === undefined
+            ? {}
+            : {
+                hyperlinks: {
+                  sheetId: patch.hyperlinks.sheetId,
+                  before: patch.hyperlinks.after,
+                  after: patch.hyperlinks.before,
+                },
+              }),
         })),
         sourceBefore: change.sourceAfter,
         sourceAfter: change.sourceBefore,

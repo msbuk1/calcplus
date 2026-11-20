@@ -37,6 +37,27 @@ export const clearContentsCommand: CommandDefinition<ClearArgs> = {
   },
 };
 
+/**
+ * Clear All removes every modelled thing the range holds: values, formulas,
+ * rich text, cached results and formatting. A cell record with nothing left is
+ * deleted outright, which is how `cell.set` represents an empty cell; the whole
+ * range travels as one patch and therefore one undo transaction.
+ *
+ * Imported comments and hyperlinks stay on the sheet. They are read-only in
+ * v1 (feature matrix §8) and are not part of the cell record this command
+ * clears.
+ */
+export const clearAllCommand: CommandDefinition<ClearArgs> = {
+  id: 'edit.clearAll',
+  label: 'Clear all',
+  category: 'edit',
+  keybindings: [],
+  isEnabled: hasSheet,
+  run(context, args = {}) {
+    return clearRange(context, args, () => null);
+  },
+};
+
 function clearRange(
   context: CommandContext,
   args: ClearArgs,

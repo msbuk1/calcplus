@@ -6,8 +6,6 @@ import {
   DEFAULT_BORDER,
   DEFAULT_FILL,
   DEFAULT_FONT,
-  INDEXED_PALETTE,
-  THEME_PALETTE,
   borderEdge,
 } from '@model/style';
 import type {
@@ -21,6 +19,7 @@ import type {
   VerticalAlignment,
 } from '@model/types';
 import { normalizeFormatCode } from '@view/number-format';
+import { ColorPickerPopup, parseColor } from './ColorPicker';
 import { Dialog, DialogTabs } from './Dialog';
 import type { DialogCloseReason, DialogTab } from './Dialog';
 
@@ -282,94 +281,6 @@ const NUMBER_CATEGORIES: readonly NumberCategoryDefinition[] = [
   { id: 'custom', label: 'Custom', code: '' },
 ];
 
-const COLOR_POPUP_TABS: readonly DialogTab[] = [
-  { id: 'standard', label: 'Standard' },
-  { id: 'custom', label: 'Custom' },
-];
-
-const THEME_COLORS: readonly string[] = THEME_PALETTE.map((value) => `#${value.toUpperCase()}`);
-
-const STANDARD_COLORS: readonly string[] = Array.from(
-  new Set(INDEXED_PALETTE.map((value) => `#${value.toUpperCase()}`)),
-).filter((color) => !THEME_COLORS.includes(color));
-
-interface ColorPaletteProps {
-  readonly label: string;
-  readonly colors: readonly string[];
-  readonly selected: string | null;
-  readonly disabled?: boolean;
-  readonly onSelect: (color: string) => void;
-}
-
-/**
- * A roving-tabindex swatch grid. Only one swatch is in the Tab order; the
- * arrow keys walk the palette, so a large standard palette stays keyboard
- * usable instead of adding every swatch to the dialog's tab cycle.
- */
-function ColorPalette({
-  label,
-  colors,
-  selected,
-  disabled = false,
-  onSelect,
-}: ColorPaletteProps): JSX.Element {
-  const [focusIndex, setFocusIndex] = useState(0);
-  const buttonsRef = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedIndex = selected === null ? -1 : colors.indexOf(selected);
-
-  useEffect(() => {
-    if (selectedIndex >= 0) setFocusIndex(selectedIndex);
-  }, [selectedIndex]);
-
-  const moveFocus = (offset: number): void => {
-    if (colors.length === 0) return;
-    const next = (focusIndex + offset + colors.length) % colors.length;
-    setFocusIndex(next);
-    buttonsRef.current[next]?.focus();
-  };
-
-  return (
-    <div className="format-color-palette" role="group" aria-label={label}>
-      {colors.map((color, index) => (
-        <button
-          key={`${color}-${index}`}
-          ref={(node) => {
-            buttonsRef.current[index] = node;
-          }}
-          type="button"
-          className="format-color-swatch"
-          aria-label={`Colour ${color}`}
-          aria-pressed={selected === color}
-          tabIndex={index === focusIndex ? 0 : -1}
-          title={color}
-          disabled={disabled}
-          onClick={() => {
-            setFocusIndex(index);
-            onSelect(color);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-              event.preventDefault();
-              moveFocus(1);
-              return;
-            }
-            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-              event.preventDefault();
-              moveFocus(-1);
-            }
-          }}
-        >
-          <span
-            className="format-color-swatch-fill"
-            style={{ backgroundColor: color }}
-            aria-hidden="true"
-          />
-        </button>
-      ))}
-    </div>
-  );
-}
-
 interface ColorFieldProps {
   readonly id: string;
   readonly label: string;
@@ -403,8 +314,6 @@ function ColorField({
   onChange,
 }: ColorFieldProps): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [popupTab, setPopupTab] = useState('standard');
-  const [draftColor, setDraftColor] = useState('');
   const [openedValue, setOpenedValue] = useState('');
   const [popupPosition, setPopupPosition] = useState<{
     readonly top: number;
@@ -413,31 +322,16 @@ function ColorField({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const controlRef = useRef<HTMLButtonElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
-  const customInputRef = useRef<HTMLInputElement | null>(null);
 
   const current = parseColor(value);
   const currentColor = current.color ?? emptyColor;
-  const draft = parseColor(draftColor);
-  const draftColorValue = draft.color ?? emptyColor;
-  const opened = parseColor(openedValue);
-  const openedColor = opened.color ?? emptyColor;
 
   const popupId = `${id}-popup`;
-  const customId = `${id}-custom`;
   const rowErrorId = `${id}-error`;
-  const popupErrorId = `${id}-popup-error`;
-
-  // The popup is not a second modal: focus enters it on open, returns to the
-  // control on OK/Cancel/Esc, and the shell's trap still contains everything.
-  useEffect(() => {
-    if (!open) return;
-    const popup = popupRef.current;
-    if (popup === null) return;
-    popup.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-  }, [open]);
 
   // The popup floats over the form, so opening a colour never reflows the
-  // field below it. Place it before paint, and follow dialog scrolling.
+  // field below it. Place it before paint, and follow dialog scrolling and a
+  // tab switch that changes the popup's height.
   useLayoutEffect(() => {
     if (!open) return;
     const place = (): void => {
@@ -461,13 +355,17 @@ function ColorField({
       );
     };
     place();
+    const popup = popupRef.current;
+    const observer = popup === null ? null : new ResizeObserver(place);
+    if (popup !== null) observer?.observe(popup);
     window.addEventListener('resize', place);
     document.addEventListener('scroll', place, true);
     return () => {
+      observer?.disconnect();
       window.removeEventListener('resize', place);
       document.removeEventListener('scroll', place, true);
     };
-  }, [open, popupTab]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -487,20 +385,8 @@ function ColorField({
 
   const openPopup = (): void => {
     setOpenedValue(value);
-    setDraftColor(value);
-    setPopupTab('standard');
     setPopupPosition(null);
     setOpen(true);
-  };
-
-  const commit = (): void => {
-    if (draft.error !== undefined) {
-      setPopupTab('custom');
-      requestAnimationFrame(() => customInputRef.current?.focus());
-      return;
-    }
-    onChange(draft.color ?? '');
-    closePopup(true);
   };
 
   return (
@@ -512,22 +398,6 @@ function ColorField({
         const next = event.relatedTarget;
         if (next instanceof Node && event.currentTarget.contains(next)) return;
         if (open) closePopup(false);
-      }}
-      onKeyDown={(event) => {
-        if (!open) return;
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          event.stopPropagation();
-          closePopup(true);
-          return;
-        }
-        // Enter in the hex field commits the popup; it must not reach the
-        // shell's default OK and apply the whole Format Cells dialog.
-        if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
-          event.preventDefault();
-          event.stopPropagation();
-          commit();
-        }
       }}
     >
       <div className="format-row">
@@ -567,149 +437,26 @@ function ColorField({
       </div>
 
       {open ? (
-        <div
-          ref={popupRef}
-          id={popupId}
-          className="format-colors-popup"
-          role="dialog"
-          aria-label="Colours"
-          data-testid={`${testId}-popup`}
+        <ColorPickerPopup
+          id={id}
+          testId={testId}
+          value={openedValue}
+          emptyColor={emptyColor}
+          resetLabel={clearLabel}
+          errorTestId={errorTestId}
+          disabled={disabled}
+          popupRef={popupRef}
           style={
             popupPosition === null
               ? { visibility: 'hidden' }
               : { top: popupPosition.top, left: popupPosition.left }
           }
-        >
-          <DialogTabs tabs={COLOR_POPUP_TABS} activeId={popupTab} onChange={setPopupTab} />
-
-          {popupTab === 'standard' ? (
-            <div className="format-colors-panel" role="tabpanel" aria-label="Standard colours">
-              <p className="format-colors-caption">Theme colours</p>
-              <ColorPalette
-                label="Theme colours"
-                colors={THEME_COLORS}
-                selected={draft.color}
-                disabled={disabled}
-                onSelect={(color) => setDraftColor(color)}
-              />
-              <p className="format-colors-caption">Standard colours</p>
-              <ColorPalette
-                label="Standard colours"
-                colors={STANDARD_COLORS}
-                selected={draft.color}
-                disabled={disabled}
-                onSelect={(color) => setDraftColor(color)}
-              />
-            </div>
-          ) : (
-            <div className="format-colors-panel" role="tabpanel" aria-label="Custom colour">
-              <div className="format-row format-colors-custom-row">
-                <label className="find-label" htmlFor={customId}>
-                  Hex
-                </label>
-                <input
-                  ref={customInputRef}
-                  id={customId}
-                  type="text"
-                  className="find-input"
-                  value={draftColor}
-                  spellCheck={false}
-                  autoComplete="off"
-                  placeholder="#RGB, #RRGGBB or #AARRGGBB"
-                  aria-invalid={draft.error !== undefined}
-                  aria-describedby={draft.error === undefined ? `${customId}-hint` : popupErrorId}
-                  data-testid={`${testId}-custom`}
-                  onChange={(event) => setDraftColor(event.target.value)}
-                />
-              </div>
-              {draft.error === undefined ? null : (
-                <p
-                  id={popupErrorId}
-                  className="format-field-error format-colors-error"
-                  role="alert"
-                  data-testid={errorTestId}
-                >
-                  {draft.error}
-                </p>
-              )}
-              <p className="format-colors-hint" id={`${customId}-hint`}>
-                Accepts #RGB, #RRGGBB or #AARRGGBB. Alpha is ignored.
-              </p>
-            </div>
-          )}
-
-          <div className="format-colors-preview">
-            <div className="format-colors-preview-item">
-              <span className="format-colors-preview-label">New</span>
-              <span
-                className="format-colors-preview-swatch"
-                data-empty={
-                  draft.error === undefined && draftColorValue === null ? 'true' : undefined
-                }
-                data-invalid={draft.error === undefined ? undefined : 'true'}
-                style={
-                  draft.error === undefined && draftColorValue !== null
-                    ? { backgroundColor: draftColorValue }
-                    : undefined
-                }
-                role="img"
-                aria-label={
-                  draft.error === undefined
-                    ? `New colour ${draft.color ?? clearLabel}`
-                    : 'New colour, invalid'
-                }
-              />
-              <span className="format-colors-preview-value">
-                {draft.error === undefined ? (draft.color ?? clearLabel) : 'Invalid'}
-              </span>
-            </div>
-            <div className="format-colors-preview-item">
-              <span className="format-colors-preview-label">Current</span>
-              <span
-                className="format-colors-preview-swatch"
-                data-empty={opened.error === undefined && openedColor === null ? 'true' : undefined}
-                data-invalid={opened.error === undefined ? undefined : 'true'}
-                style={
-                  opened.error === undefined && openedColor !== null
-                    ? { backgroundColor: openedColor }
-                    : undefined
-                }
-                role="img"
-                aria-label={
-                  opened.error === undefined
-                    ? `Current colour ${opened.color ?? clearLabel}`
-                    : 'Current colour, invalid'
-                }
-              />
-              <span className="format-colors-preview-value">
-                {opened.error === undefined ? (opened.color ?? clearLabel) : 'Invalid'}
-              </span>
-            </div>
-          </div>
-
-          <div className="format-colors-actions">
-            <button
-              type="button"
-              className="format-colors-clear"
-              disabled={disabled}
-              onClick={() => setDraftColor('')}
-            >
-              {clearLabel}
-            </button>
-            <div className="format-colors-action-buttons">
-              <button type="button" className="dialog-button" onClick={() => closePopup(true)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="dialog-button dialog-button-primary"
-                onClick={commit}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
+          onCommit={(color) => {
+            onChange(color);
+            closePopup(true);
+          }}
+          onCancel={() => closePopup(true)}
+        />
       ) : null}
 
       {open || error === undefined ? null : (
@@ -873,6 +620,9 @@ export function FormatCellsDialog({
     setDispatchError(null);
     if (Object.keys(result.payload).length === 0) {
       if (closeAfter) onClose('dismiss');
+      // Nothing changed, so say so. The dialog must never claim it formatted
+      // the range when it wrote nothing (issue 35).
+      else setAppliedMessage(`No formatting change for ${targetLabel ?? 'the selection'}.`);
       return;
     }
     const outcome = onApply(result.payload);
@@ -886,7 +636,7 @@ export function FormatCellsDialog({
       onClose('dismiss');
       return;
     }
-    setAppliedMessage('Formatting applied.');
+    setAppliedMessage(outcome.message ?? 'Formatting applied.');
   };
 
   const fieldError = (message: string | undefined, testId: string): JSX.Element | null =>
@@ -1794,28 +1544,6 @@ function parseNumber(value: string): number | null {
   if (trimmed === '') return null;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseColor(value: string): { readonly color: string | null; readonly error?: string } {
-  const trimmed = value.trim();
-  if (trimmed === '') return { color: null };
-  const digits = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
-  if (!/^(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(digits)) {
-    return {
-      color: null,
-      error: 'Enter a colour as #RGB, #RRGGBB or #AARRGGBB (alpha is ignored), or leave it blank.',
-    };
-  }
-  // Alpha is presentation-only for cell styles; the workbook stores RGB.
-  const rgb = digits.length === 8 ? digits.slice(2) : digits;
-  const expanded =
-    rgb.length === 3
-      ? rgb
-          .split('')
-          .map((digit) => `${digit}${digit}`)
-          .join('')
-      : rgb;
-  return { color: `#${expanded}`.toUpperCase() };
 }
 
 /** A stable comparison key: blank and General are the same format state. */

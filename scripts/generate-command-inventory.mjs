@@ -37,12 +37,25 @@ const CONTEXT_REGION_LABELS = {
 };
 /** The only command allowed to use the ui-chrome pseudo-row instead of the feature matrix. */
 const UI_CHROME_COMMANDS = new Set(['help.about']);
+/** ui-chrome §1 pins the Quick Access Toolbar to these three commands. */
+const QUICK_ACCESS_COMMANDS = new Set(['file.save', 'edit.undo', 'edit.redo']);
+const COLOUR_PICKERS = new Set(['font', 'fill']);
 const ERROR_LIMIT = 40;
 
 const errors = [];
 
 function fail(message) {
   if (errors.length < ERROR_LIMIT) errors.push(message);
+}
+
+function checkIcon(label, icon, where, iconNames) {
+  if (typeof icon !== 'string' || icon.trim() === '') {
+    fail(`${label}: ${where} must be a non-empty icon name.`);
+    return;
+  }
+  if (!iconNames.has(icon)) {
+    fail(`${label}: unknown icon "${icon}" in ${where}.`);
+  }
 }
 
 function readMatrix() {
@@ -100,9 +113,10 @@ function contextMenuPlacements(entry) {
 /**
  * Load the actual TypeScript registry through Vite's SSR loader rather than
  * scraping `id:` literals from the command files. The returned set is exactly
- * what `createCommandRegistry()` registers in the application.
+ * what `createCommandRegistry()` registers in the application. The icon names
+ * come from the same loader so the map and the artwork cannot drift.
  */
-async function registeredCommandIds() {
+async function runtimeCatalog() {
   const server = await createServer({
     root,
     configFile: path.join(root, 'vite.config.ts'),
@@ -111,16 +125,24 @@ async function registeredCommandIds() {
     server: { middlewareMode: true },
   });
   try {
-    const module = await server.ssrLoadModule('/src/commands/registry.ts');
-    const createCommandRegistry = module.createCommandRegistry;
+    const registryModule = await server.ssrLoadModule('/src/commands/registry.ts');
+    const createCommandRegistry = registryModule.createCommandRegistry;
     if (typeof createCommandRegistry !== 'function') {
       throw new Error('src/commands/registry.ts does not export createCommandRegistry().');
     }
-    return new Set(
-      createCommandRegistry()
-        .list()
-        .map((command) => command.id),
-    );
+    const iconModule = await server.ssrLoadModule('/src/chrome/ribbon-icons.ts');
+    const iconNames = iconModule.RIBBON_ICON_NAMES;
+    if (!Array.isArray(iconNames) || iconNames.length === 0) {
+      throw new Error('src/chrome/ribbon-icons.ts does not export RIBBON_ICON_NAMES.');
+    }
+    return {
+      registered: new Set(
+        createCommandRegistry()
+          .list()
+          .map((command) => command.id),
+      ),
+      iconNames: new Set(iconNames),
+    };
   } finally {
     await server.close();
   }
@@ -133,6 +155,7 @@ async function main() {
     console.error('command-inventory.json must contain an array.');
     process.exit(1);
   }
+  const { registered, iconNames } = await runtimeCatalog();
   const matrixByKey = new Map(matrix.map((row) => [`${row.section}::${row.feature}`, row]));
   const byMatrixRow = new Map();
   const seenIds = new Set();
@@ -158,6 +181,16 @@ async function main() {
       if (seenIds.has(entry.id)) fail(`${entry.id}: duplicate command id.`);
       seenIds.add(entry.id);
     }
+    const ribbonPlacements = entry.ribbon ?? [];
+    if (ribbonPlacements.length > 0) {
+      if (entry.icon === undefined) {
+        fail(`${label}: a command with a ribbon placement needs an "icon".`);
+      } else {
+        checkIcon(label, entry.icon, 'command icon', iconNames);
+      }
+    } else if (entry.icon !== undefined) {
+      checkIcon(label, entry.icon, 'command icon', iconNames);
+    }
     const key = `${entry.matrixSection}::${entry.matrixFeature}`;
     const row = matrixByKey.get(key);
     if (entry.matrixSection === 'UI chrome') {
@@ -182,6 +215,18 @@ async function main() {
       if (!CONTROL_KINDS.has(placement.kind)) {
         fail(`${label}: unknown ribbon control kind ${placement.kind}.`);
       }
+      if (placement.iconOnly !== undefined && typeof placement.iconOnly !== 'boolean') {
+        fail(`${label}: ribbon placement "iconOnly" must be boolean.`);
+      }
+      if (placement.kind !== 'launcher' && placement.menuOnly !== true) {
+        if (placement.icon === undefined) {
+          fail(`${label}: ribbon placement ${placement.tab} → ${placement.group} needs an "icon".`);
+        } else {
+          checkIcon(label, placement.icon, 'ribbon icon', iconNames);
+        }
+      } else if (placement.icon !== undefined) {
+        checkIcon(label, placement.icon, 'ribbon icon', iconNames);
+      }
       if (placement.kind === 'select' && !Array.isArray(placement.options)) {
         fail(`${label}: select control ${placement.controlId ?? placement.label} has no options.`);
       }
@@ -202,6 +247,18 @@ async function main() {
         (typeof placement.menuHeading !== 'string' || placement.menuHeading.trim() === '')
       ) {
         fail(`${label}: ribbon placement "menuHeading" must be a non-empty string.`);
+      }
+      if (placement.picker !== undefined) {
+        if (!COLOUR_PICKERS.has(placement.picker)) {
+          fail(`${label}: unknown colour picker "${placement.picker}".`);
+        }
+        if (placement.menu !== undefined) {
+          // The ruled direction replaces the fixed preset list with the picker.
+          fail(`${label}: a colour picker placement must not also author a preset menu.`);
+        }
+        if (placement.args === undefined) {
+          fail(`${label}: a colour picker placement needs args for its main button.`);
+        }
       }
       if (placement.disabled === true && entry.implemented === true) {
         // The present-but-disabled carve-out (ui-chrome §4.1, ticket 27) is for
@@ -225,6 +282,9 @@ async function main() {
         }
         if (menuItem.shortcut !== undefined && typeof menuItem.shortcut !== 'string') {
           fail(`${label}: menu item "${menuItem.label}" has a non-string shortcut.`);
+        }
+        if (menuItem.icon !== undefined) {
+          checkIcon(label, menuItem.icon, `menu item "${menuItem.label}" icon`, iconNames);
         }
       }
     }
@@ -271,8 +331,48 @@ async function main() {
         }
       }
     }
-    if (entry.compact !== undefined && !['button', 'toggle'].includes(entry.compact.kind)) {
-      fail(`${label}: compact control must be a button or toggle.`);
+    if (entry.compact !== undefined) {
+      if (!['button', 'toggle'].includes(entry.compact.kind)) {
+        fail(`${label}: compact control must be a button or toggle.`);
+      }
+      if (entry.compact.iconOnly !== undefined && typeof entry.compact.iconOnly !== 'boolean') {
+        fail(`${label}: compact placement "iconOnly" must be boolean.`);
+      }
+      const compactIcon = entry.compact.icon ?? entry.icon;
+      if (compactIcon === undefined) {
+        fail(`${label}: compact placement needs an "icon".`);
+      } else {
+        checkIcon(label, compactIcon, 'compact icon', iconNames);
+      }
+    }
+    if (entry.quickAccess !== undefined) {
+      const placement = entry.quickAccess;
+      if (typeof placement !== 'object' || Array.isArray(placement)) {
+        fail(`${label}: "quickAccess" must be an object.`);
+      } else {
+        if (!QUICK_ACCESS_COMMANDS.has(entry.id)) {
+          fail(`${label}: the Quick Access Toolbar holds Save, Undo and Redo only.`);
+        }
+        if (
+          placement.order !== undefined &&
+          (!Number.isInteger(placement.order) || placement.order < 0)
+        ) {
+          fail(`${label}: quick-access order must be a non-negative integer.`);
+        }
+        const quickAccessIcon = placement.icon ?? entry.icon;
+        if (quickAccessIcon === undefined) {
+          fail(`${label}: a quick-access placement needs an "icon".`);
+        } else {
+          checkIcon(label, quickAccessIcon, 'quick-access icon', iconNames);
+        }
+      }
+    }
+  }
+
+  for (const id of QUICK_ACCESS_COMMANDS) {
+    const entry = inventory.find((candidate) => candidate.id === id);
+    if (entry?.quickAccess === undefined) {
+      fail(`Quick-access command is missing its "quickAccess" placement: ${id}`);
     }
   }
 
@@ -284,7 +384,6 @@ async function main() {
     }
   }
 
-  const registered = await registeredCommandIds();
   for (const id of registered) {
     if (!seenIds.has(id)) fail(`Runtime command is not in the inventory: ${id}`);
   }
@@ -364,22 +463,42 @@ async function main() {
   lines.push('## Commands');
   lines.push('');
   lines.push(
-    '| Command ID | Matrix row | Label | Ribbon tab → group | Menu | Shortcut | Enablement | Status |',
+    'The Icon column names the original SVG artwork in `src/chrome/ribbon-icons.ts`. A command with',
   );
-  lines.push('|---|---|---|---|---|---|---|---|');
+  lines.push(
+    'several ribbon controls lists each distinct icon, including the icons of its split-button menu',
+  );
+  lines.push('items; the command-level icon is the compact and quick-access fallback.');
+  lines.push(
+    'The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar',
+  );
+  lines.push('holds Save, Undo and Redo only; Save As stays in the File menu.');
+  lines.push('');
+  lines.push(
+    '| Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |',
+  );
+  lines.push('|---|---|---|---|---|---|---|---|---|---|');
   for (const entry of sorted) {
     // Several controls of one command can sit in the same band (Font family,
     // size and colour are all `format.font`); the map records each placement,
-    // and the register lists the distinct tab → group addresses once.
+    // and the register lists the distinct tab → group addresses once. Notes
+    // such as the colour picker merge into the address they belong to.
+    const ribbonAddresses = new Map();
+    for (const placement of entry.ribbon ?? []) {
+      const address = `${placement.tab} → ${placement.group}`;
+      const notes = ribbonAddresses.get(address) ?? new Set();
+      if (placement.menuOnly === true) notes.add('menu');
+      if (placement.kind === 'launcher') notes.add('launcher');
+      if (placement.picker !== undefined) notes.add(`${placement.picker} colour picker`);
+      if (placement.disabled === true) notes.add('present, disabled');
+      ribbonAddresses.set(address, notes);
+    }
     const ribbon =
-      [
-        ...new Set(
-          (entry.ribbon ?? []).map(
-            (placement) =>
-              `${placement.tab} → ${placement.group}${placement.menuOnly === true ? ' (menu)' : ''}${placement.kind === 'launcher' ? ' (launcher)' : ''}${placement.disabled === true ? ' (present, disabled)' : ''}`,
-          ),
-        ),
-      ].join('<br>') || '—';
+      [...ribbonAddresses.entries()]
+        .map(([address, notes]) =>
+          notes.size === 0 ? address : `${address} (${[...notes].join(', ')})`,
+        )
+        .join('<br>') || '—';
     const menuParts = (entry.menu ?? []).map((placement) => placement.menu);
     for (const placement of contextMenuPlacements(entry)) {
       const region = placement.context ?? 'cell';
@@ -393,8 +512,26 @@ async function main() {
     }
     const menu = [...new Set(menuParts)].join('<br>') || '—';
     const shortcut = entry.shortcut.join(', ') || '—';
+    const icons = [
+      ...new Set([
+        ...(typeof entry.icon === 'string' ? [entry.icon] : []),
+        ...(entry.ribbon ?? []).flatMap((placement) => [
+          ...(typeof placement.icon === 'string' ? [placement.icon] : []),
+          ...(placement.menu ?? []).flatMap((item) =>
+            typeof item.icon === 'string' ? [item.icon] : [],
+          ),
+        ]),
+        ...(typeof entry.compact?.icon === 'string' ? [entry.compact.icon] : []),
+        ...(typeof entry.quickAccess?.icon === 'string' ? [entry.quickAccess.icon] : []),
+      ]),
+    ];
+    const icon = icons.map((name) => `\`${name}\``).join(', ') || '—';
+    const quickAccess =
+      entry.quickAccess === undefined
+        ? '—'
+        : `Yes${entry.quickAccess.order === undefined ? '' : ` (order ${entry.quickAccess.order})`}`;
     lines.push(
-      `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${entry.implemented ? 'Implemented' : 'Planned'} |`,
+      `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(icon)} | ${escapeCell(quickAccess)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${entry.implemented ? 'Implemented' : 'Planned'} |`,
     );
   }
   lines.push('');

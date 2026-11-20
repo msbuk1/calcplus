@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { JSX, RefObject } from 'react';
 import { Menu } from './Menu';
+import { RibbonIcon } from './RibbonIcon';
 import { compactControls, menuItemsFor } from './ribbon-model';
 import type { CommandStateResolver } from './ribbon-model';
 
@@ -75,6 +76,7 @@ export function CompactBar({
         {controls.map((control) => {
           const state = resolveState(control.commandId);
           const checked = control.kind === 'toggle' ? state.checked : undefined;
+          const iconOnly = control.iconOnly && control.icon !== undefined;
           return (
             <button
               key={control.key}
@@ -83,6 +85,7 @@ export function CompactBar({
                 'compact-button',
                 control.kind === 'toggle' ? 'compact-toggle' : '',
                 checked === true ? 'active' : '',
+                iconOnly ? 'compact-button-icon-only' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -93,7 +96,12 @@ export function CompactBar({
               data-command={control.commandId}
               onClick={() => onCommand(control.commandId, control.args)}
             >
-              {control.label}
+              {control.icon === undefined ? null : (
+                <span className="ribbon-icon" aria-hidden="true">
+                  <RibbonIcon name={control.icon} />
+                </span>
+              )}
+              {iconOnly ? null : control.label}
             </button>
           );
         })}

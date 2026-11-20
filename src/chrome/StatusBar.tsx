@@ -58,8 +58,12 @@ export function StatusBar({
       <span className="status-state" data-testid="status-message">
         {status}
       </span>
-      <span data-testid="active-cell">{activeCell}</span>
-      <span data-testid="active-value">{activeValue}</span>
+      <span className="status-cell-address" data-testid="active-cell">
+        {activeCell}
+      </span>
+      <span className="status-cell-value" data-testid="active-value" title={activeValue}>
+        {activeValue}
+      </span>
       {stale ? (
         <span className="stale-marker" data-testid="active-stale">
           not recalculated

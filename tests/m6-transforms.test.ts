@@ -726,14 +726,17 @@ describe('M6 hyperlink locations', () => {
     );
   });
 
-  it('blocks when another sheet links into the edited sheet, rather than leaving it stale', () => {
+  it('moves a hyperlink on another sheet that links into the edited sheet', () => {
     const { workbook, first, second } = locationWorkbook();
     second.hyperlinks.set('4:1', { target: '', location: 'Sheet1!A1' });
-    expect(planRangeTransform(workbook, insertRow(first.id, 0)).block?.code).toBe(
-      'anchor-untransformable',
-    );
-    // An edit that leaves the linked cell where it is does not block.
-    expect(planRangeTransform(workbook, insertRow(first.id, 20)).block).toBeNull();
+    const plan = planRangeTransform(workbook, insertRow(first.id, 0));
+    expect(plan.block).toBeNull();
+    expect(plan.crossSheetHyperlinks).toHaveLength(1);
+    expect(plan.crossSheetHyperlinks[0]?.after[0]?.[1].location).toBe('Sheet1!A2');
+    // An edit that leaves the linked cell where it is does not rewrite or block.
+    const untouched = planRangeTransform(workbook, insertRow(first.id, 20));
+    expect(untouched.block).toBeNull();
+    expect(untouched.crossSheetHyperlinks).toEqual([]);
   });
 
   it('refuses the edit with no transaction when the location cannot be transformed', () => {
@@ -1320,6 +1323,7 @@ describe('M6 block typing', () => {
     expect(planOpaquePartTransforms(workbook, insertRow(sheet.id, 0))).toEqual({
       rewrites: [],
       block: null,
+      broken: 0,
     });
     expect(plan.cellMoves).toHaveLength(1);
     expect(plan.cellMoves[0]?.to).toEqual({ row: 1, col: 0 });

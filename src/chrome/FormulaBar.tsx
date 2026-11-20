@@ -1,5 +1,8 @@
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { JSX, RefObject } from 'react';
+import type { FunctionCatalogEntry } from '@engine/function-catalog';
+import { FormulaSuggestions } from '@grid/FormulaSuggestions';
+import { useFormulaCompletion } from '@grid/useFormulaCompletion';
 
 export interface FormulaBarKeyModifiers {
   readonly shiftKey: boolean;
@@ -44,6 +47,11 @@ export interface FormulaBarProps {
 /**
  * The formula bar. It mirrors the active cell and edits it: the raw value or
  * formula, never the formatted display string (number-formats §5).
+ *
+ * While the draft is formula entry, the bar shares the function autocomplete
+ * and signature hint with the in-cell editor. The popup never takes focus:
+ * arrows choose a row, Enter/Tab insert it, and Esc closes the list before a
+ * second Esc cancels the edit.
  */
 export function FormulaBar({
   text,
@@ -58,13 +66,32 @@ export function FormulaBar({
   onInsertFunction,
 }: FormulaBarProps): JSX.Element {
   const localInputRef = useRef<HTMLInputElement | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [caret, setCaret] = useState<number | null>(null);
+  const [acceptCaret, setAcceptCaret] = useState<number | null>(null);
+  const autocomplete = useFormulaCompletion({
+    text,
+    caret,
+    formula: text.startsWith('='),
+    enabled: focused,
+  });
 
   // A reference insertion rewrites the draft, so the caret follows the text
   // that was just inserted or replaced.
   useLayoutEffect(() => {
     if (caretRequest === null) return;
     localInputRef.current?.setSelectionRange(caretRequest.offset, caretRequest.offset);
+    setCaret(caretRequest.offset);
   }, [caretRequest]);
+
+  // An accepted function name rewrites the draft and places the caret after
+  // the opening parenthesis.
+  useLayoutEffect(() => {
+    if (acceptCaret === null) return;
+    localInputRef.current?.setSelectionRange(acceptCaret, acceptCaret);
+    setCaret(acceptCaret);
+    setAcceptCaret(null);
+  }, [acceptCaret, text]);
 
   const setInputRef = useCallback(
     (element: HTMLInputElement | null): void => {
@@ -73,6 +100,17 @@ export function FormulaBar({
     },
     [inputRef],
   );
+
+  const choose = (entry?: FunctionCatalogEntry): void => {
+    const choice = entry === undefined ? autocomplete.accept() : autocomplete.choose(entry);
+    if (choice === null) return;
+    onTextChange(choice.text);
+    setAcceptCaret(choice.caret);
+  };
+
+  const trackCaret = (element: HTMLInputElement): void => {
+    setCaret(element.selectionStart ?? element.value.length);
+  };
 
   /**
    * `fx` opens the Insert Function dialog (ticket 30). It no longer starts
@@ -93,43 +131,91 @@ export function FormulaBar({
       >
         fx
       </button>
-      <input
-        ref={setInputRef}
-        type="text"
-        className="formula-bar"
-        value={text}
-        spellCheck={false}
-        aria-label="Formula bar"
-        data-testid="formula-bar"
-        onFocus={() => {
-          onFocused?.(text);
-        }}
-        onChange={(event) => onTextChange(event.target.value)}
-        onBlur={() => {
-          onStopEditing?.();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            onCommit(text, { moveDown: !event.ctrlKey });
-            return;
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onCancel();
-            return;
-          }
-          if (
-            onPointKey?.(event.key, {
-              shiftKey: event.shiftKey,
-              ctrlKey: event.ctrlKey,
-              altKey: event.altKey,
-            }) === true
-          ) {
-            event.preventDefault();
-          }
-        }}
-      />
+      <div className="formula-bar-field">
+        <input
+          ref={setInputRef}
+          type="text"
+          className="formula-bar"
+          value={text}
+          spellCheck={false}
+          aria-label="Formula bar"
+          data-testid="formula-bar"
+          onFocus={(event) => {
+            setFocused(true);
+            trackCaret(event.currentTarget);
+            onFocused?.(text);
+          }}
+          onChange={(event) => {
+            onTextChange(event.target.value);
+            trackCaret(event.currentTarget);
+          }}
+          onSelect={(event) => trackCaret(event.currentTarget)}
+          onClick={(event) => trackCaret(event.currentTarget)}
+          onKeyUp={(event) => trackCaret(event.currentTarget)}
+          onBlur={() => {
+            setFocused(false);
+            onStopEditing?.();
+          }}
+          onKeyDown={(event) => {
+            if (autocomplete.listOpen) {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                autocomplete.move(1);
+                return;
+              }
+              if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                autocomplete.move(-1);
+                return;
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                autocomplete.dismiss();
+                return;
+              }
+              if (event.key === 'Tab') {
+                event.preventDefault();
+                choose();
+                return;
+              }
+              if (event.key === 'Enter' && !event.ctrlKey) {
+                event.preventDefault();
+                choose();
+                return;
+              }
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              onCommit(text, { moveDown: !event.ctrlKey });
+              return;
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              onCancel();
+              return;
+            }
+            if (
+              onPointKey?.(event.key, {
+                shiftKey: event.shiftKey,
+                ctrlKey: event.ctrlKey,
+                altKey: event.altKey,
+              }) === true
+            ) {
+              event.preventDefault();
+            }
+          }}
+        />
+        {autocomplete.completion === null ? null : (
+          <FormulaSuggestions
+            id="formula-suggestions"
+            completion={autocomplete.completion}
+            activeIndex={autocomplete.activeIndex}
+            activeEntry={autocomplete.activeEntry}
+            style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0 }}
+            onChoose={(entry) => choose(entry)}
+          />
+        )}
+      </div>
       <button
         type="button"
         className="formula-commit"

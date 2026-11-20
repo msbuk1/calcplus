@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { RibbonSelectOption, RibbonTabId } from '@commands/inventory';
+import { ColorPickerPopup } from './ColorPicker';
 import { Menu } from './Menu';
+import { RibbonIcon } from './RibbonIcon';
 import { RIBBON_TABS, menuItemsFor, ribbonGroupsFor, ribbonMenuItems } from './ribbon-model';
 import type {
   CommandStateResolver,
@@ -272,6 +274,17 @@ function RibbonControl({
     );
   }
   if (control.kind === 'split' || control.kind === 'menu') {
+    if (control.picker !== undefined) {
+      return (
+        <RibbonColorControl
+          control={control}
+          value={control.controlId === undefined ? '' : (controlValues[control.controlId] ?? '')}
+          enabled={enabled}
+          onCommand={onCommand}
+          wideClass={wideClass}
+        />
+      );
+    }
     return (
       <RibbonMenuControl
         control={control}
@@ -284,7 +297,7 @@ function RibbonControl({
     );
   }
   const checked = control.kind === 'toggle' ? state.checked : undefined;
-  const glyph = alignmentGlyphKind(control);
+  const iconOnly = control.iconOnly && control.icon !== undefined;
   return (
     <button
       type="button"
@@ -292,7 +305,7 @@ function RibbonControl({
         'ribbon-button',
         control.kind === 'toggle' ? 'ribbon-toggle' : '',
         checked === true ? 'active' : '',
-        glyph === null ? '' : 'ribbon-button-glyph',
+        iconOnly ? 'ribbon-button-icon-only' : '',
         wideClass,
       ]
         .filter(Boolean)
@@ -304,67 +317,163 @@ function RibbonControl({
       data-command={control.commandId}
       onClick={() => onCommand(control.commandId, control.args)}
     >
-      {glyph === null ? (
-        control.icon === undefined ? null : (
-          <span className="ribbon-icon" aria-hidden="true">
-            {control.icon}
-          </span>
-        )
-      ) : (
-        <AlignmentGlyph kind={glyph} />
+      {control.icon === undefined ? null : (
+        <span className="ribbon-icon" aria-hidden="true">
+          <RibbonIcon name={control.icon} />
+        </span>
       )}
-      {glyph === null ? <span>{control.label}</span> : null}
+      {iconOnly ? null : <span>{control.label}</span>}
     </button>
   );
 }
 
-type AlignmentGlyphKind =
-  | 'align-left'
-  | 'align-center'
-  | 'align-right'
-  | 'align-top'
-  | 'align-middle'
-  | 'align-bottom'
-  | 'wrap-text'
-  | 'indent';
-
-/**
- * The six placed alignment commands carry their direction in `args`. The wrap
- * and indent cases are ready for the same command's remaining arguments, which
- * currently have no ribbon placement; the icon set stays in one place.
- */
-function alignmentGlyphKind(control: ResolvedRibbonControl): AlignmentGlyphKind | null {
-  if (control.commandId !== 'format.alignment' || control.args === undefined) return null;
-  const args = control.args;
-  if (args.horizontal === 'left') return 'align-left';
-  if (args.horizontal === 'center') return 'align-center';
-  if (args.horizontal === 'right') return 'align-right';
-  if (args.vertical === 'top') return 'align-top';
-  if (args.vertical === 'center') return 'align-middle';
-  if (args.vertical === 'bottom') return 'align-bottom';
-  if (args.wrapText === true) return 'wrap-text';
-  if (typeof args.indent === 'number') return 'indent';
-  return null;
+interface RibbonColorControlProps {
+  readonly control: ResolvedRibbonControl;
+  readonly value: string;
+  readonly enabled: boolean;
+  readonly onCommand: (commandId: string, args?: unknown) => void;
+  readonly wideClass: string;
 }
 
-const ALIGNMENT_GLYPH_PATHS: Readonly<Record<AlignmentGlyphKind, readonly string[]>> = {
-  'align-left': ['M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h7'],
-  'align-center': ['M2.5 3.5h11M4.5 6.5h7M2.5 9.5h11M4.5 12.5h7'],
-  'align-right': ['M2.5 3.5h11M6.5 6.5h7M2.5 9.5h11M6.5 12.5h7'],
-  'align-top': ['M2.5 3.5h11', 'M8 13V6.5', 'M5.5 8.5 8 6l2.5 2.5'],
-  'align-middle': ['M2.5 8h11', 'M5.5 5.5 8 3l2.5 2.5', 'M5.5 10.5 8 13l2.5-2.5'],
-  'align-bottom': ['M2.5 12.5h11', 'M8 3v6.5', 'M5.5 7.5 8 10l2.5-2.5'],
-  'wrap-text': ['M2.5 3.5h11', 'M2.5 7.5h7.5a2.5 2.5 0 0 1 0 5H7', 'M8.5 10.5 7 12l1.5 1.5'],
-  indent: ['M2.5 3.5h11M2.5 7.5h11M2.5 11.5h11', 'M2.5 5.5 5 7.5 2.5 9.5'],
-};
+/**
+ * The text-colour and fill split buttons. The main button still applies the
+ * last preset; the drop-down opens the shared colour picker, which commits a
+ * swatch, the reset row or a hex value through the existing `format.font` or
+ * `format.fill` command. One choice is one undo transaction.
+ */
+function RibbonColorControl({
+  control,
+  value,
+  enabled,
+  onCommand,
+  wideClass,
+}: RibbonColorControlProps): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<{ left: number; top: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const iconOnly = control.iconOnly && control.icon !== undefined;
+  const isFill = control.picker === 'fill';
 
-function AlignmentGlyph({ kind }: { readonly kind: AlignmentGlyphKind }): JSX.Element {
+  const closePicker = (restoreFocus: boolean): void => {
+    setOpen(false);
+    if (restoreFocus) toggleRef.current?.focus();
+  };
+
+  const togglePicker = (): void => {
+    if (open) {
+      closePicker(true);
+      return;
+    }
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect === undefined) return;
+    const width = 336;
+    setPopupPosition({
+      left: Math.max(6, Math.min(rect.left, window.innerWidth - width)),
+      top: rect.bottom + 2,
+    });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocumentPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (containerRef.current?.contains(target) === true) return;
+      if (popupRef.current?.contains(target) === true) return;
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDocumentPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+  }, [open]);
+
+  const applyColor = (color: string): void => {
+    setOpen(false);
+    onCommand(
+      control.commandId,
+      isFill
+        ? { pattern: color === '' ? 'none' : 'solid', color: color === '' ? null : color }
+        : { color: color === '' ? null : color },
+    );
+  };
+
   return (
-    <svg className="ribbon-glyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      {ALIGNMENT_GLYPH_PATHS[kind].map((path) => (
-        <path key={path} d={path} />
-      ))}
-    </svg>
+    <div
+      ref={containerRef}
+      className={`ribbon-split${wideClass}`}
+      onKeyDown={(event) => {
+        if (!open) return;
+        // The open picker owns Tab the way the ribbon menus do: the press
+        // closes it and returns to its trigger rather than leaving it behind.
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          event.stopPropagation();
+          closePicker(true);
+          return;
+        }
+        if (event.key === 'F6') closePicker(false);
+      }}
+    >
+      <button
+        type="button"
+        className={['ribbon-button', 'ribbon-split-main', iconOnly ? 'ribbon-button-icon-only' : '']
+          .filter(Boolean)
+          .join(' ')}
+        title={control.title}
+        aria-label={control.title}
+        disabled={!enabled}
+        data-command={control.commandId}
+        onClick={() => {
+          setOpen(false);
+          onCommand(control.commandId, control.args);
+        }}
+      >
+        {control.icon === undefined ? null : (
+          <span className="ribbon-icon" aria-hidden="true">
+            <RibbonIcon name={control.icon} />
+          </span>
+        )}
+        {iconOnly ? null : <span>{control.label}</span>}
+      </button>
+      <button
+        ref={toggleRef}
+        type="button"
+        className="ribbon-split-toggle"
+        title={`${control.title} options`}
+        aria-label={`${control.title} options`}
+        aria-haspopup="dialog"
+        aria-controls={open ? `${control.controlId ?? control.commandId}-popup` : undefined}
+        aria-expanded={open}
+        disabled={!enabled}
+        onClick={togglePicker}
+      >
+        ▾
+      </button>
+      {open && popupPosition !== null
+        ? createPortal(
+            <ColorPickerPopup
+              id={control.controlId ?? control.commandId}
+              testId={control.controlId ?? control.commandId}
+              label={control.title}
+              value={value}
+              emptyColor={isFill ? null : '#000000'}
+              resetLabel={isFill ? 'No Fill' : 'Automatic'}
+              mode="apply"
+              popupRef={popupRef}
+              style={{
+                position: 'fixed',
+                left: `${popupPosition.left}px`,
+                top: `${popupPosition.top}px`,
+              }}
+              onCommit={applyColor}
+              onCancel={() => closePicker(true)}
+            />,
+            window.document.body,
+          )
+        : null}
+    </div>
   );
 }
 
@@ -381,7 +490,15 @@ function RibbonSelect({ control, value, enabled, onCommand }: RibbonSelectProps)
     value === '' ? (options[0] === undefined ? '' : optionValue(options[0])) : value;
   const hasCurrent = options.some((option) => optionValue(option) === safeValue);
   return (
-    <label className={control.wide ? 'ribbon-select ribbon-control-wide' : 'ribbon-select'}>
+    <label
+      className={control.wide ? 'ribbon-select ribbon-control-wide' : 'ribbon-select'}
+      data-disabled={enabled ? undefined : 'true'}
+    >
+      {control.icon === undefined ? null : (
+        <span className="ribbon-icon ribbon-select-icon" aria-hidden="true">
+          <RibbonIcon name={control.icon} />
+        </span>
+      )}
       {control.label === '' ? null : <span className="ribbon-select-label">{control.label}</span>}
       <select
         className="ribbon-select-input"
@@ -434,6 +551,7 @@ function RibbonMenuControl({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const items = ribbonMenuItems(control.menu ?? [], resolveState);
+  const iconOnly = control.iconOnly && control.icon !== undefined;
 
   const toggleMenu = (): void => {
     if (open) {
@@ -455,7 +573,13 @@ function RibbonMenuControl({
       {dropdownOnly ? null : (
         <button
           type="button"
-          className="ribbon-button ribbon-split-main"
+          className={[
+            'ribbon-button',
+            'ribbon-split-main',
+            iconOnly ? 'ribbon-button-icon-only' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           title={control.title}
           aria-label={control.title}
           disabled={!enabled}
@@ -467,10 +591,10 @@ function RibbonMenuControl({
         >
           {control.icon === undefined ? null : (
             <span className="ribbon-icon" aria-hidden="true">
-              {control.icon}
+              <RibbonIcon name={control.icon} />
             </span>
           )}
-          <span>{control.label}</span>
+          {iconOnly ? null : <span>{control.label}</span>}
         </button>
       )}
       <button
@@ -489,7 +613,7 @@ function RibbonMenuControl({
           <>
             {control.icon === undefined ? null : (
               <span className="ribbon-icon" aria-hidden="true">
-                {control.icon}
+                <RibbonIcon name={control.icon} />
               </span>
             )}
             <span>{control.label}</span>

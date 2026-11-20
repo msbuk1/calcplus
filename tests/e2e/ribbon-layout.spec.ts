@@ -11,10 +11,12 @@ const fixture = 'm1-chart-unknown.xlsx';
 test('each ribbon row starts at the left of its group', async ({ page }) => {
   await openFixture(page, fixture);
 
-  // Font: row 1 starts with the font-family select, row 2 with Bold.
+  // Font: row 1 starts with the font-family control, row 2 with Bold. The
+  // control wrapper is the row start; the select sits beside its icon.
   const fontFamily = page.getByRole('combobox', { name: 'Font', exact: true });
+  const familyControl = page.locator('.ribbon-select').filter({ has: fontFamily });
   const bold = page.getByRole('button', { name: 'Bold (Ctrl+B)' });
-  const familyBox = await fontFamily.boundingBox();
+  const familyBox = await familyControl.boundingBox();
   const boldBox = await bold.boundingBox();
   expect(familyBox).not.toBeNull();
   expect(boldBox).not.toBeNull();

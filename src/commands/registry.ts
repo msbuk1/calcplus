@@ -2,7 +2,7 @@ import type { CommandDefinition } from './types';
 import { autoSumCommand } from './autosum';
 import { cellSetCommand } from './cell-set';
 import { chromeCommands } from './chrome';
-import { clearContentsCommand } from './clear';
+import { clearAllCommand, clearContentsCommand } from './clear';
 import { clipboardCommands } from './clipboard';
 import { dimensionSetCommand } from './dimension';
 import { fillCommands } from './fill';
@@ -17,10 +17,12 @@ import {
 import { formatCommands } from './format';
 import { goToCommand } from './goto';
 import { insertFunctionCommand } from './insert-function';
+import { mergeCommands } from './merge';
 import { painterCommands } from './painter';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { sortCommand } from './sort';
 import { structureCommands } from './structure';
+import { freezePanesCommand } from './view';
 import { workbookDateSystemCommand } from './workbook';
 
 export class CommandRegistry {
@@ -82,8 +84,11 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(sheetInsertCommand);
   registry.register(sheetDeleteCommand);
   registry.register(sheetRenameCommand);
+  registry.register(freezePanesCommand);
   for (const command of structureCommands()) registry.register(command);
+  for (const command of mergeCommands()) registry.register(command);
   registry.register(clearContentsCommand);
+  registry.register(clearAllCommand);
   registry.register(autoSumCommand);
   for (const command of fillCommands()) registry.register(command);
   registry.register(sortCommand);
