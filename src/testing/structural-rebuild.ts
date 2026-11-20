@@ -1,6 +1,14 @@
 import { HyperFormulaEngine } from '@engine/hyperformula-engine';
 import type { EngineCellInput } from '@engine/port';
 import { BLANK, numberValue } from '@model/value';
+import {
+  type BudgetGate,
+  type MachineCalibration,
+  type MachineFingerprint,
+  machineCalibration,
+  machineFingerprint,
+  runBudgetProbe,
+} from './machine';
 
 /**
  * Focused probe for performance §3.2: structural edit, graph rebuild, 250k
@@ -13,9 +21,12 @@ import { BLANK, numberValue } from '@model/value';
  *
  *   npm run test -- tests/m3c-structural-rebuild.test.ts
  *
- * The test asserts the guaranteed envelope budget (1.5 s) on the reference
- * machine. The returned run list lets a benchmark report the distribution
- * instead of only pass/fail.
+ * The budget is a contract with the reference machine (performance §1). The
+ * verdict says whether this run may enforce it: on a declared reference
+ * machine the median must be at or under 1.5 s, and a miss gets the one
+ * immediate re-run performance §7 allows. Everywhere else the number, the
+ * fingerprint and the measured machine speed are reported and the budget is a
+ * liveness ceiling, never a pass/fail claim the hardware cannot support.
  */
 
 export const STRUCTURAL_REBUILD_BUDGET_MS = 1500;
@@ -27,6 +38,9 @@ export interface StructuralRebuildProbeOptions {
   readonly warmupRuns?: number;
   readonly runs?: number;
   readonly date1904?: boolean;
+  readonly fingerprint?: MachineFingerprint;
+  readonly calibration?: MachineCalibration;
+  readonly declaredReference?: boolean;
 }
 
 export interface StructuralRebuildProbeResult {
@@ -38,6 +52,9 @@ export interface StructuralRebuildProbeResult {
   readonly bestMs: number;
   readonly medianMs: number;
   readonly budgetMs: number;
+  readonly fingerprint: MachineFingerprint;
+  readonly calibration: MachineCalibration;
+  readonly verdict: BudgetGate;
 }
 
 export function measureStructuralRebuildGraph(
@@ -54,23 +71,42 @@ export function measureStructuralRebuildGraph(
   }
 
   const cells = buildShape(rows, columns, formulaColumns);
-  for (let run = 0; run < warmupRuns; run += 1) {
-    runRebuild(cells, date1904);
-  }
-  const runsMs: number[] = [];
-  for (let run = 0; run < runs; run += 1) {
-    runsMs.push(runRebuild(cells, date1904));
-  }
-  const sorted = [...runsMs].sort((left, right) => left - right);
+  const fingerprint = options.fingerprint ?? machineFingerprint();
+  const calibration = options.calibration ?? machineCalibration();
+
+  const verdict = runBudgetProbe(
+    {
+      case: 'structural-rebuild-250k',
+      budgetMs: STRUCTURAL_REBUILD_BUDGET_MS,
+      fingerprint,
+      calibration,
+      declaredReference: options.declaredReference,
+    },
+    () => {
+      for (let warmup = 0; warmup < warmupRuns; warmup += 1) {
+        runRebuild(cells, date1904);
+      }
+      const measured: number[] = [];
+      for (let run = 0; run < runs; run += 1) {
+        measured.push(runRebuild(cells, date1904));
+      }
+      return measured;
+    },
+  );
+
+  const runsMs = verdict.runsMs;
   return {
     rows,
     columns,
     touchedCells: rows * columns,
     formulas: rows * formulaColumns,
     runsMs,
-    bestMs: sorted[0] ?? 0,
-    medianMs: sorted[Math.floor(sorted.length / 2)] ?? 0,
+    bestMs: Math.min(...runsMs),
+    medianMs: verdict.measuredMs,
     budgetMs: STRUCTURAL_REBUILD_BUDGET_MS,
+    fingerprint,
+    calibration,
+    verdict,
   };
 }
 

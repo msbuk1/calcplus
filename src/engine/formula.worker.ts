@@ -31,7 +31,13 @@ scope.addEventListener('message', (event) => {
         return;
       case 'load':
         engine.load(message.cells);
-        if (message.final) respond(message.requestId, engine.finishLoad());
+        if (message.final) {
+          respond(message.requestId, engine.finishLoad());
+        } else {
+          // Ask for the next chunk only once this one is accepted. A large
+          // snapshot therefore stays one chunk deep in the worker queue.
+          scope.postMessage({ type: 'ack', requestId: message.requestId });
+        }
         return;
       case 'apply':
         respond(message.requestId, engine.apply(message.edits));

@@ -1,4 +1,3 @@
-import { cpus, totalmem } from 'node:os';
 import { DocumentSession } from '@commands/session';
 import type { CfCellSource, ConditionalFormatRule, CfThreshold } from '@model/conditional-format';
 import { computeRangeStatistics, createConditionalFormatIndex } from '@model/conditional-format';
@@ -7,6 +6,18 @@ import { createCell, setCellSnapshot } from '@model/types';
 import type { CellValue } from '@model/value';
 import { numberValue, textValue } from '@model/value';
 import { createEmptyWorkbook, createSheet } from '@model/workbook';
+import {
+  type BudgetGate,
+  type MachineCalibration,
+  type MachineFingerprint,
+  describeFingerprint,
+  machineCalibration,
+  machineFingerprint,
+  runBudgetProbe,
+} from '@testing/machine';
+
+export { describeFingerprint, machineFingerprint };
+export type { MachineFingerprint };
 
 /**
  * Generated performance fixtures for the M5 data-tools budgets.
@@ -16,7 +27,7 @@ import { createEmptyWorkbook, createSheet } from '@model/workbook';
  * process rather than committed (testing-conformance §5). Every shape is
  * generated from a fixed seed, and every measurement follows the structural
  * rebuild gate: one warm-up run is discarded, three runs are recorded, and the
- * median is asserted against the absolute budget.
+ * median is checked by the shared budget gate.
  *
  * Budgets (performance §3.4, §3.5; testing-conformance §7):
  *
@@ -26,9 +37,11 @@ import { createEmptyWorkbook, createSheet } from '@model/workbook';
  *   Conditional-formatting visible-cell evaluation      <= 4 ms per frame
  *
  * This is a Node microbenchmark, so its fingerprint records the CPU model,
- * logical core count, RAM, platform and Node version. The contract's browser
- * version is recorded by `bench/browser`; a result from a machine outside the
- * reference class of performance §1 is advisory, not gating (performance §6).
+ * physical and logical core counts, RAM, OS and Node version, plus a measured
+ * machine-speed sample. The absolute budgets are enforced only on a declared
+ * reference machine (performance §1, §6); elsewhere the numbers are advisory
+ * and ten times the budget is the liveness ceiling. The browser harness records the
+ * contractual browser result.
  */
 
 export const PERF_FIXTURE_SEED = 20_261_118;
@@ -52,30 +65,6 @@ export const CF_VISIBLE_ROWS = 40;
 export const CF_VISIBLE_COLUMNS = 20;
 const CF_VISIBLE_START_ROW = 100;
 
-export interface MachineFingerprint {
-  readonly cpuModel: string;
-  readonly logicalCpus: number;
-  readonly totalMemoryBytes: number;
-  readonly platform: string;
-  readonly nodeVersion: string;
-}
-
-export function machineFingerprint(): MachineFingerprint {
-  const cpu = cpus()[0];
-  return {
-    cpuModel: cpu?.model.trim() ?? 'unknown',
-    logicalCpus: cpus().length,
-    totalMemoryBytes: totalmem(),
-    platform: process.platform,
-    nodeVersion: process.version,
-  };
-}
-
-export function describeFingerprint(fingerprint: MachineFingerprint): string {
-  const gib = (fingerprint.totalMemoryBytes / 1024 ** 3).toFixed(1);
-  return `${fingerprint.cpuModel}, ${fingerprint.logicalCpus} logical CPUs, ${gib} GiB RAM, ${fingerprint.platform}, Node ${fingerprint.nodeVersion}`;
-}
-
 interface RunSummary {
   readonly runsMs: readonly number[];
   readonly bestMs: number;
@@ -83,9 +72,15 @@ interface RunSummary {
   readonly maxMs: number;
   readonly budgetMs: number;
   readonly transactionsPerRun: readonly number[];
+  readonly verdict: BudgetGate;
 }
 
-function summarise(runsMs: readonly number[], transactions: readonly number[], budgetMs: number) {
+function summarise(
+  runsMs: readonly number[],
+  transactions: readonly number[],
+  budgetMs: number,
+  verdict: BudgetGate,
+): RunSummary {
   const sorted = [...runsMs].sort((left, right) => left - right);
   return {
     runsMs,
@@ -94,6 +89,7 @@ function summarise(runsMs: readonly number[], transactions: readonly number[], b
     maxMs: sorted[sorted.length - 1] ?? 0,
     budgetMs,
     transactionsPerRun: transactions,
+    verdict,
   };
 }
 
@@ -168,6 +164,7 @@ export interface SortBudgetResult extends RunSummary {
   readonly columns: number;
   readonly touchedCells: number;
   readonly fingerprint: MachineFingerprint;
+  readonly calibration: MachineCalibration;
 }
 
 /**
@@ -204,12 +201,20 @@ export function measureSort100k(
     return { ms, transactions };
   };
 
+  const fingerprint = machineFingerprint();
+  const calibration = machineCalibration();
+  const gate = measureGate('sort-100k', SORT_100K_BUDGET_MS, runOnce, options, {
+    fingerprint,
+    calibration,
+  });
+
   return {
     rows: fixture.rows,
     columns: fixture.columns,
     touchedCells: fixture.touchedCells,
-    fingerprint: machineFingerprint(),
-    ...collectRuns(runOnce, options, SORT_100K_BUDGET_MS),
+    fingerprint,
+    calibration,
+    ...gate,
   };
 }
 
@@ -225,6 +230,7 @@ export interface FilterBudgetResult {
   readonly touchedCells: number;
   readonly actions: readonly FilterActionBudget[];
   readonly fingerprint: MachineFingerprint;
+  readonly calibration: MachineCalibration;
 }
 
 const GREATER_THAN_HALF: ColumnFilter = {
@@ -277,7 +283,13 @@ export function measureFilter100k(
     return { ms, transactions };
   };
 
-  const applyRuns = collectRuns(
+  const fingerprint = machineFingerprint();
+  const calibration = machineCalibration();
+  const gateOptions = { fingerprint, calibration };
+
+  const applyRuns = measureGate(
+    'filter-apply-100k',
+    FILTER_100K_BUDGET_MS,
     () =>
       timeAction('data.filterColumn', {
         sheetId: fixture.sheet.id,
@@ -285,7 +297,7 @@ export function measureFilter100k(
         criterion: GREATER_THAN_HALF,
       }),
     options,
-    FILTER_100K_BUDGET_MS,
+    gateOptions,
   );
 
   // Leave the applied criterion in place for both the change and clear runs.
@@ -294,7 +306,9 @@ export function measureFilter100k(
     { sheetId: fixture.sheet.id, column, criterion: GREATER_THAN_HALF },
     context,
   );
-  const changeRuns = collectRuns(
+  const changeRuns = measureGate(
+    'filter-change-100k',
+    FILTER_100K_BUDGET_MS,
     () =>
       timeAction('data.filterColumn', {
         sheetId: fixture.sheet.id,
@@ -302,12 +316,14 @@ export function measureFilter100k(
         criterion: LESS_THAN_QUARTER,
       }),
     options,
-    FILTER_100K_BUDGET_MS,
+    gateOptions,
   );
-  const clearRuns = collectRuns(
+  const clearRuns = measureGate(
+    'filter-clear-100k',
+    FILTER_100K_BUDGET_MS,
     () => timeAction('data.filterClear', { sheetId: fixture.sheet.id }),
     options,
-    FILTER_100K_BUDGET_MS,
+    gateOptions,
   );
 
   return {
@@ -319,7 +335,8 @@ export function measureFilter100k(
       { action: 'change', ...changeRuns },
       { action: 'clear', ...clearRuns },
     ],
-    fingerprint: machineFingerprint(),
+    fingerprint,
+    calibration,
   };
 }
 
@@ -584,6 +601,7 @@ export interface CfStatisticsResult {
   readonly statistics: readonly CfStatisticsBudget[];
   readonly worstMedianMs: number;
   readonly fingerprint: MachineFingerprint;
+  readonly calibration: MachineCalibration;
 }
 
 /**
@@ -596,6 +614,8 @@ export function measureCfStatistics100k(
   options: { warmupRuns?: number; runs?: number } = {},
 ): CfStatisticsResult {
   const fixture = buildCfFixture();
+  const fingerprint = machineFingerprint();
+  const calibration = machineCalibration();
   const statistics: CfStatisticsBudget[] = [];
   for (const { kind, rule } of fixture.statisticRules) {
     let last: unknown = null;
@@ -604,7 +624,13 @@ export function measureCfStatistics100k(
       last = computeRangeStatistics(rule, fixture.fullRange, fixture.source);
       return { ms: now() - started, transactions: 0 };
     };
-    const summary = collectRuns(runOnce, options, CF_RANGE_STATISTICS_100K_BUDGET_MS);
+    const summary = measureGate(
+      `cf-statistics-${kind}-100k`,
+      CF_RANGE_STATISTICS_100K_BUDGET_MS,
+      runOnce,
+      options,
+      { fingerprint, calibration },
+    );
     if (last === null) {
       throw new Error(`computeRangeStatistics returned null for ${kind}.`);
     }
@@ -615,7 +641,8 @@ export function measureCfStatistics100k(
     cells: fixture.cells,
     statistics,
     worstMedianMs,
-    fingerprint: machineFingerprint(),
+    fingerprint,
+    calibration,
   };
 }
 
@@ -627,6 +654,7 @@ export interface CfVisibleResult extends RunSummary {
   /** Rules covering the top-left visible cell: a transparency note for the shape. */
   readonly visibleRulesPerCell: number;
   readonly fingerprint: MachineFingerprint;
+  readonly calibration: MachineCalibration;
 }
 
 /**
@@ -669,7 +697,18 @@ export function measureCfVisible100k(
     return { ms, transactions: 0 };
   };
 
-  const summary = collectRuns(runOnce, options, CF_VISIBLE_EVALUATION_BUDGET_MS);
+  const fingerprint = machineFingerprint();
+  const calibration = machineCalibration();
+  const summary = measureGate(
+    'cf-visible-frame-100k',
+    CF_VISIBLE_EVALUATION_BUDGET_MS,
+    runOnce,
+    options,
+    {
+      fingerprint,
+      calibration,
+    },
+  );
   return {
     visibleRows: CF_VISIBLE_ROWS,
     visibleColumns: CF_VISIBLE_COLUMNS,
@@ -677,15 +716,15 @@ export function measureCfVisible100k(
     paintedCells,
     visibleRulesPerCell,
     ...summary,
-    fingerprint: machineFingerprint(),
+    fingerprint,
+    calibration,
   };
 }
 
-function collectRuns(
+function executeRuns(
   runOnce: () => { ms: number; transactions: number },
   options: { warmupRuns?: number; runs?: number },
-  budgetMs: number,
-): RunSummary {
+): { runsMs: number[]; transactions: number[] } {
   const warmupRuns = Math.max(0, options.warmupRuns ?? 1);
   const runs = Math.max(1, options.runs ?? 3);
   for (let warmup = 0; warmup < warmupRuns; warmup += 1) runOnce();
@@ -696,5 +735,34 @@ function collectRuns(
     runsMs.push(outcome.ms);
     transactions.push(outcome.transactions);
   }
-  return summarise(runsMs, transactions, budgetMs);
+  return { runsMs, transactions };
+}
+
+/**
+ * Warm up, measure and classify a probe with the shared reference-machine
+ * gate. The gate re-runs the whole measurement once when the contract applies
+ * and the first median missed (performance §7).
+ */
+function measureGate(
+  caseName: string,
+  budgetMs: number,
+  runOnce: () => { ms: number; transactions: number },
+  options: { warmupRuns?: number; runs?: number },
+  machine: { fingerprint: MachineFingerprint; calibration: MachineCalibration },
+): RunSummary {
+  let transactionsPerRun: number[] = [];
+  const verdict = runBudgetProbe(
+    {
+      case: caseName,
+      budgetMs,
+      fingerprint: machine.fingerprint,
+      calibration: machine.calibration,
+    },
+    () => {
+      const outcome = executeRuns(runOnce, options);
+      transactionsPerRun = outcome.transactions;
+      return outcome.runsMs;
+    },
+  );
+  return summarise(verdict.runsMs, transactionsPerRun, budgetMs, verdict);
 }

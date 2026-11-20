@@ -23,7 +23,10 @@ npm run bench:browser
 
 The shapes come from the committed corpus generator (`bench/corpus/generate.ts`,
 fixed seed) and are built in the page through the benchmark hook, so no large
-workbook is committed to the repository.
+workbook is committed to the repository. The same generator now carries the ten
+contract shapes of performance §5; the formula-heavy shapes are measured by the
+Node harness in `bench/model` (`npm run bench:model`), because the browser
+benchmark hook builds literal values only.
 
 ## The reference machine
 

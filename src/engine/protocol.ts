@@ -31,6 +31,15 @@ export type FromEngineWorkerMessage =
       readonly result: EngineBatchResult;
     }
   | {
+      /**
+       * One non-final `load` chunk was accepted. The client sends the next
+       * chunk only after this ack, so a large snapshot never has every chunk
+       * cloned into the worker queue at once (performance §3.2: backpressure).
+       */
+      readonly type: 'ack';
+      readonly requestId: number;
+    }
+  | {
       readonly type: 'error';
       readonly requestId: number;
       readonly message: string;
