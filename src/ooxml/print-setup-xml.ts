@@ -1,20 +1,30 @@
-import type { GridRange, PageMarginsRecord, PrintSetupRecord, Sheet } from '@model/types';
+import type {
+  GridRange,
+  PageMarginsRecord,
+  PrintOptionsRecord,
+  PrintSetupRecord,
+  Sheet,
+} from '@model/types';
 import { parseWholeArea } from '@model/references';
 import { WorkbookSaveError } from './errors';
 import { decodeXml, encodeXml, escapeXmlAttribute, isWellFormedXml, parseXml } from './xml';
 
 /**
- * Print setup: `<pageMargins>`, `<pageSetup>` and the `_xlnm.Print_Area`
- * defined name (file-compat §3, §9 F16).
+ * Print setup: `<printOptions>`, `<pageMargins>`, `<pageSetup>`, the
+ * `<sheetPr><pageSetUpPr fitToPage>` switch and the `_xlnm.Print_Area` defined
+ * name (file-compat §3, §9 F16).
  *
- * Reading maps margins, orientation, fit-to-width and paper size onto
- * `Sheet.printSetup`; the print area is not duplicated in the model because it
- * is a sheet-scoped defined name (`workbook-model §1`) and `printAreaOf` reads
- * it back. Every other `pageSetup` attribute (`scale`, `firstPageNumber`,
- * `cellComments`, …) and every unmodelled child stays verbatim: a save only
- * rewrites the modelled attributes, in place, when the model differs from the
- * parsed source (the `autofilter-xml.ts` raw + state-key pattern).
+ * Reading maps margins, print options, orientation, fit-to-width, scale,
+ * paper size and the fit-to-page switch onto `Sheet.printSetup`; the print area
+ * is not duplicated in the model because it is a sheet-scoped defined name
+ * (`workbook-model §1`) and `printAreaOf` reads it back. Every other `pageSetup`
+ * attribute (`firstPageNumber`, `cellComments`, …) and every unmodelled child
+ * stays verbatim: a save only rewrites the modelled attributes, in place, when
+ * the model differs from the parsed source (the `autofilter-xml.ts` raw +
+ * state-key pattern).
  *
+ * The state key is per element, so a change to the orientation never rewrites
+ * `<printOptions>` or `pageSetUpPr`, and an untouched sheet is byte-identical.
  * Honouring these settings in print preview and PDF export is M7 consumption;
  * this module only stores them faithfully.
  */
@@ -30,6 +40,28 @@ const DEFAULT_MARGINS: PageMarginsRecord = {
   header: 0.3,
   footer: 0.3,
 };
+
+/** Children of `<worksheet>` that follow `<printOptions>`. */
+const AFTER_PRINT_OPTIONS: ReadonlySet<string> = new Set([
+  'pageMargins',
+  'pageSetup',
+  'headerFooter',
+  'rowBreaks',
+  'colBreaks',
+  'customProperties',
+  'cellWatches',
+  'ignoredErrors',
+  'smartTags',
+  'drawing',
+  'legacyDrawing',
+  'legacyDrawingHF',
+  'picture',
+  'oleObjects',
+  'controls',
+  'webPublishItems',
+  'tableParts',
+  'extLst',
+]);
 
 /** Children of `<worksheet>` that follow `<pageSetup>` in the schema order. */
 const AFTER_PAGE_SETUP: ReadonlySet<string> = new Set([
@@ -55,14 +87,23 @@ const AFTER_PAGE_SETUP: ReadonlySet<string> = new Set([
 const AFTER_PAGE_MARGINS: ReadonlySet<string> = new Set(['pageSetup', ...AFTER_PAGE_SETUP]);
 
 /**
- * The parsed source of the two elements, stored in `PrintSetupRecord.raw`.
- * `stateKey` records the model values at parse time: while they still match,
- * the source elements are never rewritten, which keeps an untouched save
- * byte-identical.
+ * The parsed source of the modelled elements, stored in
+ * `PrintSetupRecord.raw`. The keys record the model values at parse time: while
+ * an element's key still matches, that source element is never rewritten, which
+ * keeps an untouched save byte-identical and a one-field edit to one value.
  */
+export interface PrintSetupElementKeys {
+  readonly margins: string;
+  readonly options: string;
+  readonly setup: string;
+  readonly fitToPage: string;
+}
+
 export interface PrintSetupRawSource {
   readonly kind: 'print-setup-source';
   readonly stateKey: string;
+  /** Per-element keys at parse time; absent on a restored older snapshot. */
+  readonly elements?: PrintSetupElementKeys;
 }
 
 export function isPrintSetupRawSource(raw: unknown): raw is PrintSetupRawSource {
@@ -97,13 +138,27 @@ export function printAreaOf(sheet: Sheet): readonly GridRange[] {
   return ranges;
 }
 
-/** Parse the sheet's print-setup elements. `null` when neither is declared. */
+/** Parse the sheet's print-setup elements. `null` when none is declared. */
 export function parsePrintSetup(xml: string, partName: string): PrintSetupRecord | null {
   const children = directChildren(xml, partName);
+  const optionsChild = children.find((child) => child.local === 'printOptions') ?? null;
   const marginsChild = children.find((child) => child.local === 'pageMargins') ?? null;
   const setupChild = children.find((child) => child.local === 'pageSetup') ?? null;
-  if (marginsChild === null && setupChild === null) return null;
+  const sheetPrChild = children.find((child) => child.local === 'sheetPr') ?? null;
+  const pageSetUpPr = sheetPrChild === null ? null : pageSetUpPrOf(xml, partName);
+  if (
+    optionsChild === null &&
+    marginsChild === null &&
+    setupChild === null &&
+    pageSetUpPr === null
+  ) {
+    return null;
+  }
 
+  const options =
+    optionsChild === null
+      ? null
+      : parsePrintOptions(openTagOf(xml, optionsChild.start, optionsChild.openEnd));
   const margins =
     marginsChild === null
       ? null
@@ -114,13 +169,24 @@ export function parsePrintSetup(xml: string, partName: string): PrintSetupRecord
       : parseSetupAttributes(openTagOf(xml, setupChild.start, setupChild.openEnd));
   const record: PrintSetupRecord = {
     margins,
+    options,
     orientation: setup?.orientation ?? null,
     fitToWidth: setup?.fitToWidth ?? null,
     fitToHeight: setup?.fitToHeight ?? null,
+    scale: setup?.scale ?? null,
+    fitToPage: pageSetUpPr === null ? null : parseFitToPage(pageSetUpPr.openTag),
     paperSize: setup?.paperSize ?? null,
     raw: { kind: 'print-setup-source', stateKey: '' },
   };
-  return { ...record, raw: { kind: 'print-setup-source', stateKey: printSetupStateKey(record) } };
+  const elements = printSetupElementKeys(record);
+  return {
+    ...record,
+    raw: {
+      kind: 'print-setup-source',
+      stateKey: printSetupStateKey(record),
+      elements,
+    },
+  };
 }
 
 /** Populate `Sheet.printSetup` from the worksheet part. */
@@ -134,26 +200,58 @@ export function applyPrintSetup(sheet: Sheet, xml: string, partName: string): vo
  * exactly what the model describes.
  */
 export function printSetupStateKey(setup: PrintSetupRecord): string {
-  const margins =
-    setup.margins === null
-      ? 'none'
-      : [
-          setup.margins.left,
-          setup.margins.right,
-          setup.margins.top,
-          setup.margins.bottom,
-          setup.margins.header,
-          setup.margins.footer,
-        ]
-          .map(plainNumber)
-          .join(',');
+  const keys = printSetupElementKeys(setup);
+  return [keys.margins, keys.options, keys.setup, keys.fitToPage].join('|');
+}
+
+/**
+ * The state key of each modelled element. A change to one element rewrites only
+ * that element's attributes (print-setup-xml header).
+ */
+export function printSetupElementKeys(setup: PrintSetupRecord): PrintSetupElementKeys {
+  const fitToPage = setup.fitToPage ?? null;
+  return {
+    margins: marginsKey(setup.margins ?? null),
+    options: optionsKey(setup.options ?? null),
+    setup: setupKey(setup),
+    fitToPage: fitToPage === null ? 'none' : fitToPage ? '1' : '0',
+  };
+}
+
+function marginsKey(margins: PageMarginsRecord | null): string {
+  if (margins === null) return 'none';
+  return [margins.left, margins.right, margins.top, margins.bottom, margins.header, margins.footer]
+    .map(plainNumber)
+    .join(',');
+}
+
+function optionsKey(options: PrintOptionsRecord | null): string {
+  if (options === null) return 'none';
   return [
-    margins,
+    options.gridLines,
+    options.gridLinesSet,
+    options.headings,
+    options.horizontalCentered,
+    options.verticalCentered,
+  ]
+    .map((value) => (value ? '1' : '0'))
+    .join(',');
+}
+
+function setupKey(setup: PrintSetupRecord): string {
+  return [
     setup.orientation ?? 'none',
-    setup.fitToWidth === null ? 'none' : plainNumber(setup.fitToWidth),
-    setup.fitToHeight === null ? 'none' : plainNumber(setup.fitToHeight),
-    setup.paperSize === null ? 'none' : plainNumber(setup.paperSize),
-  ].join('|');
+    setup.fitToWidth === null || setup.fitToWidth === undefined
+      ? 'none'
+      : plainNumber(setup.fitToWidth),
+    setup.fitToHeight === null || setup.fitToHeight === undefined
+      ? 'none'
+      : plainNumber(setup.fitToHeight),
+    setup.scale === null || setup.scale === undefined ? 'none' : plainNumber(setup.scale),
+    setup.paperSize === null || setup.paperSize === undefined
+      ? 'none'
+      : plainNumber(setup.paperSize),
+  ].join(',');
 }
 
 export interface PrintSetupSavePlan {
@@ -191,70 +289,138 @@ export function planPrintSetupSave(
 
   const xml = decodeXml(sourceBytes);
   const children = directChildren(xml, partName);
+  const optionsChild = children.find((child) => child.local === 'printOptions') ?? null;
   const marginsChild = children.find((child) => child.local === 'pageMargins') ?? null;
   const setupChild = children.find((child) => child.local === 'pageSetup') ?? null;
+  const changed = changedElements(setup);
   const edits: { start: number; end: number; text: string }[] = [];
+  const options = setup.options ?? null;
+  const fitToPageValue = setup.fitToPage ?? null;
 
-  if (setup.margins === null) {
-    if (marginsChild !== null) {
-      edits.push({ start: marginsChild.start, end: marginsChild.end, text: '' });
-    }
-  } else {
-    const attributes = new Map<string, string | null>([
-      ['left', plainNumber(setup.margins.left)],
-      ['right', plainNumber(setup.margins.right)],
-      ['top', plainNumber(setup.margins.top)],
-      ['bottom', plainNumber(setup.margins.bottom)],
-      ['header', plainNumber(setup.margins.header)],
-      ['footer', plainNumber(setup.margins.footer)],
-    ]);
-    if (marginsChild !== null) {
-      const openTag = openTagOf(xml, marginsChild.start, marginsChild.openEnd);
+  if (changed.options) {
+    const attributes = optionsAttributes(options);
+    if (options === null) {
+      if (optionsChild !== null) {
+        edits.push({ start: optionsChild.start, end: optionsChild.end, text: '' });
+      }
+    } else if (optionsChild !== null) {
+      const openTag = openTagOf(xml, optionsChild.start, optionsChild.openEnd);
       const updated = updateOpenTagAttributes(openTag, attributes);
       if (updated !== openTag) {
-        edits.push({
-          start: marginsChild.start,
-          end: marginsChild.openEnd,
-          text: updated,
-        });
+        edits.push({ start: optionsChild.start, end: optionsChild.openEnd, text: updated });
       }
     } else {
       const prefix = rootPrefix(xml);
-      const position = insertionPosition(children, AFTER_PAGE_MARGINS, xml);
+      const position = insertionPosition(children, AFTER_PRINT_OPTIONS, xml);
       edits.push({
         start: position,
         end: position,
-        text: `<${qualified(prefix, 'pageMargins')}${attributesText(attributes)}/>`,
+        text: `<${qualified(prefix, 'printOptions')}${attributesText(attributes)}/>`,
       });
     }
   }
 
-  const setupAttributes = new Map<string, string | null>([
-    ['orientation', setup.orientation],
-    ['fitToWidth', setup.fitToWidth === null ? null : plainNumber(setup.fitToWidth)],
-    ['fitToHeight', setup.fitToHeight === null ? null : plainNumber(setup.fitToHeight)],
-    ['paperSize', setup.paperSize === null ? null : plainNumber(setup.paperSize)],
-  ]);
-  if (setupChild !== null) {
-    if (setupAttributesHaveValues(setupAttributes)) {
-      const openTag = openTagOf(xml, setupChild.start, setupChild.openEnd);
-      const updated = updateOpenTagAttributes(openTag, setupAttributes);
-      if (updated !== openTag) {
+  if (changed.margins) {
+    if (setup.margins === null) {
+      if (marginsChild !== null) {
+        edits.push({ start: marginsChild.start, end: marginsChild.end, text: '' });
+      }
+    } else {
+      const attributes = new Map<string, string | null>([
+        ['left', plainNumber(setup.margins.left)],
+        ['right', plainNumber(setup.margins.right)],
+        ['top', plainNumber(setup.margins.top)],
+        ['bottom', plainNumber(setup.margins.bottom)],
+        ['header', plainNumber(setup.margins.header)],
+        ['footer', plainNumber(setup.margins.footer)],
+      ]);
+      if (marginsChild !== null) {
+        const openTag = openTagOf(xml, marginsChild.start, marginsChild.openEnd);
+        const updated = updateOpenTagAttributes(openTag, attributes);
+        if (updated !== openTag) {
+          edits.push({
+            start: marginsChild.start,
+            end: marginsChild.openEnd,
+            text: updated,
+          });
+        }
+      } else {
+        const prefix = rootPrefix(xml);
+        const position = insertionPosition(children, AFTER_PAGE_MARGINS, xml);
         edits.push({
-          start: setupChild.start,
-          end: setupChild.openEnd,
-          text: updated,
+          start: position,
+          end: position,
+          text: `<${qualified(prefix, 'pageMargins')}${attributesText(attributes)}/>`,
         });
       }
     }
-  } else if (setupAttributesHaveValues(setupAttributes)) {
-    const prefix = rootPrefix(xml);
-    const position = insertionPosition(children, AFTER_PAGE_SETUP, xml);
-    edits.push({
-      start: position,
-      end: position,
-      text: `<${qualified(prefix, 'pageSetup')}${attributesText(setupAttributes)}/>`,
-    });
+  }
+
+  if (changed.setup) {
+    const setupAttributes = new Map<string, string | null>([
+      ['orientation', setup.orientation ?? null],
+      ['fitToWidth', setup.fitToWidth == null ? null : plainNumber(setup.fitToWidth)],
+      ['fitToHeight', setup.fitToHeight == null ? null : plainNumber(setup.fitToHeight)],
+      ['scale', setup.scale == null ? null : plainNumber(setup.scale)],
+      ['paperSize', setup.paperSize == null ? null : plainNumber(setup.paperSize)],
+    ]);
+    if (setupChild !== null) {
+      if (setupAttributesHaveValues(setupAttributes)) {
+        const openTag = openTagOf(xml, setupChild.start, setupChild.openEnd);
+        const updated = updateOpenTagAttributes(openTag, setupAttributes);
+        if (updated !== openTag) {
+          edits.push({
+            start: setupChild.start,
+            end: setupChild.openEnd,
+            text: updated,
+          });
+        }
+      }
+    } else if (setupAttributesHaveValues(setupAttributes)) {
+      const prefix = rootPrefix(xml);
+      const position = insertionPosition(children, AFTER_PAGE_SETUP, xml);
+      edits.push({
+        start: position,
+        end: position,
+        text: `<${qualified(prefix, 'pageSetup')}${attributesText(setupAttributes)}/>`,
+      });
+    }
+  }
+
+  if (changed.fitToPage) {
+    const fitToPage = fitToPageValue === null ? null : fitToPageValue ? '1' : '0';
+    const sheetPrChild = children.find((child) => child.local === 'sheetPr') ?? null;
+    const pageSetUpPr = sheetPrChild === null ? null : pageSetUpPrOf(xml, partName);
+    if (pageSetUpPr !== null) {
+      const updated = updateOpenTagAttributes(
+        pageSetUpPr.openTag,
+        new Map<string, string | null>([['fitToPage', fitToPage]]),
+      );
+      if (updated !== pageSetUpPr.openTag) {
+        edits.push({
+          start: pageSetUpPr.start,
+          end: pageSetUpPr.openEnd,
+          text: updated,
+        });
+      }
+    } else if (fitToPage !== null && sheetPrChild !== null) {
+      const prefix = sheetPrChild.prefix;
+      const element = `<${qualified(prefix, 'pageSetUpPr')} fitToPage="${fitToPage}"/>`;
+      if (isSelfClosing(xml, sheetPrChild)) {
+        const expanded = `${xml.slice(sheetPrChild.start, sheetPrChild.openEnd - 2)}>${element}</${qualified(prefix, 'sheetPr')}>`;
+        edits.push({ start: sheetPrChild.start, end: sheetPrChild.end, text: expanded });
+      } else {
+        const close = xml.lastIndexOf('</', sheetPrChild.end - 1);
+        const position = close < 0 ? sheetPrChild.openEnd : close;
+        edits.push({ start: position, end: position, text: element });
+      }
+    } else if (fitToPage !== null) {
+      const prefix = rootPrefix(xml);
+      const element = `<${qualified(prefix, 'sheetPr')}><${qualified(prefix, 'pageSetUpPr')} fitToPage="${fitToPage}"/></${qualified(prefix, 'sheetPr')}>`;
+      const position =
+        children.length > 0 ? children[0]!.start : insertionPosition(children, new Set(), xml);
+      edits.push({ start: position, end: position, text: element });
+    }
   }
 
   if (edits.length === 0) return { changed: false, bytes: sourceBytes };
@@ -269,6 +435,93 @@ export function planPrintSetupSave(
     );
   }
   return { changed: true, bytes: encodeXml(patched) };
+}
+
+interface ChangedElements {
+  readonly margins: boolean;
+  readonly options: boolean;
+  readonly setup: boolean;
+  readonly fitToPage: boolean;
+}
+
+/**
+ * Which modelled elements differ from the parsed source. An older snapshot
+ * without per-element keys cannot tell, so it rewrites all of them; the values
+ * are still the model's, never lost.
+ */
+function changedElements(setup: PrintSetupRecord): ChangedElements {
+  const current = printSetupElementKeys(setup);
+  const raw = setup.raw;
+  const before = isPrintSetupRawSource(raw) ? raw.elements : undefined;
+  if (before === undefined) {
+    return { margins: true, options: true, setup: true, fitToPage: true };
+  }
+  return {
+    margins: before.margins !== current.margins,
+    options: before.options !== current.options,
+    setup: before.setup !== current.setup,
+    fitToPage: before.fitToPage !== current.fitToPage,
+  };
+}
+
+function optionsAttributes(options: PrintOptionsRecord | null): Map<string, string | null> {
+  if (options === null) return new Map();
+  const flag = (value: boolean): string => (value ? '1' : '0');
+  return new Map<string, string | null>([
+    ['gridLines', flag(options.gridLines)],
+    ['gridLinesSet', flag(options.gridLinesSet)],
+    ['headings', flag(options.headings)],
+    ['horizontalCentered', flag(options.horizontalCentered)],
+    ['verticalCentered', flag(options.verticalCentered)],
+  ]);
+}
+
+function isSelfClosing(xml: string, child: DirectChild): boolean {
+  return xml.slice(Math.max(0, child.openEnd - 2), child.openEnd) === '/>';
+}
+
+/**
+ * The `<sheetPr><pageSetUpPr>` element. It is the only nested element print
+ * reads, so it gets its own scan instead of a general tree walk.
+ */
+function pageSetUpPrOf(
+  xml: string,
+  partName: string,
+): { readonly openTag: string; readonly start: number; readonly openEnd: number } | null {
+  const holder: {
+    found: { start: number; openEnd: number } | null;
+  } = { found: null };
+  const stack: string[] = [];
+  parseXml(
+    xml,
+    {
+      onOpenTag(tag, position) {
+        if (
+          holder.found === null &&
+          tag.local === 'pageSetUpPr' &&
+          stack.length === 2 &&
+          stack[1] === 'sheetPr'
+        ) {
+          holder.found = {
+            start: xml.lastIndexOf('<', Math.max(0, position - 1)),
+            openEnd: position,
+          };
+        }
+        stack.push(tag.local);
+      },
+      onCloseTag() {
+        stack.pop();
+      },
+    },
+    partName,
+  );
+  const found = holder.found;
+  if (found === null) return null;
+  return {
+    openTag: xml.slice(found.start, found.openEnd),
+    start: found.start,
+    openEnd: found.openEnd,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +620,7 @@ interface SetupAttributes {
   readonly orientation: 'portrait' | 'landscape' | null;
   readonly fitToWidth: number | null;
   readonly fitToHeight: number | null;
+  readonly scale: number | null;
   readonly paperSize: number | null;
 }
 
@@ -384,8 +638,35 @@ function parseSetupAttributes(openTag: string): SetupAttributes {
       orientationText === 'portrait' || orientationText === 'landscape' ? orientationText : null,
     fitToWidth: integer('fitToWidth'),
     fitToHeight: integer('fitToHeight'),
+    scale: integer('scale'),
     paperSize: integer('paperSize'),
   };
+}
+
+/** `<printOptions>`: an absent flag means `false`, as the schema defaults. */
+function parsePrintOptions(openTag: string): PrintOptionsRecord {
+  const attributes = parseAttributes(openTag);
+  const flag = (local: string): boolean => xsdBoolean(attributes.get(local)) ?? false;
+  return {
+    gridLines: flag('gridLines'),
+    gridLinesSet: flag('gridLinesSet'),
+    headings: flag('headings'),
+    horizontalCentered: flag('horizontalCentered'),
+    verticalCentered: flag('verticalCentered'),
+  };
+}
+
+function parseFitToPage(openTag: string): boolean | null {
+  return xsdBoolean(parseAttributes(openTag).get('fitToPage'));
+}
+
+/** OOXML `xsd:boolean`: `0`/`1` and `false`/`true`; anything else is unread. */
+function xsdBoolean(value: string | undefined): boolean | null {
+  if (value === undefined) return null;
+  const text = value.trim().toLowerCase();
+  if (text === '1' || text === 'true') return true;
+  if (text === '0' || text === 'false') return false;
+  return null;
 }
 
 /**

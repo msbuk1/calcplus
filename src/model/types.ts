@@ -131,20 +131,43 @@ export interface PageMarginsRecord {
 }
 
 /**
+ * `<printOptions>`: what prints outside the cells themselves (file-compat §3).
+ * Gridlines print only when both `gridLines` and `gridLinesSet` are true, so
+ * both flags are kept exactly as the part declares them.
+ */
+export interface PrintOptionsRecord {
+  readonly gridLines: boolean;
+  readonly gridLinesSet: boolean;
+  readonly headings: boolean;
+  readonly horizontalCentered: boolean;
+  readonly verticalCentered: boolean;
+}
+
+/**
  * Imported print setup (file-compat §3: print area, orientation, fit-to-width
  * and margins). The print area is not duplicated here: it is the sheet-scoped
  * `_xlnm.Print_Area` defined name (workbook-model §1), maintained by the print
- * feature. `null` means the part declares neither `<pageMargins>` nor
- * `<pageSetup>`; `undefined` means the model was built before the part was read
- * (a snapshot restore), so a save leaves the source elements alone.
+ * feature. `null` means the part declares none of `<printOptions>`,
+ * `<pageMargins>`, `<pageSetup>` or `<sheetPr><pageSetUpPr>`; `undefined` means
+ * the model was built before the part was read (a snapshot restore), so a save
+ * leaves the source elements alone.
  */
 export interface PrintSetupRecord {
   readonly margins: PageMarginsRecord | null;
+  /** `<printOptions>`, or `null` when the part declares none. */
+  readonly options: PrintOptionsRecord | null;
   readonly orientation: 'portrait' | 'landscape' | null;
   readonly fitToWidth: number | null;
   readonly fitToHeight: number | null;
+  /** `<pageSetup scale>`, a percentage; overridden by fit-to-page (§4). */
+  readonly scale: number | null;
+  /**
+   * `<sheetPr><pageSetUpPr fitToPage>`: the Fit to Page switch. `null` when the
+   * part does not declare it, which means `scale` applies.
+   */
+  readonly fitToPage: boolean | null;
   readonly paperSize: number | null;
-  /** Parsed source of the two elements, for a byte-faithful attribute rewrite. */
+  /** Parsed source of the elements, for a byte-faithful attribute rewrite. */
   readonly raw?: unknown;
 }
 
