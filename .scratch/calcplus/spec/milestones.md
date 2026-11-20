@@ -273,6 +273,26 @@ of the M7 demo: accessibility verification stays V2 with the rest of the
 assistive-technology work (`accessibility.md`). The demo is the print/PDF
 check, the 250k-cell scroll and the offline launcher.
 
+**Testing status (2026-11-20, maintainer).** Verified by hand: the Linux
+launcher artifact (the app opens offline at `127.0.0.1:47823`, current
+build, icons and branding correct; the build-id guard refuses to reuse a
+stale instance). Recorded as **not tested for this milestone**:
+
+- The print preview and PDF export checked against Excel 365 (exit
+  criterion 1's visual comparison; the preview-to-PDF self-consistency is
+  covered by the automated suites).
+- A 250k-cell workbook scrolling at 60 fps in the browser (the demo item;
+  the Node benchmark suite runs the corpus but the browser check was not
+  watched).
+- The recovery, external-edit conflict and close prompts exercised by hand
+  (exit criterion 3; the flows are unit and e2e tested).
+- The Windows portable `.exe` and its SmartScreen note (exit criterion 4's
+  Windows half; the Linux tarball is verified).
+
+Also recorded: the performance budgets ran **advisory** throughout because
+no machine met the strict reference class (exit criterion 2's enforcement
+needs the reference-machine ruling).
+
 **Exit criteria**
 
 1. Print and PDF match the preview and honour the page setup.

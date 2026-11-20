@@ -119,3 +119,9 @@ sometimes wrecks the first e2e run (lane 4 territory).
 
 - 2026-11-20: split recorded; the print/PDF spike launched; wave 1 (lanes 1,
   4, 6) launched.
+- 2026-11-20: the demo/testing status is recorded in the milestone plan —
+  the Linux launcher artifact is verified by hand; the print/PDF check
+  against Excel, the 250k scroll, the recovery and conflict prompts and the
+  Windows exe are **not tested** for this milestone (the automated suites
+  cover their behaviour). The perf budgets ran advisory: no reference
+  machine yet.
