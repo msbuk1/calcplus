@@ -22,6 +22,7 @@ import { normalizeFormatCode } from '@view/number-format';
 import { ColorPickerPopup, parseColor } from './ColorPicker';
 import { Dialog, DialogTabs } from './Dialog';
 import type { DialogCloseReason, DialogTab } from './Dialog';
+import { FILL_PATTERNS, fillPatternPreview } from './fill-patterns';
 
 /** The resolved style of the active cell, as the sheet projection reports it. */
 export interface FormatCellsInitial {
@@ -184,28 +185,6 @@ const UNDERLINE_OPTIONS: readonly { readonly value: UnderlineStyle; readonly lab
   { value: 'double', label: 'Double' },
   { value: 'singleAccounting', label: 'Single accounting' },
   { value: 'doubleAccounting', label: 'Double accounting' },
-];
-
-const FILL_PATTERNS: readonly { readonly value: string; readonly label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'solid', label: 'Solid' },
-  { value: 'gray125', label: '12.5% gray' },
-  { value: 'gray0625', label: '6.25% gray' },
-  { value: 'lightGray', label: 'Light gray' },
-  { value: 'mediumGray', label: 'Medium gray' },
-  { value: 'darkGray', label: 'Dark gray' },
-  { value: 'lightHorizontal', label: 'Light horizontal' },
-  { value: 'darkHorizontal', label: 'Dark horizontal' },
-  { value: 'lightVertical', label: 'Light vertical' },
-  { value: 'darkVertical', label: 'Dark vertical' },
-  { value: 'lightDown', label: 'Light downward diagonal' },
-  { value: 'darkDown', label: 'Dark downward diagonal' },
-  { value: 'lightUp', label: 'Light upward diagonal' },
-  { value: 'darkUp', label: 'Dark upward diagonal' },
-  { value: 'lightGrid', label: 'Light grid' },
-  { value: 'darkGrid', label: 'Dark grid' },
-  { value: 'lightTrellis', label: 'Light trellis' },
-  { value: 'darkTrellis', label: 'Dark trellis' },
 ];
 
 const BORDER_STYLES: readonly { readonly value: string; readonly label: string }[] = [
@@ -464,6 +443,243 @@ function ColorField({
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+interface FillPatternFieldProps {
+  readonly id: string;
+  readonly value: string;
+  readonly color: string;
+  readonly backgroundColor: string;
+  readonly testId: string;
+  readonly onChange: (pattern: string) => void;
+}
+
+function patternOptionId(listId: string, index: number): string {
+  return `${listId}-option-${index}`;
+}
+
+/**
+ * The Excel-style pattern control. The closed button and every listbox option
+ * draw the pattern itself in the dialog's current fill colours, so the user
+ * sees the texture before choosing. The previews are CSS backgrounds built
+ * from the inline tiles in `fill-patterns.ts`; a colour change re-renders them
+ * with no canvas to keep in step. Keyboard behaviour matches the other custom
+ * drop-downs: arrows move, Enter chooses, Esc closes the list and returns
+ * focus to the button without closing the dialog.
+ */
+function FillPatternField({
+  id,
+  value,
+  color,
+  backgroundColor,
+  testId,
+  onChange,
+}: FillPatternFieldProps): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const controlRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const labelId = useId();
+  const listId = useId();
+  const valueId = useId();
+
+  const selected = FILL_PATTERNS.find((pattern) => pattern.value === value);
+  const selectedLabel = selected?.label ?? (value === '' ? 'None' : value);
+  const fill = parseColor(color).color;
+  const background = parseColor(backgroundColor).color;
+  const selectedPreview = fillPatternPreview(value, fill, background);
+
+  // Focus moves into the list so the arrow keys and Enter act on it, and the
+  // active option stays visible in the scrolling list.
+  useEffect(() => {
+    if (open) listRef.current?.focus();
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [open, activeIndex]);
+
+  // A press outside closes the list only; the dialog keeps its focus trap.
+  useEffect(() => {
+    if (!open) return;
+    const onDocumentPointerDown = (event: PointerEvent): void => {
+      const root = rootRef.current;
+      if (root !== null && event.target instanceof Node && root.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDocumentPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+  }, [open]);
+
+  const openList = (): void => {
+    const index = FILL_PATTERNS.findIndex((pattern) => pattern.value === value);
+    setActiveIndex(index < 0 ? 0 : index);
+    setOpen(true);
+  };
+
+  const closeList = (restoreFocus: boolean): void => {
+    setOpen(false);
+    if (restoreFocus) controlRef.current?.focus();
+  };
+
+  const choose = (pattern: string): void => {
+    onChange(pattern);
+    closeList(true);
+  };
+
+  const onControlKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      openList();
+      return;
+    }
+    if (!open) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeList(true);
+      return;
+    }
+    if (event.key === 'Tab') setOpen(false);
+  };
+
+  const onListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    const count = FILL_PATTERNS.length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveIndex((current) => (current + (event.key === 'ArrowDown' ? 1 : -1) + count) % count);
+      return;
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveIndex(event.key === 'Home' ? 0 : count - 1);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      // Enter picks the pattern; it must not reach the dialog's default OK.
+      event.preventDefault();
+      event.stopPropagation();
+      const pattern = FILL_PATTERNS[activeIndex];
+      if (pattern !== undefined) choose(pattern.value);
+      return;
+    }
+    if (event.key === 'Escape') {
+      // The dialog shell ignores Esc while a dialog-local popup is open.
+      event.preventDefault();
+      event.stopPropagation();
+      closeList(true);
+      return;
+    }
+    if (event.key === 'Tab') setOpen(false);
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      className="format-pattern-field"
+      data-dialog-popup-open={open ? 'true' : undefined}
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        if (open) closeList(false);
+      }}
+    >
+      <div className="format-row">
+        <label className="find-label" id={labelId} htmlFor={id}>
+          Pattern
+        </label>
+        <button
+          ref={controlRef}
+          id={id}
+          type="button"
+          role="combobox"
+          className="format-pattern-control"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listId : undefined}
+          aria-labelledby={labelId}
+          aria-describedby={valueId}
+          data-testid={testId}
+          onClick={() => {
+            if (open) {
+              closeList(true);
+            } else {
+              openList();
+            }
+          }}
+          onKeyDown={onControlKeyDown}
+        >
+          <span
+            className="format-pattern-swatch"
+            style={{
+              backgroundColor: selectedPreview.backgroundColor,
+              backgroundImage: selectedPreview.backgroundImage ?? undefined,
+            }}
+            aria-hidden="true"
+          />
+          <span className="format-pattern-value" id={valueId}>
+            {selectedLabel}
+          </span>
+          <span className="format-pattern-arrow" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+      </div>
+
+      {open ? (
+        <div className="format-pattern-popup">
+          <div
+            ref={listRef}
+            id={listId}
+            className="format-pattern-list"
+            role="listbox"
+            aria-labelledby={labelId}
+            aria-activedescendant={patternOptionId(listId, activeIndex)}
+            tabIndex={-1}
+            onKeyDown={onListKeyDown}
+          >
+            {FILL_PATTERNS.map((pattern, index) => {
+              const preview = fillPatternPreview(pattern.value, fill, background);
+              return (
+                <div
+                  key={pattern.value}
+                  ref={(node) => {
+                    optionRefs.current[index] = node;
+                  }}
+                  id={patternOptionId(listId, index)}
+                  className={
+                    index === activeIndex
+                      ? 'format-pattern-option format-pattern-option-active'
+                      : 'format-pattern-option'
+                  }
+                  role="option"
+                  aria-selected={pattern.value === value}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => choose(pattern.value)}
+                  onMouseEnter={() => setActiveIndex(index)}
+                >
+                  <span
+                    className="format-pattern-swatch"
+                    style={{
+                      backgroundColor: preview.backgroundColor,
+                      backgroundImage: preview.backgroundImage ?? undefined,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <span className="format-pattern-option-label">{pattern.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -864,24 +1080,14 @@ export function FormatCellsDialog({
 
       {activeTab === 'fill' ? (
         <div className="format-panel" role="tabpanel" aria-label="Fill options">
-          <div className="format-row">
-            <label className="find-label" htmlFor={ids.fillPattern}>
-              Pattern
-            </label>
-            <select
-              id={ids.fillPattern}
-              className="find-select"
-              value={draft.fill.pattern}
-              data-testid="format-fill-pattern"
-              onChange={(event) => update({ fill: { ...draft.fill, pattern: event.target.value } })}
-            >
-              {FILL_PATTERNS.map((pattern) => (
-                <option key={pattern.value} value={pattern.value}>
-                  {pattern.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <FillPatternField
+            id={ids.fillPattern}
+            value={draft.fill.pattern}
+            color={draft.fill.color}
+            backgroundColor={draft.fill.backgroundColor}
+            testId="format-fill-pattern"
+            onChange={(pattern) => update({ fill: { ...draft.fill, pattern } })}
+          />
 
           <ColorField
             id={ids.fillColor}

@@ -4,7 +4,8 @@ import { cellRect, clickCell, openFixture, regionSignature } from './grid-helper
 
 const fixture = 'm1-chart-unknown.xlsx';
 
-type ColourField = 'format-font-color' | 'format-fill-color' | 'format-border-color';
+type ColourField =
+  'format-font-color' | 'format-fill-color' | 'format-fill-background' | 'format-border-color';
 
 /** The colour control opens a separate Colours popup instead of taking text directly. */
 async function openColours(dialog: Locator, field: ColourField): Promise<Locator> {
@@ -23,6 +24,18 @@ async function pickCustomColour(dialog: Locator, field: ColourField, value: stri
   await popup.getByTestId(`${field}-custom`).fill(value);
   await popup.getByRole('button', { name: 'OK' }).click();
   await expect(popup).toBeHidden();
+}
+
+/**
+ * The Pattern control is a custom listbox (a native select cannot host the
+ * drawn previews), so a choice is open, then the option by name.
+ */
+async function choosePattern(dialog: Locator, name: string): Promise<void> {
+  const control = dialog.getByTestId('format-fill-pattern');
+  await control.click();
+  await expect(control).toHaveAttribute('aria-expanded', 'true');
+  await dialog.getByRole('option', { name, exact: true }).click();
+  await expect(control).toHaveAttribute('aria-expanded', 'false');
 }
 
 async function styleAt(page: Page, row: number, col: number) {
@@ -71,7 +84,7 @@ test('Format Cells exposes every v1 tab and applies font, fill, border, alignmen
   await pickCustomColour(dialog, 'format-font-color', '#C00000');
 
   await dialog.getByRole('tab', { name: 'Fill' }).click();
-  await dialog.getByLabel('Pattern', { exact: true }).selectOption('solid');
+  await choosePattern(dialog, 'Solid');
   await pickCustomColour(dialog, 'format-fill-color', '#FFF2CC');
 
   await dialog.getByRole('tab', { name: 'Border' }).click();
@@ -128,7 +141,7 @@ test('Format Cells commits every changed tab as one undo step', async ({ page })
   await dialog.getByLabel('Font', { exact: true }).fill('Arial');
   await dialog.getByLabel('Bold').check();
   await dialog.getByRole('tab', { name: 'Fill' }).click();
-  await dialog.getByLabel('Pattern', { exact: true }).selectOption('solid');
+  await choosePattern(dialog, 'Solid');
   await pickCustomColour(dialog, 'format-fill-color', '#FFF2CC');
   await dialog.getByRole('tab', { name: 'Number' }).click();
   await dialog.getByLabel('Category').selectOption('currency');
@@ -145,6 +158,90 @@ test('Format Cells commits every changed tab as one undo step', async ({ page })
   await page.keyboard.press('Control+z');
   await expect.poll(() => styleAt(page, 1, 1)).toEqual(before);
   expect(await page.evaluate(() => window.__calcplus.getState().canUndo)).toBe(false);
+});
+
+test('the Fill pattern control previews every pattern in the chosen colours', async ({ page }) => {
+  await openFixture(page, fixture);
+  await clickCell(page, 1, 1);
+
+  await page.getByRole('button', { name: 'Number Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Format Cells' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('tab', { name: 'Fill' }).click();
+
+  await pickCustomColour(dialog, 'format-fill-color', '#C00000');
+  await pickCustomColour(dialog, 'format-fill-background', '#EAF1F8');
+
+  const control = dialog.getByTestId('format-fill-pattern');
+  const closedSwatch = control.locator('.format-pattern-swatch');
+  // None is the starting pattern, so the closed preview is a blank white swatch.
+  await expect(control).toHaveAttribute('aria-expanded', 'false');
+  await expect(closedSwatch).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+
+  await control.click();
+  await expect(control).toHaveAttribute('aria-expanded', 'true');
+  await expect(dialog.getByRole('option')).toHaveCount(19);
+
+  const grid = dialog.getByRole('option', { name: 'Light grid', exact: true });
+  const gridSwatch = grid.locator('.format-pattern-swatch');
+  // The texture is the fill colour; the pattern background shows through it.
+  await expect(gridSwatch).toHaveCSS('background-color', 'rgb(234, 241, 248)');
+  await expect(gridSwatch).toHaveCSS('background-image', /data:image\/svg/);
+  await expect(gridSwatch).toHaveCSS('background-image', /C00000/);
+  // Solid previews the fill colour itself and None the blank cell.
+  const solid = dialog.getByRole('option', { name: 'Solid', exact: true });
+  await expect(solid.locator('.format-pattern-swatch')).toHaveCSS(
+    'background-color',
+    'rgb(192, 0, 0)',
+  );
+  await expect(solid.locator('.format-pattern-swatch')).toHaveCSS('background-image', 'none');
+  const none = dialog.getByRole('option', { name: 'None', exact: true });
+  await expect(none.locator('.format-pattern-swatch')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  );
+
+  // Esc closes the list only: the dialog stays open and nothing was chosen.
+  await page.keyboard.press('Escape');
+  await expect(control).toHaveAttribute('aria-expanded', 'false');
+  await expect(control).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await expect(control).toContainText('None');
+
+  // Arrows walk the list from the selection and Enter chooses.
+  await page.keyboard.press('ArrowDown');
+  await expect(control).toHaveAttribute('aria-expanded', 'true');
+  await expect(dialog.getByRole('listbox', { name: 'Pattern' })).toBeFocused();
+  for (let step = 0; step < 15; step += 1) await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(control).toHaveAttribute('aria-expanded', 'false');
+  await expect(control).toBeFocused();
+  await expect(control).toContainText('Light grid');
+
+  // The closed control previews the chosen pattern in the current colours.
+  await expect(closedSwatch).toHaveCSS('background-color', 'rgb(234, 241, 248)');
+  await expect(closedSwatch).toHaveCSS('background-image', /C00000/);
+
+  // The colour controls re-render the previews: fill colour, then background.
+  await pickCustomColour(dialog, 'format-fill-color', '#1F6FEB');
+  await expect(closedSwatch).toHaveCSS('background-image', /1F6FEB/);
+  await pickCustomColour(dialog, 'format-fill-background', '#FFF2CC');
+  await expect(closedSwatch).toHaveCSS('background-color', 'rgb(255, 242, 204)');
+  await control.click();
+  await expect(gridSwatch).toHaveCSS('background-color', 'rgb(255, 242, 204)');
+  await expect(gridSwatch).toHaveCSS('background-image', /1F6FEB/);
+  await page.keyboard.press('Escape');
+
+  // The choice reaches format.fill with the same arguments as before.
+  await dialog.getByTestId('format-apply').click();
+  await expect(dialog.getByTestId('format-applied')).toHaveText('Formatted B2.');
+  await expect
+    .poll(() => styleAt(page, 1, 1))
+    .toMatchObject({
+      fill: { pattern: 'lightGrid', color: '#1F6FEB', backgroundColor: '#FFF2CC' },
+    });
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test('Format Cells rejects an invalid colour and number code without dispatching', async ({
