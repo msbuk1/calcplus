@@ -12,8 +12,12 @@ import type {
   PrintBand,
   PrintBox,
   PrintCell,
+  PrintConditionalPaint,
+  PrintConditionalText,
+  PrintDataBarItem,
   PrintFillItem,
   PrintFont,
+  PrintIconItem,
   PrintItem,
   PrintMargins,
   PrintPage,
@@ -45,7 +49,10 @@ import type {
  *   single uniform scale, and margins in points;
  * - gridlines and headings from `printOptions` only, never the view state;
  * - a merged range clipped per page, with its text on the anchor's page;
- * - text, fills and borders from the same display records the grid paints.
+ * - text, fills and borders from the same display records the grid paints;
+ * - conditional formatting from the grid's own `cfPaintOps`, already resolved
+ *   for priority and stop-if-true (fills, fonts, number formats, borders,
+ *   data bars and icons).
  *
  * The scale is uniform and never distorts the sheet. A row or column larger
  * than the body is clipped at the page edge and the page reports `clipped`.
@@ -544,9 +551,12 @@ function buildPage(input: PageInput): PrintPage {
 
   const gridlines: PrintItem[] = [];
   const fills: PrintFillItem[] = [];
+  const bars: PrintDataBarItem[] = [];
   const headings: PrintItem[] = [];
   const texts: PrintItem[] = [];
   const borders: PrintItem[] = [];
+  const conditionalBorders: PrintItem[] = [];
+  const icons: PrintIconItem[] = [];
   const band = input.band;
   const merges = input.sheet.mergesIn(band.startRow, band.endRow, band.startCol, band.endCol);
 
@@ -572,11 +582,26 @@ function buildPage(input: PageInput): PrintPage {
     };
     const pageBox = mapBox(local, geometry);
     const clip = intersectBox(pageBox, body);
+    const conditional = cell.conditional ?? null;
     if (clip !== null) {
       const fill = fillItemFor(cell.style, clip);
       if (fill !== null) fills.push(fill);
+      // §5.1 step 2: the CF fill covers the manual fill and the gridlines.
+      const cfFill = conditionalFillItem(conditional, clip);
+      if (cfFill !== null) fills.push(cfFill);
     }
-    emitCellText(cell, local, geometry, input.measure, texts, clip ?? pageBox);
+    if (conditional !== null) {
+      emitConditionalPaint(conditional, local, geometry, body, bars, icons);
+    }
+    emitCellText(
+      cell,
+      local,
+      geometry,
+      input.measure,
+      texts,
+      clip ?? pageBox,
+      conditional?.text ?? null,
+    );
     emitCellBorder(
       cell.style.border,
       local,
@@ -587,10 +612,26 @@ function buildPage(input: PageInput): PrintPage {
       band,
       borders,
     );
+    if (conditional?.border !== null && conditional?.border !== undefined) {
+      emitConditionalBorder(conditional.border, local, geometry, conditionalBorders);
+    }
   }
 
   for (const merge of merges) {
-    paintMerge(input, merge, columnByIndex, rowByIndex, geometry, body, fills, texts, borders);
+    paintMerge(
+      input,
+      merge,
+      columnByIndex,
+      rowByIndex,
+      geometry,
+      body,
+      fills,
+      bars,
+      texts,
+      borders,
+      conditionalBorders,
+      icons,
+    );
   }
 
   return {
@@ -603,7 +644,16 @@ function buildPage(input: PageInput): PrintPage {
     band,
     columns: pageColumns,
     rows: pageRows,
-    items: [...gridlines, ...fills, ...headings, ...texts, ...borders],
+    items: [
+      ...gridlines,
+      ...fills,
+      ...bars,
+      ...headings,
+      ...texts,
+      ...borders,
+      ...conditionalBorders,
+      ...icons,
+    ],
     clipped:
       columnBand.some(
         (entry) => entry.size > contentCapacity(body.width, input.headingWidth, scale) + 1e-6,
@@ -861,6 +911,106 @@ function fillItemFor(style: ProjectedStyle, clip: PrintBox): PrintFillItem | nul
   return { kind: 'fill', box: clip, pattern: fill.pattern, color: fill.color, background };
 }
 
+/**
+ * §5.1 step 2: the CF fill or colour-scale blend. It paints over the manual
+ * fill and the gridlines, which is why it follows them in the item list.
+ */
+function conditionalFillItem(
+  conditional: PrintConditionalPaint | null,
+  clip: PrintBox,
+): PrintFillItem | null {
+  if (conditional === null || conditional.fillColor === null) return null;
+  return {
+    kind: 'fill',
+    box: clip,
+    pattern: 'solid',
+    color: conditional.fillColor,
+    background: null,
+  };
+}
+
+/**
+ * §5.1 steps 3 and 8: the data bar and the icon. Both are cell-local in the
+ * conditional paint record; this maps them to page points and clips them to
+ * the page body. The bar's axis is a page x coordinate.
+ */
+function emitConditionalPaint(
+  conditional: PrintConditionalPaint,
+  local: PrintBox,
+  geometry: PageGeometry,
+  body: PrintBox,
+  bars: PrintDataBarItem[],
+  icons: PrintIconItem[],
+): void {
+  const bar = conditional.dataBar;
+  if (bar !== null) {
+    const box = mapBox(offsetBox(local, bar.box), geometry);
+    const clip = intersectBox(box, body);
+    if (clip !== null) {
+      bars.push({
+        kind: 'dataBar',
+        box: clip,
+        color: bar.color,
+        gradient: bar.gradient,
+        borderColor: bar.borderColor,
+        axisX:
+          bar.axisX === null
+            ? null
+            : round(geometry.originX + (local.x + bar.axisX) * geometry.scale),
+        axisColor: bar.axisColor,
+      });
+    }
+  }
+  const icon = conditional.icon;
+  if (icon !== null) {
+    const box = mapBox(offsetBox(local, icon.box), geometry);
+    const clip = intersectBox(box, body);
+    if (clip !== null) {
+      icons.push({
+        kind: 'icon',
+        box: clip,
+        family: icon.family,
+        color: icon.color,
+        iconIndex: icon.iconIndex,
+        iconCount: icon.iconCount,
+      });
+    }
+  }
+}
+
+function offsetBox(origin: PrintBox, box: PrintBox): PrintBox {
+  return {
+    x: origin.x + box.x,
+    y: origin.y + box.y,
+    width: box.width,
+    height: box.height,
+  };
+}
+
+/**
+ * §5.1 step 5: the CF border paints over the manual one. It is not deduped
+ * against neighbours: a CF edge is the rule's decision and wins where it sets
+ * a side, exactly as the grid paints it.
+ */
+function emitConditionalBorder(
+  border: BorderStyle,
+  local: PrintBox,
+  geometry: PageGeometry,
+  out: PrintItem[],
+): void {
+  const page = mapBox(local, geometry);
+  const edges: readonly (readonly [BorderEdge, BorderEdgeStyle])[] = [
+    ['left', border.left],
+    ['right', border.right],
+    ['top', border.top],
+    ['bottom', border.bottom],
+  ];
+  for (const [name, edge] of edges) {
+    if (edgeRank(edge) >= 0) emitEdge(name, edge, page, geometry, out);
+  }
+  emitDiagonals(border, page, geometry, out);
+}
+
 function emitCellText(
   cell: PrintCell,
   local: PrintBox,
@@ -868,8 +1018,16 @@ function emitCellText(
   measure: PrintTextMeasure,
   out: PrintItem[],
   clip: PrintBox,
+  conditional: PrintConditionalText | null = null,
 ): void {
-  const style = cell.style;
+  // §5.1 steps 6-7: the CF dxf supplies the font and the CF number format
+  // supplies the text. A CF number format's string paints exactly as
+  // formatted; otherwise the projection's width-aware layout still applies.
+  const style = conditional?.style ?? cell.style;
+  if (conditional?.hidden === true) return;
+  const supplied = conditional !== null && !conditional.layoutText ? conditional.text : null;
+  if (supplied === '') return;
+  const shift = conditional?.shift ?? 0;
   const rotation = rotationFor(style);
   const horizontal = horizontalFor(style, cell.value);
   const insets = textInsets(style, horizontal, 1);
@@ -878,18 +1036,18 @@ function emitCellText(
   const color = link ? LINK_COLOR : textColorFor(style);
   const maximum = Math.max(
     1,
-    local.width - insets.left * PT_PER_PIXEL - insets.right * PT_PER_PIXEL,
+    local.width - shift - insets.left * PT_PER_PIXEL - insets.right * PT_PER_PIXEL,
   );
 
   if (rotation.kind === 'stacked') {
-    paintStacked(cell, local, geometry, measure, out, clip, color);
+    paintStacked(style, local, geometry, measure, out, clip, color, supplied ?? cell.displayText);
     return;
   }
 
   if (rotation.kind === 'angle') {
     const available = Math.max(1, local.height - TEXT_PADDING * 2);
-    const laidOut = cell.layoutText(available, measure);
-    const text = laidOut.text;
+    const laidOut = supplied === null ? cell.layoutText(available, measure) : null;
+    const text = supplied ?? laidOut!.text;
     if (text === '') return;
     let fontSize = size;
     if (style.alignment.shrinkToFit) {
@@ -915,14 +1073,14 @@ function emitCellText(
     return;
   }
 
-  const laidOut = cell.layoutText(maximum, measure);
-  if (laidOut.text === '') return;
+  const laidOut = supplied === null ? cell.layoutText(maximum, measure) : null;
+  const text = supplied ?? laidOut!.text;
+  if (text === '') return;
   let fontSize = size;
   if (style.alignment.shrinkToFit && !style.alignment.wrapText) {
-    fontSize = fitFontSize(laidOut.text, maximum, style, size, measure);
+    fontSize = fitFontSize(text, maximum, style, size, measure);
   }
   const fontForMeasure: PrintFont = printFont(style, fontSize, 1, color);
-  const text = laidOut.text;
   const lines = style.alignment.wrapText
     ? wrapTextLines(text, maximum, (value) => measure(value, fontForMeasure))
     : [text];
@@ -944,7 +1102,7 @@ function emitCellText(
     top = local.y + TOP_PADDING;
   }
 
-  const left = local.x + insets.left * PT_PER_PIXEL;
+  const left = local.x + shift + insets.left * PT_PER_PIXEL;
   const right = local.x + local.width - insets.right * PT_PER_PIXEL;
   const x = horizontal === 'center' ? (left + right) / 2 : horizontal === 'right' ? right : left;
   const anchor: PrintTextAnchor =
@@ -1043,16 +1201,16 @@ function add(
 }
 
 function paintStacked(
-  cell: PrintCell,
+  style: ProjectedStyle,
   local: PrintBox,
   geometry: PageGeometry,
   measure: PrintTextMeasure,
   out: PrintItem[],
   clip: PrintBox,
   color: string,
+  text: string,
 ): void {
-  const style = cell.style;
-  const characters = Array.from(cell.displayText);
+  const characters = Array.from(text);
   if (characters.length === 0) return;
   const width = Math.max(1, local.width - TEXT_PADDING * 2);
   const height = Math.max(1, local.height - TEXT_PADDING * 2);
@@ -1237,36 +1395,45 @@ function emitBorderBox(
   if (edges.right.draw) emitEdge('right', edges.right.edge, page, geometry, out);
   if (edges.top.draw) emitEdge('top', edges.top.edge, page, geometry, out);
   if (edges.bottom.draw) emitEdge('bottom', edges.bottom.edge, page, geometry, out);
-  if (border.diagonalUp || border.diagonalDown) {
-    const stroke = BORDER_STROKES[border.diagonal.style] ?? null;
-    if (stroke !== null) {
-      const color = border.diagonal.color ?? AUTOMATIC_BORDER_COLOR;
-      const width = Math.max(0.25, stroke.width * geometry.scale);
-      if (border.diagonalUp) {
-        out.push({
-          kind: 'line',
-          x1: page.x,
-          y1: page.y + page.height,
-          x2: page.x + page.width,
-          y2: page.y,
-          color,
-          width,
-          dash: stroke.dash?.map((value) => value * geometry.scale) ?? null,
-        });
-      }
-      if (border.diagonalDown) {
-        out.push({
-          kind: 'line',
-          x1: page.x,
-          y1: page.y,
-          x2: page.x + page.width,
-          y2: page.y + page.height,
-          color,
-          width,
-          dash: stroke.dash?.map((value) => value * geometry.scale) ?? null,
-        });
-      }
-    }
+  emitDiagonals(border, page, geometry, out);
+}
+
+/** The two diagonal edges of a border box, when the style declares them. */
+function emitDiagonals(
+  border: BorderStyle,
+  page: PrintBox,
+  geometry: PageGeometry,
+  out: PrintItem[],
+): void {
+  if (!border.diagonalUp && !border.diagonalDown) return;
+  const stroke = BORDER_STROKES[border.diagonal.style] ?? null;
+  if (stroke === null) return;
+  const color = border.diagonal.color ?? AUTOMATIC_BORDER_COLOR;
+  const width = Math.max(0.25, stroke.width * geometry.scale);
+  const dash = stroke.dash?.map((value) => value * geometry.scale) ?? null;
+  if (border.diagonalUp) {
+    out.push({
+      kind: 'line',
+      x1: page.x,
+      y1: page.y + page.height,
+      x2: page.x + page.width,
+      y2: page.y,
+      color,
+      width,
+      dash,
+    });
+  }
+  if (border.diagonalDown) {
+    out.push({
+      kind: 'line',
+      x1: page.x,
+      y1: page.y,
+      x2: page.x + page.width,
+      y2: page.y + page.height,
+      color,
+      width,
+      dash,
+    });
   }
 }
 
@@ -1373,8 +1540,11 @@ function paintMerge(
   geometry: PageGeometry,
   body: PrintBox,
   fills: PrintFillItem[],
+  bars: PrintDataBarItem[],
   texts: PrintItem[],
   borders: PrintItem[],
+  conditionalBorders: PrintItem[],
+  icons: PrintIconItem[],
 ): void {
   const band = input.band;
   const lastRow = merge.anchorRow + merge.rowSpan - 1;
@@ -1399,19 +1569,38 @@ function paintMerge(
   };
   const anchor = input.sheet.cellAt(merge.anchorRow, merge.anchorCol);
   const style = anchor?.style ?? null;
+  const conditional = anchor?.conditional ?? null;
   const page = mapBox(local, geometry);
   const clip = intersectBox(page, body);
   if (clip !== null && style !== null) {
     const fill = fillItemFor(style, clip);
     if (fill !== null) fills.push(fill);
   }
+  // The CF fill is a background like the manual one: it covers the merged
+  // region on every page the region touches, clipped like the region.
+  const cfFill = conditionalFillItem(conditional, clip ?? page);
+  if (cfFill !== null) fills.push(cfFill);
   const anchorOnPage =
     merge.anchorRow >= band.startRow &&
     merge.anchorRow <= band.endRow &&
     merge.anchorCol >= band.startCol &&
     merge.anchorCol <= band.endCol;
   if (anchorOnPage && anchor !== null) {
-    emitCellText(anchor, local, geometry, input.measure, texts, clip ?? page);
+    // The bar, icon and text are the anchor's content: they paint on the
+    // anchor's page only (print-pdf §4), which also keeps their cell-local
+    // geometry aligned when the region is clipped at a page break.
+    if (conditional !== null) {
+      emitConditionalPaint(conditional, local, geometry, body, bars, icons);
+    }
+    emitCellText(
+      anchor,
+      local,
+      geometry,
+      input.measure,
+      texts,
+      clip ?? page,
+      conditional?.text ?? null,
+    );
   }
   const resolved = mergedBorder(merge, input.sheet);
   const trueLeft = merge.anchorCol >= band.startCol;
@@ -1439,6 +1628,22 @@ function paintMerge(
     band,
     borders,
   );
+  if (conditional?.border !== null && conditional?.border !== undefined) {
+    emitConditionalBorder(
+      {
+        left: trueLeft ? conditional.border.left : noneBorderEdge(),
+        right: trueRight ? conditional.border.right : noneBorderEdge(),
+        top: trueTop ? conditional.border.top : noneBorderEdge(),
+        bottom: trueBottom ? conditional.border.bottom : noneBorderEdge(),
+        diagonal: noneBorderEdge(),
+        diagonalUp: false,
+        diagonalDown: false,
+      },
+      local,
+      geometry,
+      conditionalBorders,
+    );
+  }
 }
 
 /** Mirror of `src/grid/merged-borders.ts` over the print snapshot. */

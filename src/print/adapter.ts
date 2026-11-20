@@ -2,6 +2,7 @@ import { DEFAULT_FONT } from '@model/style';
 import type { Workbook } from '@model/types';
 import { printAreaOf } from '@ooxml/print-setup-xml';
 import type { MergeSpan, ProjectedCell, SheetProjection } from '@view/types';
+import { printConditionalFor } from './cf';
 import type { PrintCell, PrintSheetSnapshot, PrintTextMeasure } from './types';
 
 /** CSS pixels at 96 dpi to points. */
@@ -39,7 +40,7 @@ export function createPrintSnapshot(
     headingFont,
     cellAt(row, col) {
       const cell = projection.cellAt(row, col);
-      return cell === null ? null : toPrintCell(cell);
+      return cell === null ? null : toPrintCell(cell, projection);
     },
     cellsIn(startRow, endRow, startCol, endCol) {
       const cells: PrintCell[] = [];
@@ -49,7 +50,7 @@ export function createPrintSnapshot(
         for (const col of projection.rowDataColumns(row)) {
           if (col < startCol || col > endCol) continue;
           const cell = projection.cellAt(row, col);
-          if (cell !== null) cells.push(toPrintCell(cell));
+          if (cell !== null) cells.push(toPrintCell(cell, projection));
         }
       }
       return cells;
@@ -77,8 +78,15 @@ export function createPrintSnapshot(
  * in sheet points: the projection measures in CSS pixels, and both sides of
  * every comparison scale by the same 4/3, so the result is the same `#`
  * overflow marker and the same `*` fill the grid paints.
+ *
+ * Conditional formatting is resolved for the anchor of a merged range only
+ * (§5.2: a merged range is painted from its anchor's plan), and its geometry
+ * is the whole merged rectangle, not the anchor cell.
  */
-function toPrintCell(cell: ProjectedCell): PrintCell {
+function toPrintCell(cell: ProjectedCell, projection: SheetProjection): PrintCell {
+  const anchor =
+    cell.merge === null || (cell.row === cell.merge.anchorRow && cell.col === cell.merge.anchorCol);
+  const size = anchor ? mergedSizePoints(cell, projection) : null;
   return {
     row: cell.row,
     col: cell.col,
@@ -87,6 +95,8 @@ function toPrintCell(cell: ProjectedCell): PrintCell {
     style: cell.style,
     hyperlink: cell.hyperlink !== null,
     merge: cell.merge,
+    conditional:
+      size === null ? null : printConditionalFor(projection, cell, size.width, size.height),
     layoutText(width: number, measure: PrintTextMeasure) {
       const font = {
         family: cell.style.font.name,
@@ -97,5 +107,30 @@ function toPrintCell(cell: ProjectedCell): PrintCell {
       };
       return cell.layoutText(width / PT_PER_PIXEL, (text) => measure(text, font) / PT_PER_PIXEL);
     },
+  };
+}
+
+/** The cell's or merged range's size in sheet points at 100% (zoom removed). */
+function mergedSizePoints(
+  cell: ProjectedCell,
+  projection: SheetProjection,
+): { readonly width: number; readonly height: number } {
+  const merge = cell.merge;
+  let width = 0;
+  let height = 0;
+  if (merge === null) {
+    width = projection.columnWidth(cell.col);
+    height = projection.rowHeight(cell.row);
+  } else {
+    for (let col = merge.anchorCol; col < merge.anchorCol + merge.colSpan; col += 1) {
+      width += projection.columnWidth(col);
+    }
+    for (let row = merge.anchorRow; row < merge.anchorRow + merge.rowSpan; row += 1) {
+      height += projection.rowHeight(row);
+    }
+  }
+  return {
+    width: (width / projection.zoom) * PT_PER_PIXEL,
+    height: (height / projection.zoom) * PT_PER_PIXEL,
   };
 }

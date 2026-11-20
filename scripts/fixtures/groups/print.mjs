@@ -9,6 +9,9 @@ import { XML_HEADER, SPREADSHEET_NS, REL_NS, PACKAGE_REL_NS, packageEntries } fr
  *   gridlines and headings, a merged range, a date and a currency cell, a
  *   bold/filled/bordered style, landscape with no `fitToPage` (so the planner
  *   reads `scale` and the model can add `sheetPr/pageSetUpPr`).
+ * - `print-cf.xlsx` — every conditional-formatting paint kind (fill, font,
+ *   colour scale, data bar, icon set, CF number format), two priority rules
+ *   with stop-if-true on column A, and a mixed-sign data bar with its axis.
  *
  * Hand-authored with fixed zip timestamps, so `npm run fixtures` is
  * byte-identical on every run (groups/README.md). The assertions live in
@@ -115,8 +118,121 @@ function printAreasPackage() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// print-cf.xlsx — every conditional-formatting paint kind, plus priority and
+// stop-if-true (print-pdf §4, conditional formatting §5.1).
+// ---------------------------------------------------------------------------
+
+const CF_WORKBOOK = `${XML_HEADER}
+<workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
+  <workbookPr date1904="0"/>
+  <bookViews><workbookView activeTab="0"/></bookViews>
+  <sheets><sheet name="CF" sheetId="1" r:id="rId1"/></sheets>
+  <calcPr calcId="191029" fullCalcOnLoad="0"/>
+</workbook>`;
+
+const CF_WORKBOOK_RELS = `${XML_HEADER}
+<Relationships xmlns="${PACKAGE_REL_NS}">
+  <Relationship Id="rId1" Type="${REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="${REL_NS}/styles" Target="styles.xml"/>
+</Relationships>`;
+
+const CF_STYLES = `${XML_HEADER}
+<styleSheet xmlns="${SPREADSHEET_NS}">
+  <numFmts count="1"><numFmt numFmtId="${CURRENCY}" formatCode="0.0%"/></numFmts>
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts>
+  <fills count="2">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+  </fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+  <dxfs count="3">
+    <dxf><fill><patternFill><bgColor rgb="FFFFF2CC"/></patternFill></fill></dxf>
+    <dxf><font><color rgb="FF0000FF"/></font></dxf>
+    <dxf><numFmt numFmtId="${CURRENCY}" formatCode="0.0%"/></dxf>
+  </dxfs>
+</styleSheet>`;
+
+const CF_HEADERS = [
+  textCell('A1', 'Value'),
+  textCell('B1', 'Font'),
+  textCell('C1', 'Scale'),
+  textCell('D1', 'Bar'),
+  textCell('E1', 'Icons'),
+  textCell('F1', 'Percent'),
+  textCell('G1', 'Bar ±'),
+].join('');
+
+const CF_VALUES = [10, 20, 30, 40];
+const CF_BAR_VALUES = [-20, -10, 10, 20];
+
+const CF_ROWS = [
+  row(1, CF_HEADERS),
+  ...CF_VALUES.map((value, index) =>
+    row(
+      index + 2,
+      [
+        numberCell(`A${index + 2}`, value),
+        numberCell(`B${index + 2}`, value),
+        numberCell(`C${index + 2}`, value),
+        numberCell(`D${index + 2}`, value),
+        numberCell(`E${index + 2}`, value),
+        numberCell(`F${index + 2}`, value / 100),
+        numberCell(`G${index + 2}`, CF_BAR_VALUES[index]),
+      ].join(''),
+    ),
+  ),
+];
+
+const CF_SHEET = `${XML_HEADER}
+<worksheet xmlns="${SPREADSHEET_NS}">
+  <dimension ref="A1:G5"/>
+  <sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>
+  <sheetFormatPr defaultRowHeight="15" defaultColWidth="11"/>
+  <sheetData>
+${CF_ROWS.join('\n')}
+  </sheetData>
+  <conditionalFormatting sqref="A2:A5">
+    <cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="greaterThan"><formula>25</formula></cfRule>
+    <cfRule type="cellIs" dxfId="1" priority="2" operator="greaterThan"><formula>15</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="B2:B5">
+    <cfRule type="cellIs" dxfId="1" priority="3" operator="greaterThan"><formula>15</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="C2:C5">
+    <cfRule type="colorScale" priority="4"><colorScale><cfvo type="min"/><cfvo type="percentile" val="50"/><cfvo type="max"/><color rgb="FFF8696B"/><color rgb="FFFFEB84"/><color rgb="FF63BE7B"/></colorScale></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="D2:D5">
+    <cfRule type="dataBar" priority="5"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="E2:E5">
+    <cfRule type="iconSet" priority="6"><iconSet iconSet="3Arrows"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="F2:F5">
+    <cfRule type="cellIs" dxfId="2" priority="7" operator="greaterThan"><formula>0</formula></cfRule>
+  </conditionalFormatting>
+  <conditionalFormatting sqref="G2:G5">
+    <cfRule type="dataBar" priority="8"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule>
+  </conditionalFormatting>
+</worksheet>`;
+
+function printCfPackage() {
+  return packageEntries({
+    workbook: CF_WORKBOOK,
+    workbookRels: CF_WORKBOOK_RELS,
+    sheets: [['xl/worksheets/sheet1.xml', CF_SHEET]],
+    extra: { 'xl/styles.xml': CF_STYLES },
+  });
+}
+
 export function build({ compatDir }) {
-  const fixtures = [['print-areas.xlsx', printAreasPackage()]];
+  const fixtures = [
+    ['print-areas.xlsx', printAreasPackage()],
+    ['print-cf.xlsx', printCfPackage()],
+  ];
   for (const [name, bytes] of fixtures) {
     const path = join(compatDir, name);
     writeFileSync(path, bytes);

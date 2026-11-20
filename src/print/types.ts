@@ -1,4 +1,4 @@
-import type { FontStyle, GridRange, PrintSetupRecord } from '@model/types';
+import type { BorderStyle, FontStyle, GridRange, PrintSetupRecord } from '@model/types';
 import type { CellValue } from '@model/value';
 import type { MergeSpan, ProjectedStyle, ProjectedTextLayout } from '@view/types';
 
@@ -14,8 +14,10 @@ import type { MergeSpan, ProjectedStyle, ProjectedTextLayout } from '@view/types
  * - **Origin is the page's top-left**, with y growing downwards. A page's
  *   content, its row/column bands and its items all live in that space, so a
  *   renderer positions the page box at 0,0 and draws the list.
- * - **Items paint in array order.** Gridlines first, then fills, then text (and
- *   its underline/strike lines), then borders, as Excel paints them.
+ * - **Items paint in array order.** Gridlines first, then manual and
+ *   conditional fills, then data bars, then text (and its underline/strike
+ *   lines), then manual and conditional borders, then icons, as Excel paints
+ *   them (conditional formatting §5.1).
  * - **A clip is a hard clip.** Text never paints outside its `clip`. Lines at
  *   a clipped page edge may extend past the page box; the renderer clips the
  *   page itself.
@@ -102,6 +104,54 @@ export interface PrintLineItem {
   readonly dash: readonly number[] | null;
 }
 
+/**
+ * A conditional-formatting data bar (conditional formatting §5.1 step 3). A
+ * rect variant: fill the box with `color`, or with a horizontal gradient from
+ * `gradient.from` (left) to `gradient.to` (right); stroke the box at 1pt with
+ * `borderColor` when it is not null; then draw a 1pt vertical line at `axisX`
+ * in `axisColor` when it is not null.
+ */
+export interface PrintDataBarItem {
+  readonly kind: 'dataBar';
+  readonly box: PrintBox;
+  readonly color: string;
+  readonly gradient: { readonly from: string; readonly to: string } | null;
+  readonly borderColor: string | null;
+  /** The zero axis in page points, or `null` when the bar has none. */
+  readonly axisX: number | null;
+  readonly axisColor: string;
+}
+
+/**
+ * The icon families a conditional-formatting icon set can paint (conditional
+ * formatting §5.1 step 8). The renderers implement one glyph per family; the
+ * reference geometry is `paintCfIcon` in `src/grid/cf-paint.ts`.
+ *
+ * - `arrow`: a filled arrow at `-45° + 90° * iconIndex / (iconCount - 1)`
+ *   (straight up for the first icon).
+ * - `traffic`: a filled disc with a dark outline.
+ * - `sign`: index 0 is a red disc with a white cross, the last index a green
+ *   disc with a white tick, and every middle index an amber triangle with a
+ *   bar and a dot.
+ * - `flag`: a filled flag on a pole.
+ * - `rating`: `iconCount` vertical bars; the first `iconIndex + 1` are dark
+ *   `#404040`, the rest `#E3E3E3`.
+ * - `quarter`: a grey disc with a dark pie wedge of
+ *   `iconIndex / (iconCount - 1)`.
+ * - `dot`: a filled circle.
+ */
+export type PrintIconFamily = 'arrow' | 'traffic' | 'sign' | 'flag' | 'rating' | 'quarter' | 'dot';
+
+/** One resolved conditional-formatting icon glyph. */
+export interface PrintIconItem {
+  readonly kind: 'icon';
+  readonly box: PrintBox;
+  readonly family: PrintIconFamily;
+  readonly color: string;
+  readonly iconIndex: number;
+  readonly iconCount: number;
+}
+
 /** The resolved font of a text item. */
 export interface PrintFont {
   readonly family: string;
@@ -147,7 +197,8 @@ export interface PrintImageItem {
   readonly placeholder: true;
 }
 
-export type PrintItem = PrintFillItem | PrintLineItem | PrintTextItem | PrintImageItem;
+export type PrintItem =
+  PrintFillItem | PrintLineItem | PrintTextItem | PrintImageItem | PrintDataBarItem | PrintIconItem;
 
 /** One printed page. */
 export interface PrintPage {
@@ -231,6 +282,60 @@ export interface PrintCell {
    * same relative width the grid measures in CSS pixels).
    */
   readonly layoutText: (width: number, measure: PrintTextMeasure) => ProjectedTextLayout;
+  /**
+   * The resolved conditional-formatting paint (conditional formatting §5.1),
+   * or `null`/absent when no rule paints the cell. The adapter computes it
+   * with the grid's own `cfPaintOps`, so priority and stop-if-true are the
+   * grid's; the planner only lays the already-ordered paint out on the page.
+   */
+  readonly conditional?: PrintConditionalPaint | null;
+}
+
+/**
+ * One cell's conditional-formatting paint, in the grid's §5.1 order and in
+ * **cell-local points** (origin at the cell's, or the merged anchor's,
+ * top-left). Produced by `printConditionalFor` from `cfPaintOps`.
+ */
+export interface PrintConditionalPaint {
+  /** The CF fill or colour-scale blend (§5.1 step 2), or `null`. */
+  readonly fillColor: string | null;
+  /** The data bar (§5.1 step 3), or `null`. */
+  readonly dataBar: PrintConditionalDataBar | null;
+  /** How the text paints (§5.1 steps 6-7); always present when painted. */
+  readonly text: PrintConditionalText;
+  /** The CF border edges that paint over the manual border (§5.1 step 5). */
+  readonly border: BorderStyle | null;
+  /** The icon glyph (§5.1 step 8), or `null`. */
+  readonly icon: PrintConditionalIcon | null;
+}
+
+export interface PrintConditionalDataBar {
+  readonly box: PrintBox;
+  readonly color: string;
+  readonly gradient: { readonly from: string; readonly to: string } | null;
+  readonly borderColor: string | null;
+  readonly axisX: number | null;
+  readonly axisColor: string;
+}
+
+export interface PrintConditionalIcon {
+  readonly box: PrintBox;
+  readonly family: PrintIconFamily;
+  readonly color: string;
+  readonly iconIndex: number;
+  readonly iconCount: number;
+}
+
+export interface PrintConditionalText {
+  /** `true` for an icon-only rule or a data bar that hides its value. */
+  readonly hidden: boolean;
+  /** Points the text shifts right to clear an icon. */
+  readonly shift: number;
+  /** The manual style with the CF font and number format laid over it. */
+  readonly style: ProjectedStyle;
+  readonly text: string;
+  /** `false` when a CF number format produced the text, so no width layout. */
+  readonly layoutText: boolean;
 }
 
 /**
