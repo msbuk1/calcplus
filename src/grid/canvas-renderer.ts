@@ -20,6 +20,7 @@ import {
   mergedRect,
   panePaintRect,
   type CellRect,
+  type PaneBounds,
   type PaneLayout,
   type PaneRect,
 } from './panes';
@@ -1173,17 +1174,33 @@ export class CanvasRenderFrame implements RenderFrame {
     // unfilled — the grid background shows through it — with no outline of its
     // own; the range keeps its border and its fill handle (ticket 31 A).
     const collapsed = range.startRow === range.endRow && range.startCol === range.endCol;
-    const activeRect = this.activeCellRect(
-      state.projection,
-      layout,
-      scrollX,
-      scrollY,
-      activeCell(state.selection),
-    );
+    const active = activeCell(state.selection);
+    const activeRect = this.activeCellRect(state.projection, layout, scrollX, scrollY, active);
+    // Every selection overlay clips to the pane it belongs to, like the cells
+    // and the headers (ticket 45): a selection scrolled under a frozen strip
+    // never paints inside it. A cell that no pane shows has no overlay.
+    const activePane = panes.find((pane) => paneHoldsCell(pane, active.row, active.col)) ?? null;
+    const merge = state.projection.mergeAt(active.row, active.col);
+    const activeCells =
+      merge === null
+        ? {
+            startRow: active.row,
+            endRow: active.row,
+            startCol: active.col,
+            endCol: active.col,
+          }
+        : {
+            startRow: merge.anchorRow,
+            endRow: merge.anchorRow + merge.rowSpan - 1,
+            startCol: merge.anchorCol,
+            endCol: merge.anchorCol + merge.colSpan - 1,
+          };
     const hole = collapsed ? null : activeRect;
     context.fillStyle = COLORS.selectionFill;
     let handleCorner: { x: number; y: number } | null = null;
+    let handlePane: Pane | null = null;
     for (const pane of panes) {
+      if (pane.rect.width <= 0 || pane.rect.height <= 0) continue;
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
       const startCol = Math.max(range.startCol, pane.startCol);
@@ -1195,7 +1212,11 @@ export class CanvasRenderFrame implements RenderFrame {
       const y = topLeft.y;
       const width = bottomRight.x + bottomRight.width - x;
       const height = bottomRight.y + bottomRight.height - y;
-      fillRectExcept(context, x, y, width, height, hole);
+      // The active cell is a hole where it shows: in the pane(s) that hold its
+      // cells. When it scrolls under a frozen strip its rectangle lands in the
+      // strip, and punching there would erase the strip's part of the tint.
+      const paneHole = hole !== null && paneTouchesRange(pane, activeCells) ? hole : null;
+      this.paintInPane(pane, () => fillRectExcept(context, x, y, width, height, paneHole));
       if (
         handleCorner === null ||
         bottomRight.x + bottomRight.width >= handleCorner.x ||
@@ -1205,12 +1226,14 @@ export class CanvasRenderFrame implements RenderFrame {
           x: bottomRight.x + bottomRight.width,
           y: bottomRight.y + bottomRight.height,
         };
+        handlePane = pane;
       }
     }
 
     context.strokeStyle = COLORS.selectionBorder;
     context.lineWidth = 2;
     for (const pane of panes) {
+      if (pane.rect.width <= 0 || pane.rect.height <= 0) continue;
       const startRow = Math.max(range.startRow, pane.startRow);
       const endRow = Math.min(range.endRow, pane.endRow);
       const startCol = Math.max(range.startCol, pane.startCol);
@@ -1222,39 +1245,54 @@ export class CanvasRenderFrame implements RenderFrame {
       const y = topLeft.y;
       const width = bottomRight.x + bottomRight.width - x;
       const height = bottomRight.y + bottomRight.height - y;
-      context.strokeRect(x + 1, y + 1, Math.max(0, width - 2), Math.max(0, height - 2));
+      this.paintInPane(pane, () =>
+        context.strokeRect(x + 1, y + 1, Math.max(0, width - 2), Math.max(0, height - 2)),
+      );
     }
 
-    if (activeRect !== null) {
-      // The active-cell box belongs to a collapsed selection only.
-      if (collapsed) {
-        context.strokeStyle = COLORS.activeBorder;
-        context.lineWidth = 2;
+    if (collapsed && activeRect !== null && activePane !== null) {
+      context.strokeStyle = COLORS.activeBorder;
+      context.lineWidth = 2;
+      this.paintInPane(activePane, () =>
         context.strokeRect(
           activeRect.x + 1,
           activeRect.y + 1,
           Math.max(0, activeRect.width - 2),
           Math.max(0, activeRect.height - 2),
-        );
-      }
-      // The fill handle sits at the bottom-right corner of the selection.
-      const handleX = activeRect.x + activeRect.width - 3;
-      const handleY = activeRect.y + activeRect.height - 3;
-      const corner = handleCorner;
-      const handleLeft = corner === null ? handleX : corner.x - 3;
-      const handleTop = corner === null ? handleY : corner.y - 3;
-      context.fillStyle = COLORS.fillHandle;
-      context.fillRect(handleLeft, handleTop, 6, 6);
-      context.strokeStyle = '#ffffff';
-      context.lineWidth = 1;
-      context.strokeRect(handleLeft + 0.5, handleTop + 0.5, 5, 5);
-      gridDebugState.fillHandle = {
-        x: handleLeft,
-        y: handleTop,
-        width: 6,
-        height: 6,
-      };
+        ),
+      );
     }
+
+    // The fill handle sits at the bottom-right corner of the selection, inside
+    // the pane that paints that corner. A selection with nothing on screen has
+    // no handle, painted or pressable.
+    const handle =
+      handleCorner === null || handlePane === null
+        ? null
+        : { x: handleCorner.x - 3, y: handleCorner.y - 3, pane: handlePane };
+    if (handle !== null) {
+      this.paintInPane(handle.pane, () => {
+        context.fillStyle = COLORS.fillHandle;
+        context.fillRect(handle.x, handle.y, 6, 6);
+        context.strokeStyle = '#ffffff';
+        context.lineWidth = 1;
+        context.strokeRect(handle.x + 0.5, handle.y + 0.5, 5, 5);
+      });
+    }
+    gridDebugState.fillHandle =
+      handle === null ? null : { x: handle.x, y: handle.y, width: 6, height: 6 };
+  }
+
+  /** Run a paint pass clipped to one pane's rectangle. */
+  private paintInPane(pane: Pane, paint: () => void): void {
+    if (pane.rect.width <= 0 || pane.rect.height <= 0) return;
+    const { context } = this;
+    context.save();
+    context.beginPath();
+    context.rect(pane.rect.x, pane.rect.y, pane.rect.width, pane.rect.height);
+    context.clip();
+    paint();
+    context.restore();
   }
 
   private activeCellRect(
@@ -1814,6 +1852,21 @@ function buildPanes(
     },
   ];
   return panes;
+}
+
+/** Whether a pane shows the cell, by comparing the cell's numbers to its bounds. */
+function paneHoldsCell(pane: Pane, row: number, col: number): boolean {
+  return row >= pane.startRow && row <= pane.endRow && col >= pane.startCol && col <= pane.endCol;
+}
+
+/** Whether a pane shows any cell of a range, by comparing their numbers to its bounds. */
+function paneTouchesRange(pane: Pane, range: PaneBounds): boolean {
+  return (
+    range.startRow <= pane.endRow &&
+    range.endRow >= pane.startRow &&
+    range.startCol <= pane.endCol &&
+    range.endCol >= pane.startCol
+  );
 }
 
 function sameMerge(

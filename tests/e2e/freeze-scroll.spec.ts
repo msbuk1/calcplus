@@ -1,7 +1,14 @@
 import { Buffer } from 'node:buffer';
 import { expect, test, type Page } from '@playwright/test';
 import { buildXlsx } from '../helpers/build-xlsx';
-import { cellRect, clickCell, regionSignature, type CellRect } from './grid-helpers';
+import {
+  cellRect,
+  clickCell,
+  dragSelect,
+  pixelAt,
+  regionSignature,
+  type CellRect,
+} from './grid-helpers';
 
 /**
  * The frozen strips are strict clip bands (ticket 41).
@@ -214,4 +221,111 @@ test('the frozen column strip stays clean at every horizontal scroll offset', as
   ).toBeGreaterThan(5);
 
   expect(await signature(page, band), 'scrolling left painted into the frozen strip').toBe(atRest);
+});
+
+test('a selection scrolled under the frozen strip leaves no ink in it', async ({ page }) => {
+  // The repro from ticket 45, with frozen rows only: the active cell and its
+  // fill handle are painted with the selection overlays.
+  await openGrid(page, { rows: 2, cols: 0 });
+  const band = await frozenRowBand(page, 2);
+  const divider = band.y + band.height;
+
+  // Select a cell below the strip and park it there: the band carries no
+  // selection ink to begin with, because the cell is outside it.
+  await clickCell(page, 20, 12);
+  await settle(page);
+  const atRest = await signature(page, band);
+
+  // Scroll the sheet down so the active cell slides under the strip.
+  await wheel(page, 0, 400);
+  const hidden = await cellRect(page, 20, 12);
+  expect(hidden.y).toBeLessThan(divider);
+  expect(hidden.y + hidden.height).toBeGreaterThan(band.y);
+
+  expect(await signature(page, band), 'the selection painted inside the frozen strip').toBe(atRest);
+  // Nothing is left to press either: the handle is not painted and not a target.
+  expect(await page.evaluate(() => window.__calcplus.getFillHandle())).toBeNull();
+
+  // Scroll back until the cell is in view again: the box and handle come back,
+  // clipped to the pane rather than hidden for good.
+  await wheel(page, 0, -190);
+  const visible = await cellRect(page, 20, 12);
+  expect(visible.y).toBeGreaterThanOrEqual(divider);
+  const handle = await page.evaluate(() => window.__calcplus.getFillHandle());
+  expect(handle).not.toBeNull();
+  expect(handle?.x).toBeGreaterThanOrEqual(visible.x);
+  expect(handle?.y).toBeGreaterThanOrEqual(visible.y);
+  // The active-cell border is the accent colour, painted inside the cell edge.
+  const border = await pixelAt(page, visible.x + 1, visible.y + visible.height / 2);
+  expect(border.r, JSON.stringify(border)).toBe(26);
+  expect(border.g).toBe(115);
+  expect(border.b).toBe(232);
+  expect(await signature(page, band)).toBe(atRest);
+});
+
+test('a range scrolled under the frozen strip leaves no tint or border in it', async ({ page }) => {
+  await openGrid(page, { rows: 2, cols: 1 });
+  const band = await frozenRowBand(page, 2);
+  const divider = band.y + band.height;
+
+  // A multi-cell selection whose active cell sits below the strip, as in the
+  // selection-marquee case (ticket 31).
+  await dragSelect(page, 20, 0, 24, 2);
+  await settle(page);
+  const atRest = await signature(page, band);
+
+  // Stop the scroll 10px through a row, so the part of the range the pane shows
+  // starts above the divider: without a clip its tint and top border would
+  // paint over the frozen rows.
+  await wheel(page, 0, 400);
+  await wheel(page, 0, -10);
+  const scrollY = (await page.evaluate(() => window.__calcplus.getScroll())).y;
+  const top = await cellRect(page, 20, 0);
+  expect(top.y).toBeLessThan(divider);
+  const partial = await cellRect(page, Math.floor(scrollY / (await rowHeight(page))), 0);
+  expect(partial.y).toBeLessThan(divider);
+
+  expect(
+    await signature(page, band),
+    'the range tint or border painted inside the frozen strip',
+  ).toBe(atRest);
+
+  // The handle hangs on the range's own corner, below the strip.
+  const handle = await page.evaluate(() => window.__calcplus.getFillHandle());
+  expect(handle).not.toBeNull();
+  expect(handle?.y).toBeGreaterThanOrEqual(divider);
+});
+
+test('a selection across the divider still tints both panes round the active cell', async ({
+  page,
+}) => {
+  // Ticket 31 A stays as it was: the range tints in every pane it touches, and
+  // the active cell keeps the grid background (the hole).
+  await openGrid(page, { rows: 2, cols: 1 });
+  await dragSelect(page, 0, 0, 4, 2);
+  await settle(page);
+
+  const inside = async (row: number, col: number) => {
+    const rect = await cellRect(page, row, col);
+    return pixelAt(page, rect.x + rect.width / 2, rect.y + rect.height / 2);
+  };
+
+  // B1 is the frozen row in a scrolling column; B5 scrolls under no strip.
+  const frozenPart = await inside(0, 1);
+  expect(frozenPart.r, JSON.stringify(frozenPart)).toBeGreaterThan(225);
+  expect(frozenPart.r).toBeLessThan(240);
+  expect(frozenPart.g).toBeGreaterThan(235);
+  expect(frozenPart.b).toBeGreaterThan(248);
+
+  const scrollingPart = await inside(4, 1);
+  expect(scrollingPart.r, JSON.stringify(scrollingPart)).toBeGreaterThan(225);
+  expect(scrollingPart.r).toBeLessThan(240);
+  expect(scrollingPart.g).toBeGreaterThan(235);
+  expect(scrollingPart.b).toBeGreaterThan(248);
+
+  // The active cell A1 stays unfilled, as ticket 31 A rules.
+  const active = await inside(0, 0);
+  expect(active.r, JSON.stringify(active)).toBeGreaterThan(245);
+  expect(active.g).toBeGreaterThan(245);
+  expect(active.b).toBeGreaterThan(245);
 });
