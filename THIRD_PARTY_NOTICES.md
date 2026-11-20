@@ -22,12 +22,22 @@ commit.
 | fflate | 0.8.x | MIT | ZIP read/write | Include the copyright and permission notice. |
 | saxes | 6.0.x | ISC | XML parsing | Include the copyright and permission notice. |
 | numfmt | 4.1.3 | MIT | Excel number-format grammar | Include the copyright and permission notice. The Excel seams (built-in ids, 1904 adapter, width layout, colours, grouping and invalid fallback) are calcplus code. |
+| Go standard library | toolchain version (1.18 or newer) | BSD-3-Clause | Launcher static file server and embedded app | Include the Go BSD-3-Clause notice and the launcher source with the release. The build script copies the toolchain's licence as `GO-LICENSE`. The launcher uses no third-party Go modules. |
 
-Later milestones add PDFKit (MIT), the Go standard library
-launcher (BSD-3-Clause) and the OFL-1.1 fonts. They are not installed yet;
-their notices and obligations are recorded in
+Later milestones add PDFKit (MIT) and the OFL-1.1 fonts. They are not installed
+yet; their notices and obligations are recorded in
 [licensing §2](.scratch/calcplus/spec/licensing.md) and must be added here when
 the dependency lands.
+
+### The Go launcher
+
+The launcher in [`launcher/`](launcher/) is a separate program that embeds the
+static build. It imports only the Go standard library, so the only distributed
+Go notice is the standard library's BSD-3-Clause notice, copied into each
+package as `GO-LICENSE`. The release package carries `LICENSE`, `NOTICE` and
+this file; the launcher source, its `go.mod` and the build script are part of the Corresponding Source ([licensing §3.1 and
+§3.4](.scratch/calcplus/spec/licensing.md)). The launcher does not prevent a user
+from replacing the embedded build with a modified one.
 
 The bundled icon sets are original SVG artwork drawn for calcplus. They are
 not copied from Microsoft or any other product.

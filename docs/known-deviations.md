@@ -1,0 +1,46 @@
+# Known deviations and limitations
+
+calcplus aims to be near-identical to Excel desktop, not identical. This page
+lists the deliberate differences and the current limitations, each traced to
+the contract or ticket that records it. It is seeded from the specs and tickets
+as the M7 launcher lane lands (2026-11-20); the M8 gate requires every entry to
+carry a pinning test
+([milestones](../.scratch/calcplus/spec/milestones.md) §4 and §8,
+[testing and conformance](../.scratch/calcplus/spec/testing-conformance.md)).
+
+If an entry here and a contract disagree, the contract wins.
+
+## Deliberate differences from Excel
+
+| ID | Difference | What it means in use | Source |
+|---|---|---|---|
+| D-1 | **Data validation is preserved, not enforced.** Rules round-trip unchanged, but calcplus does not block or warn on values Excel would reject. | You can type a value a dropdown or limit would forbid in Excel; the saved file keeps the original rules. | [file compatibility](../.scratch/calcplus/spec/file-compat.md) §3 table; [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §11 |
+| D-2 | **Sheet and workbook protection is preserved, not enforced.** | Protected cells stay editable in calcplus, and the protection XML is saved unchanged. Editing a protected workbook can produce changes Excel would have blocked. | [file compatibility](../.scratch/calcplus/spec/file-compat.md) §6.7; [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §11 |
+| D-3 | **Headers and footers, print titles, manual page breaks, multi-page scaling and page order are v2.** Print honours the print area, orientation, fit-to-width and margins. | A workbook that relies on a repeated title row or a custom footer prints without them. | [print and PDF](../.scratch/calcplus/spec/print-pdf.md) §1 and §8; [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §9 |
+| D-4 | **Charts, images, shapes and PivotTables are preserved but not rendered.** | They survive an open/save byte-for-byte and open correctly in Excel; the calcplus grid does not draw them. A pivot is reported "preserved but not refreshed" after an edit to its source range. | [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §11; [file compatibility](../.scratch/calcplus/spec/file-compat.md) §4 and §6.4 |
+| D-5 | **Conditional formatting renders but cannot be authored.** Formula-based, above-average, blank/error and formula-threshold rules are preserved but not rendered. | Existing rules paint where supported; creating or editing rules is v2, and unsupported rules are listed in the compatibility report. | [conditional formatting](../.scratch/calcplus/spec/conditional-formatting.md) §8 and §11 |
+| D-6 | **Comments, hyperlinks and defined names are read-only in v1.** | You can read and follow a link or open a comment popup, but not create, edit or delete them. | [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §11; [file compatibility](../.scratch/calcplus/spec/file-compat.md) §3 |
+| D-7 | **Sort and AutoFilter operate on plain ranges.** Tables are preserved but not editable, and imported structured references are not evaluated. | Filtering or sorting a table uses the plain range path, not the table's own filter. | [feature matrix](../.scratch/calcplus/spec/feature-matrix.md) §11; [sort and AutoFilter](../.scratch/calcplus/spec/sort-autofilter.md) §7; [formula semantics](../.scratch/calcplus/spec/formula-semantics.md) §2 |
+| D-8 | **A structural edit breaks and marks references; it does not refuse the edit.** A target the edit removes becomes `#REF!` in formulas, names, hyperlinks and chart series, with one notice. Refusal remains only for data loss: a split grouped formula, pivot damage, a split merge or filter, and a construct that cannot be marked. | Inserting or deleting rows can turn a link into `#REF!` instead of blocking the edit. Undo restores both the data and the reference in one step. | [ticket 32](../.scratch/calcplus/issues/32-multi-part-structural-saves.md) resolution |
+| D-9 | **Broken internal hyperlinks use a provisional marker.** A target that is gone is written as `location="#REF!"`. The exact bytes Excel writes for a broken internal target are not yet confirmed. | A broken link round-trips and reads `#REF!` in calcplus; an Excel-oracle capture is needed before the convention is final. | [ticket 32](../.scratch/calcplus/issues/32-multi-part-structural-saves.md) resolution, open question 3 |
+| D-10 | **A style record written by a patch carries only what the model describes.** Source `xf` attributes outside the model and the record's `rawXml` are not copied into a new record; identity matching compares the visual parts, not transport details. | Formatting a cell still applies correctly, but a style attribute calcplus does not model can be dropped from that cell's record on save. The styles-writer work in `style-table.ts` owns the fix. | [ticket 35](../.scratch/calcplus/issues/35-format-cells-border-preset-wipe.md) resolution; `src/model/style-table.ts` |
+| D-11 | **Rich text is flattened when edited.** Untouched runs are preserved. | Editing a cell that holds mixed formatting keeps the plain text, warns, and loses the internal runs. | [file compatibility](../.scratch/calcplus/spec/file-compat.md) §3 table |
+
+## Known limitations
+
+| ID | Limitation | What you see | Source |
+|---|---|---|---|
+| L-1 | **The Windows build is unsigned.** SmartScreen may warn on first launch until a download reputation exists. Signing is optional and not budgeted for v1. | "Windows protected your PC"; choose **More info**, check the name, then **Run anyway**. Verify with `SHA256SUMS`. | [distribution](../.scratch/calcplus/spec/distribution.md) §8; [launcher README](../launcher/README.md) |
+| L-2 | **No macOS artifact in v1.** No build, no testing and no claim. | The hosted build may still load in a browser there, unsupported. | [distribution](../.scratch/calcplus/spec/distribution.md) §8; [product requirements](prd.md) §7 |
+| L-3 | **Firefox cannot save in place.** Open uses a file picker and save downloads a new file. | The app explains the download path once. | [distribution](../.scratch/calcplus/spec/distribution.md) §4 |
+| L-4 | **No assistive-technology claim in v1.** Keyboard operation and visible focus are supported; the canvas is not exposed to assistive technology. | Screen-reader users get no grid mirror; WCAG conformance is v2. | [accessibility](../.scratch/calcplus/spec/accessibility.md); [product requirements](prd.md) §7 |
+| L-5 | **`--port N` uses a separate browser origin.** | Recent files, file handles and the recovery copy from port `47823` are not visible on another port, and the launcher says so when it starts. | [distribution](../.scratch/calcplus/spec/distribution.md) §2 and acceptance criterion 10 |
+| L-6 | **No background updater or auto-update.** | Updating means replacing the executable with a newer release; the app shows its version. | [distribution](../.scratch/calcplus/spec/distribution.md) §5 |
+
+## Adding an entry
+
+1. Record the behaviour and its source (a contract section or a ticket
+   resolution).
+2. Say what the user sees. Do not hide a data-loss risk in a footnote.
+3. Add the pinning test in the same change; M8 requires one per entry
+   ([milestones](../.scratch/calcplus/spec/milestones.md) §8).

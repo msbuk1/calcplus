@@ -6,3 +6,5 @@ bench/results/
 .playwright-mcp/
 .opencode/
 .DS_Store
+release/
+launcher/webapp/dist/

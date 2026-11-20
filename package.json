@@ -26,8 +26,10 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "bench:browser": "playwright test -c bench/browser/playwright.config.ts",
+    "bench:model": "vitest run --config bench/model/vitest.config.ts",
     "bench": "npm run bench:browser",
     "licence:check": "node scripts/licence-gate.mjs",
+    "launcher": "node scripts/build-launcher.mjs",
     "fixtures": "node scripts/generate-fixtures.mjs",
     "inventory": "node scripts/generate-command-inventory.mjs",
     "check": "npm run typecheck && npm run lint && npm run test && npm run licence:check"

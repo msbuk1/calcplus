@@ -1,0 +1,183 @@
+# calcplus v1 — product requirements (published)
+
+This page publishes the v1 product definition. Its source is
+[`.scratch/calcplus/spec/prd.md`](../.scratch/calcplus/spec/prd.md); scope is
+fixed by the [feature matrix](../.scratch/calcplus/spec/feature-matrix.md). If
+this page and a contract disagree, the contract wins.
+
+Release status: the v1 build is in its last milestone (M7 — output and
+hardening). The four M7 exit criteria are the remaining gate
+([milestones](../.scratch/calcplus/spec/milestones.md) §4).
+
+## 1. Product summary
+
+**calcplus** is a browser-based, single-user clone of Excel desktop (Microsoft
+365). It is a core credible spreadsheet: grid editing, formatting, formulas,
+multi-sheet workbooks and high-fidelity `.xlsx` round-trip, with near-identical
+UI fidelity.
+
+It runs as a static web app, and as a per-OS launcher that serves the same
+build from `127.0.0.1`. There is no backend, no account and no telemetry.
+
+## 2. Target user
+
+An individual knowledge worker, analyst or small-team operator who already uses
+Excel and has `.xlsx` files. They want to open, edit, format, calculate, sort,
+filter, print and save those files with the same muscle memory, on a machine
+where installing a desktop app is inconvenient or unwanted.
+
+**Jobs to be done**
+
+- Open an existing `.xlsx` and see it faithfully.
+- Edit values and formulas, format cells, and use the keyboard as in Excel.
+- Sort and filter a plain range.
+- Save back to the same file without losing anything calcplus does not
+  understand.
+- Print or export a clean PDF.
+- Work offline and keep the workbook on the machine.
+
+## 3. Goals
+
+1. **Familiarity.** The ribbon, formula bar, grid, sheet tabs, dialogs and
+   shortcuts feel like Excel desktop. When Excel and "clean design" disagree,
+   match Excel.
+2. **No silent loss.** A workbook calcplus cannot fully model is preserved,
+   reported and never silently dropped.
+3. **Credible performance.** A 250k-cell workbook is guaranteed; up to 1M
+   cells opens in degraded mode; the app refuses rather than corrupts beyond
+   that.
+4. **Local-first.** No accounts, no uploads, no telemetry.
+5. **Open source.** GPL-3.0-only, with a build that anyone can reproduce.
+
+## 4. Fidelity promise
+
+- **Reference:** Excel desktop / Microsoft 365.
+- **Near-identical, not pixel-perfect.** Chrome layout, colours, labels and
+  interactions follow Excel; font and OS rendering differences are accepted.
+- **Published formula contract:** the 52 functions in
+  [formula semantics](../.scratch/calcplus/spec/formula-semantics.md), with
+  Excel-exact errors, coercion and operator order. Full Excel function parity is
+  not claimed.
+- **Published file contract:** the three tiers in
+  [file compatibility](../.scratch/calcplus/spec/file-compat.md). Modelled
+  features round-trip; preserved features survive byte-for-byte; unsupported
+  files are rejected with a clear message.
+- **Published performance contract:**
+  [performance](../.scratch/calcplus/spec/performance.md).
+- **Published accessibility contract:** keyboard operation in v1; no
+  assistive-technology claim
+  ([accessibility](../.scratch/calcplus/spec/accessibility.md)).
+
+## 5. V1 scope
+
+The authoritative list is the
+[feature matrix](../.scratch/calcplus/spec/feature-matrix.md). In summary:
+
+| Area | In v1 |
+|---|---|
+| Grid and editing | Selection and keyboard navigation, in-cell and formula-bar editing, cut/copy/paste, fill handle, drag-and-drop move, insert/delete, resize/autofit, merges, undo/redo, find/replace, Go To, clear |
+| Data | Sort a plain range; AutoFilter with value checklist and text/number/date conditions |
+| Formatting | Fonts, fills, borders, alignment, number formats, Format Painter, Format Cells, render-only conditional formatting |
+| Formulas and names | 52 functions, A1/mixed/cross-sheet/whole-column/names, 1900/1904 dates, no spill, read-only legacy arrays, volatile TODAY/NOW, `#CIRC!` |
+| Workbook and sheets | New/open/save/save as/close, insert/delete/rename sheets, freeze panes, zoom, gridline/heading toggles, status-bar statistics |
+| File I/O | `.xlsx` and `.xlsm` round-trip, CSV, encrypted rejection, external-link and macro preservation, drag-and-drop open, print/PDF |
+| Read-only fidelity | Comments, hyperlinks, validation, tables, pivots, protection, hidden rows/columns/sheets, themes and named styles, defined names |
+| Print and PDF | Print area, orientation, fit-to-width, margins, SVG preview, vector PDF, 300 DPI fallback ([print and PDF](../.scratch/calcplus/spec/print-pdf.md)) |
+| Persistence | Autosave recovery copy, recent list, external-edit conflict, close prompt, one workbook per tab ([persistence](../.scratch/calcplus/spec/persistence.md)) |
+| Platform | Desktop Chromium on Windows and Linux; Firefox best-effort; no macOS support; static host plus a Go launcher for Windows and Linux; no backend |
+
+## 6. Key user journeys
+
+1. **Open and edit.** Open a sales workbook, navigate with the keyboard, edit
+   cells, enter formulas, undo, and save in place.
+2. **Format a report.** Apply fonts, fills, borders, currency and date formats,
+   merge a header, resize columns, add a sheet, and print or export it to PDF.
+3. **Analyse a list.** Sort a 100k-row range by two keys, filter by a value
+   checklist and a text condition, and clear the filter.
+4. **Open a rich workbook.** Open a file with a chart, a pivot, an external link
+   and a macro; edit cells and insert a row; save; Excel opens it without
+   repair; the reports explain what was preserved.
+5. **Recover.** Close the tab mid-edit; reopen; restore the unsaved changes
+   from the recovery copy.
+6. **Work offline.** Run the launcher, open a local file, edit and save with no
+   network.
+
+## 7. Non-goals
+
+Everything marked **V2** or **NEVER** in the feature matrix. Highlights:
+
+- Real-time co-authoring, accounts, cloud sync and sharing.
+- VBA/macro execution, Office Scripts and add-ins.
+- PivotTables, Power Query, Solver/Goal Seek, the Data Analysis ToolPak and
+  Consolidate.
+- Charts, images, shapes and sparklines (parts are preserved, not rendered).
+- Authoring or editing of tables, data validation, advanced/colour/Top-10
+  filters and conditional formatting; imported parts are preserved.
+- Authoring of comments, hyperlinks, defined names, protection, themes and
+  named styles.
+- Paste Special, fill series, split view, full page setup, localization and dark
+  mode.
+- Assistive-technology support and a WCAG conformance claim; v1 keeps keyboard
+  operation and visible focus but makes no accessibility claim.
+- macOS support: no artifact, no testing and no claim.
+- R1C1, 3D ranges, structured references, external-link refresh, dynamic
+  arrays/spill, iterative/manual calculation and union/intersection operators.
+- Native desktop wrappers, mobile/touch apps, `.xls`, `.xlsb` and ODS; encrypted
+  workbooks are rejected with a clear message rather than opened.
+- Store listings, auto-update and marketing as part of the build.
+
+## 8. Constraints
+
+- **Browser app.** Static files, no backend, no server-side logic.
+- **Single user, one workbook per tab.**
+- **GPL-3.0-only.** HyperFormula's GPLv3 edition is the binding dependency
+  ([licensing](../.scratch/calcplus/spec/licensing.md)).
+- **Desktop Chromium on Windows and Linux is the performance contract.**
+  Firefox works with the download fallback but carries no claim; macOS, mobile
+  and touch are out.
+- **Distribution.** A static host plus a Go launcher on `127.0.0.1:47823`;
+  Windows portable `.exe` and Linux tarball, unsigned, with the SmartScreen
+  warning documented ([distribution](../.scratch/calcplus/spec/distribution.md)
+  §2 and §8; [launcher README](../launcher/README.md)).
+- **Local-first.** No accounts, telemetry or workbook uploads.
+- **English only.** Localization is v2.
+
+## 9. Product acceptance criteria
+
+1. A user can open an `.xlsx`, edit it, and save it back with modelled features
+   intact and preserved parts byte-identical.
+2. Excel 365 opens every output without a repair prompt.
+3. The 52 published functions, error/coercion table and date systems pass the
+   conformance suite.
+4. Sort, AutoFilter and conditional formatting behave as specified and
+   round-trip.
+5. The grid supports the keyboard, editing, fill, resize, freeze, merges and
+   selection journeys.
+6. A 250k-cell workbook meets the performance budgets; 1M cells opens in
+   degraded mode.
+7. Keyboard operation covers every command without a pointer; v1 makes no
+   assistive-technology claim.
+8. The Windows and Linux launchers run offline and keep a stable origin.
+9. No P0, P1 or data-loss bug remains at release.
+10. Every known deviation is documented and pinned by a test
+    ([known deviations](known-deviations.md)).
+
+## 10. Release definition
+
+v1 is done when the
+[release gate](../.scratch/calcplus/spec/testing-conformance.md) passes in
+full, every feature-matrix IN item is present, the launcher artifacts are built
+and published, the documents are complete, and no P0/P1 or data-loss bug
+remains ([milestones](../.scratch/calcplus/spec/milestones.md) §8).
+
+## 11. Risks
+
+- **OOXML fidelity tail.** The range-transform and preservation work is the
+  largest engineering risk.
+- **Formula shims.** HyperFormula deviations must be pinned.
+- **Performance at 1M cells.** The degraded envelope is close to the memory
+  ceiling.
+- **Conformance tail.** The last edge cases can take as long as the first 90%;
+  the M8 reserve and continuous golden suite are the mitigation.
+- **Unsigned builds.** Windows shows a SmartScreen warning until reputation
+  builds; it is documented, and signing stays optional in v1.

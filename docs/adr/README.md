@@ -11,4 +11,11 @@
 | [0007](0007-sheet-projection.md) | The grid reads a projection of the workbook, never the workbook | Accepted |
 | [0008](0008-terminal-sheet-delete.md) | Deleting a sheet is terminal: no undo entry, no archive | Accepted |
 
-Each ADR records the decision, the options considered and the consequences. The narrative record is the [spec map](../../.scratch/calcplus/map.md).
+Each ADR records the decision, the options considered and the consequences. The
+narrative record is the [spec map](../../.scratch/calcplus/map.md). The
+[technical design outline](../technical-design.md) links back here from the
+components it describes.
+
+Add the next ADR as the next number (`0009-...`) and add its row to the table
+above. Do not rewrite a recorded ADR; supersede it with a new one and say so in
+the status column.
