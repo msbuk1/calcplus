@@ -446,3 +446,52 @@ test('the Format Painter highlight leaves no ink in the frozen strip', async ({ 
   expect(again.r).toBeGreaterThan(again.b + 20);
   expect(await regionHash(page, band)).toBe(cleanBand);
 });
+
+test('the fill destination outline leaves no ink in the frozen strip', async ({ page }) => {
+  await openGrid(page, { rows: 2, cols: 0 });
+  const band = await frozenRowBand(page, 2);
+  const divider = band.y + band.height;
+  const canvas = await page.getByTestId('grid-canvas').boundingBox();
+  if (canvas === null) throw new Error('The grid canvas has no box');
+  const cleanBand = await regionHash(page, band);
+
+  // Grab the fill handle of B4 and drag to B7: the live destination covers
+  // B4:B7.
+  await clickCell(page, 3, 1);
+  const handle = await page.evaluate(() => window.__calcplus.getFillHandle());
+  expect(handle).not.toBeNull();
+  const target = await cellRect(page, 6, 1);
+  await page.mouse.move(canvas.x + (handle?.x ?? 0) + 3, canvas.y + (handle?.y ?? 0) + 3);
+  await page.mouse.down();
+  await page.mouse.move(
+    canvas.x + target.x + target.width / 2,
+    canvas.y + target.y + target.height / 2,
+    { steps: 5 },
+  );
+  const preview = page.getByTestId('fill-preview');
+  await expect(preview).toBeVisible();
+
+  // Wheel-scroll mid-drag without moving the pointer: the destination slides
+  // under the strip, and the outline follows the cells as they move.
+  await page.mouse.wheel(0, 60);
+  await settle(page);
+  const top = await cellRect(page, 3, 1);
+  const bottom = await cellRect(page, 6, 1);
+  expect(top.y).toBeLessThan(divider);
+  expect(bottom.y + bottom.height).toBeGreaterThan(divider);
+  const box = await preview.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box?.x).toBeCloseTo(canvas.x + top.x, 0);
+  expect(box?.y).toBeCloseTo(canvas.y + top.y, 0);
+  expect(box?.height).toBeCloseTo(bottom.y + bottom.height - top.y, 0);
+  expect(
+    await regionHash(page, band),
+    'the fill destination outline painted inside the frozen strip',
+  ).toBe(cleanBand);
+
+  // The release still fills the destination B5:B7 from the source.
+  await page.mouse.up();
+  await expect(preview).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(4, 1))).toBe('401');
+  await expect.poll(() => page.evaluate(() => window.__calcplus.getCellDisplay(6, 1))).toBe('401');
+});

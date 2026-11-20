@@ -267,6 +267,9 @@ export function CanvasGrid({
   /** The copy marquee's overlay, kept over its range while the sheet scrolls. */
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const marqueeRangeRef = useRef<GridRange | null>(null);
+  /** The fill outline's overlay, kept over its destination while the sheet scrolls. */
+  const fillPreviewRef = useRef<HTMLDivElement | null>(null);
+  const fillPreviewRangeRef = useRef<GridRange | null>(null);
   /**
    * The visible filter-header columns. The canvas paints the arrow and funnel;
    * transparent DOM buttons over the same rectangles carry the accessible name
@@ -400,12 +403,19 @@ export function CanvasGrid({
     if (session !== null) {
       positionEditor(editorRef.current, current.projection, layout, scroll, session);
     }
-    positionMarquee(
+    positionRangeOverlay(
       marqueeRef.current,
       current.projection,
       layout,
       scroll,
       marqueeRangeRef.current,
+    );
+    positionRangeOverlay(
+      fillPreviewRef.current,
+      current.projection,
+      layout,
+      scroll,
+      fillPreviewRangeRef.current,
     );
     // The hover overlays are DOM elements too: the paint places them so they
     // keep tracking the cell while the sheet scrolls.
@@ -567,6 +577,7 @@ export function CanvasGrid({
   const marqueeEndRow = marqueeRange?.endRow ?? null;
   const marqueeEndCol = marqueeRange?.endCol ?? null;
   marqueeRangeRef.current = marqueeRange;
+  fillPreviewRangeRef.current = fillPreview;
   useEffect(() => {
     if (marqueeEndRow === null || marqueeEndCol === null) return;
     const layout = computePaneLayout(projection, viewport.width, viewport.height);
@@ -2179,11 +2190,19 @@ export function CanvasGrid({
         };
 
   // The fill destination outline follows the pointer; it is view state and
-  // never enters the model or the undo log.
+  // never enters the model or the undo log. Its border is clipped to the pane
+  // the destination belongs to (ticket 46).
   const fillPreviewRect =
     fillPreview === null
       ? null
       : rangeOverlayRect(projection, layout, scrollRef.current.x, scrollRef.current.y, fillPreview);
+  const fillPreviewClipPath =
+    fillPreviewRect === null || fillPreview === null
+      ? null
+      : paneClipPath(
+          fillPreviewRect,
+          paneClipRect(projection, layout, fillPreview, fillPreviewRect),
+        );
 
   // The copy marquee is the paste destination; like the fill preview it is
   // view state and never enters the model or the undo log (ticket 31 B). Its
@@ -2339,6 +2358,7 @@ export function CanvasGrid({
       </div>
       {fillPreviewRect !== null ? (
         <div
+          ref={fillPreviewRef}
           data-testid="fill-preview"
           style={{
             position: 'absolute',
@@ -2350,6 +2370,7 @@ export function CanvasGrid({
             top: `${fillPreviewRect.y}px`,
             width: `${fillPreviewRect.width}px`,
             height: `${fillPreviewRect.height}px`,
+            clipPath: fillPreviewClipPath ?? undefined,
           }}
         />
       ) : null}
@@ -2676,11 +2697,15 @@ function positionEditor(
 }
 
 /**
- * Keep the copy marquee over its range while the sheet scrolls. The overlay is
- * a DOM element, so the paint has to place it exactly as it places the editor
- * and the scrollbar thumbs.
+ * Place a range overlay over its cells and clip it to the pane its range
+ * belongs to (ticket 46). The overlays are the copy marquee and the live fill
+ * destination; both are DOM elements, so the paint places them exactly as it
+ * places the editor and the scrollbar thumbs. Each element keeps the range's
+ * whole rectangle — that is the geometry it addresses — and only the painted
+ * edge is cut at the freeze divider, so a destination scrolled under a frozen
+ * strip leaves the strip clean.
  */
-function positionMarquee(
+function positionRangeOverlay(
   element: HTMLDivElement | null,
   projection: SheetProjection,
   layout: PaneLayout,
@@ -2693,9 +2718,6 @@ function positionMarquee(
   element.style.top = `${rect.y}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
-  // Keep the border out of the frozen strips (ticket 46). The element keeps
-  // its full rectangle, so the marquee's geometry and the paste target do not
-  // move; only the painted edge is cut at the divider.
   element.style.clipPath = paneClipPath(rect, paneClipRect(projection, layout, range, rect));
 }
 
