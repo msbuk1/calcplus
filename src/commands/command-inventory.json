@@ -2093,11 +2093,22 @@
         "icon": "print-area",
         "menu": [
           { "label": "Set Print Area", "commandId": "print.setArea" },
+          { "label": "Add to Print Area", "commandId": "print.addArea" },
           { "label": "Clear Print Area", "commandId": "print.clearArea" }
         ]
       }
     ],
     "icon": "print-area"
+  },
+  {
+    "id": "print.addArea",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Add to Print Area",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
   },
   {
     "id": "print.clearArea",

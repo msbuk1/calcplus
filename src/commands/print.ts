@@ -97,6 +97,10 @@ export interface PageSetupPatch {
   /** Writes both `gridLines` and `gridLinesSet`, the printed gridlines pair. */
   readonly printGridlines?: boolean;
   readonly printHeadings?: boolean;
+  /** `printOptions@horizontalCentered`: centre the sheet across the page. */
+  readonly horizontalCentered?: boolean;
+  /** `printOptions@verticalCentered`: centre the sheet down the page. */
+  readonly verticalCentered?: boolean;
 }
 
 /**
@@ -233,6 +237,34 @@ export const printSetAreaCommand: CommandDefinition<PrintAreaArgs> = {
     const range = args.range ?? context.selection ?? cellRange(context.activeCell);
     if (range === undefined) return toast('Select the cells to print first.');
     return applyPrintArea(sheet, printAreaTextForRange(range));
+  },
+};
+
+/**
+ * Add to Print Area: appends the selection to the existing name instead of
+ * replacing it. Excel's Print Area drop-down has this entry, and the model and
+ * planner already print several areas as separate page sets (print-pdf §4).
+ * The whole new formula travels as one `name.set` change, so undo restores the
+ * previous list of areas exactly.
+ */
+export const printAddAreaCommand: CommandDefinition<PrintAreaArgs> = {
+  id: 'print.addArea',
+  label: 'Add to Print Area',
+  category: 'view',
+  keybindings: [],
+  isEnabled(context) {
+    return context.activeSheetId !== null;
+  },
+  run(context, args = {}): CommandResult {
+    const sheet = resolveSheet(context, args.sheetId);
+    if (sheet === undefined) return toast('Open a worksheet before adding to its print area.');
+    const range = args.range ?? context.selection ?? cellRange(context.activeCell);
+    if (range === undefined) return toast('Select the cells to add first.');
+    const existing = sheet.names.find((candidate) => isPrintAreaName(candidate.name))?.formula;
+    const addition = printAreaTextForRange(range);
+    const text =
+      existing === undefined ? addition : [...splitPrintAreas(existing), addition].join(', ');
+    return applyPrintArea(sheet, text, 'Added to the print area.');
   },
 };
 
@@ -389,6 +421,8 @@ export interface PageSetupValues {
   readonly printAreaText: string;
   readonly printGridlines: boolean;
   readonly printHeadings: boolean;
+  readonly horizontalCentered: boolean;
+  readonly verticalCentered: boolean;
 }
 
 /**
@@ -409,6 +443,8 @@ export function pageSetupValuesOf(sheet: Sheet): PageSetupValues {
     printAreaText: formatPrintAreaRanges(printAreaOf(sheet)),
     printGridlines: options?.gridLines === true && options.gridLinesSet === true,
     printHeadings: options?.headings === true,
+    horizontalCentered: options?.horizontalCentered === true,
+    verticalCentered: options?.verticalCentered === true,
   };
 }
 
@@ -502,7 +538,14 @@ function printOptionsAfter(
   before: PrintOptionsRecord | null,
   patch: PageSetupPatch,
 ): PrintOptionsRecord | null {
-  if (patch.printGridlines === undefined && patch.printHeadings === undefined) return before;
+  if (
+    patch.printGridlines === undefined &&
+    patch.printHeadings === undefined &&
+    patch.horizontalCentered === undefined &&
+    patch.verticalCentered === undefined
+  ) {
+    return before;
+  }
   const base: PrintOptionsRecord = {
     gridLines: before?.gridLines ?? false,
     gridLinesSet: before?.gridLinesSet ?? false,
@@ -515,6 +558,8 @@ function printOptionsAfter(
     gridLines: patch.printGridlines ?? base.gridLines,
     gridLinesSet: patch.printGridlines ?? base.gridLinesSet,
     headings: patch.printHeadings ?? base.headings,
+    horizontalCentered: patch.horizontalCentered ?? base.horizontalCentered,
+    verticalCentered: patch.verticalCentered ?? base.verticalCentered,
   };
 }
 
@@ -556,7 +601,11 @@ function printAreaChange(sheet: Sheet, text: string): PrintAreaChange {
   };
 }
 
-function applyPrintArea(sheet: Sheet, text: string): CommandResult {
+function applyPrintArea(
+  sheet: Sheet,
+  text: string,
+  changedMessage = 'Set the print area.',
+): CommandResult {
   const result = printAreaChange(sheet, text);
   if (!result.ok) return toast(result.message);
   if (result.change === null) {
@@ -568,7 +617,7 @@ function applyPrintArea(sheet: Sheet, text: string): CommandResult {
     changes: [result.change],
     ui: {
       type: 'toast',
-      message: result.change.after === null ? 'Cleared the print area.' : 'Set the print area.',
+      message: result.change.after === null ? 'Cleared the print area.' : changedMessage,
     },
   };
 }

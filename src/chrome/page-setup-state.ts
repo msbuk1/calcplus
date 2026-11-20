@@ -32,6 +32,8 @@ export interface PageSetupDraft {
   readonly printArea: string;
   readonly printGridlines: boolean;
   readonly printHeadings: boolean;
+  readonly horizontalCentered: boolean;
+  readonly verticalCentered: boolean;
 }
 
 export type PageSetupField =
@@ -73,6 +75,8 @@ export function pageSetupDraftFrom(initial: PageSetupValues): PageSetupDraft {
     printArea: initial.printAreaText,
     printGridlines: initial.printGridlines,
     printHeadings: initial.printHeadings,
+    horizontalCentered: initial.horizontalCentered,
+    verticalCentered: initial.verticalCentered,
   };
 }
 
@@ -97,6 +101,8 @@ export function pageSetupDraftPayload(
     margins?: PageMarginsRecord;
     printGridlines?: boolean;
     printHeadings?: boolean;
+    horizontalCentered?: boolean;
+    verticalCentered?: boolean;
   } = {};
 
   const fitToPage = draft.scaling === 'fit';
@@ -143,6 +149,12 @@ export function pageSetupDraftPayload(
   }
   if (draft.printHeadings !== committed.printHeadings) {
     patch.printHeadings = draft.printHeadings;
+  }
+  if (draft.horizontalCentered !== committed.horizontalCentered) {
+    patch.horizontalCentered = draft.horizontalCentered;
+  }
+  if (draft.verticalCentered !== committed.verticalCentered) {
+    patch.verticalCentered = draft.verticalCentered;
   }
 
   let printArea: string | null | undefined;
@@ -201,6 +213,8 @@ export function pageSetupValuesFromDraft(
     printAreaText: draft.printArea.trim(),
     printGridlines: draft.printGridlines,
     printHeadings: draft.printHeadings,
+    horizontalCentered: draft.horizontalCentered,
+    verticalCentered: draft.verticalCentered,
   };
 }
 

@@ -10,8 +10,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 57
-- Inventory commands: 112
-- Implemented in this build: 79
+- Inventory commands: 113
+- Implemented in this build: 80
 - Planned for a later slice: 33
 - Out-of-scope rows (V2 or NEVER): 28
 
@@ -129,6 +129,7 @@ Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 | `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
 | `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
 | `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
+| `print.addArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Add to Print Area | — | — | — | — | — | A sheet is active | Implemented |
 | `print.applySetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Apply page setup | — | — | — | — | — | A sheet is active | Implemented |
 | `print.clearArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Clear Print Area | — | — | — | — | — | A sheet is active | Implemented |
 | `print.pageSetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Page Setup | `page-setup` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |

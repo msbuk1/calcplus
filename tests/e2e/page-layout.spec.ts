@@ -179,3 +179,114 @@ test('the Print check box writes printed state only, and undo restores it', asyn
   expect(await page.evaluate(() => window.__calcplus.getState().canUndo)).toBe(false);
   await expect(viewGridlines).toHaveAttribute('aria-pressed', viewBefore ?? 'false');
 });
+
+test('the preview opens Page Setup over itself and the pages re-plan', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await openFixture(page, 'print-setup.xlsx');
+
+  await openPrintPreview(page);
+  await expect(page.getByTestId('print-preview-summary')).toContainText('1 page');
+  await expect(page.getByTestId('print-preview-summary')).toContainText('A4 landscape');
+
+  // The preview offers the dialog and stays mounted underneath it.
+  await page.getByTestId('print-preview-page-setup').click();
+  const setup = page.getByRole('dialog', { name: 'Page Setup' });
+  await expect(setup).toBeVisible();
+  // The dialog is above the preview, not behind it (same backdrop stacking).
+  const box = await setup.boundingBox();
+  expect(box).not.toBeNull();
+  const topmost = await page.evaluate(
+    ([x, y]) =>
+      document
+        .elementFromPoint(x as number, y as number)
+        ?.closest('[role="dialog"]')
+        ?.querySelector('.dialog-title')?.textContent ?? null,
+    [box!.x + box!.width / 2, box!.y + 20] as const,
+  );
+  expect(topmost).toBe('Page Setup');
+
+  await page.getByTestId('page-setup-portrait').check();
+  await page.getByRole('tab', { name: 'Margins' }).click();
+  await page.getByTestId('page-setup-margin-top').fill('4.5');
+  await page.getByTestId('page-setup-margin-bottom').fill('4.5');
+  await expect(page.getByTestId('page-setup-plan')).toContainText('Plan: 2 pages on A4 portrait.');
+
+  // Apply writes one transaction, and the preview behind re-plans while the
+  // dialog is still open.
+  await page.getByTestId('page-setup-apply').click();
+  await expect(setup).toBeVisible();
+  await expect(page.getByTestId('print-preview-summary')).toContainText('A4 portrait');
+  await expect(page.getByTestId('print-preview-summary')).toContainText('2 pages');
+
+  // Esc closes only the top dialog; the preview stays and the keyboard returns
+  // to the button that opened the dialog.
+  await page.keyboard.press('Escape');
+  await expect(setup).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Print Preview' })).toBeVisible();
+  await expect(page.getByTestId('print-preview-page-setup')).toBeFocused();
+
+  await closePrintPreview(page);
+});
+
+test('Add to Print Area appends to the existing areas, and one undo restores them', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await openFixture(page, 'print-areas.xlsx');
+
+  // The file has two areas; add a third from the grid selection.
+  await dragSelect(page, 9, 4, 11, 5);
+  await openPageLayout(page);
+  await page.getByRole('button', { name: 'Print Area', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add to Print Area' }).click();
+
+  await openPrintPreview(page);
+  await expect(page.getByTestId('print-preview-summary')).toContainText('3 pages');
+  await closePrintPreview(page);
+
+  // Add is one name transaction; undo restores the imported two areas.
+  expect(await page.evaluate(() => window.__calcplus.getState().canUndo)).toBe(true);
+  await page.keyboard.press('Control+z');
+  await openPrintPreview(page);
+  await expect(page.getByTestId('print-preview-summary')).toContainText('2 pages');
+  await closePrintPreview(page);
+});
+
+test('the Margins tab centre check boxes are one transaction and round-trip', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.print = () => undefined;
+  });
+  await openFixture(page, 'print-areas.xlsx');
+  await openPageLayout(page);
+  const before = await page.evaluate(() => window.__calcplus.getState());
+
+  await openPageSetup(page);
+  await page.getByRole('tab', { name: 'Margins' }).click();
+  await expect(page.getByTestId('page-setup-centre-horizontal')).not.toBeChecked();
+  await page.getByTestId('page-setup-centre-horizontal').check();
+  await page.getByTestId('page-setup-centre-vertical').check();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+
+  const after = await page.evaluate(() => window.__calcplus.getState());
+  expect(after.version).toBe(before.version + 1);
+  expect(after.canUndo).toBe(true);
+
+  // Reopening reads the written flags.
+  await openPageSetup(page);
+  await page.getByRole('tab', { name: 'Margins' }).click();
+  await expect(page.getByTestId('page-setup-centre-horizontal')).toBeChecked();
+  await expect(page.getByTestId('page-setup-centre-vertical')).toBeChecked();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  // One undo restores both flags.
+  await page.keyboard.press('Control+z');
+  await openPageSetup(page);
+  await page.getByRole('tab', { name: 'Margins' }).click();
+  await expect(page.getByTestId('page-setup-centre-horizontal')).not.toBeChecked();
+  await expect(page.getByTestId('page-setup-centre-vertical')).not.toBeChecked();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+});

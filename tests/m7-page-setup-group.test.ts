@@ -95,6 +95,7 @@ describe('Page Layout map', () => {
     expect(placement?.kind).toBe('menu');
     expect(placement?.menu?.map((item) => [item.label, item.commandId])).toEqual([
       ['Set Print Area', 'print.setArea'],
+      ['Add to Print Area', 'print.addArea'],
       ['Clear Print Area', 'print.clearArea'],
     ]);
   });
@@ -584,5 +585,142 @@ describe('buildPageSetup', () => {
     expect(built.setup.margins).toBe(before.margins);
     expect(built.setup.options).toBe(before.options);
     expect(built.setup.orientation).toBe('portrait');
+  });
+});
+
+describe('ticket 47 — print view polish', () => {
+  it('adds the selection to the existing areas as one name transaction', () => {
+    const opened = openFixture('print-areas.xlsx');
+    const sheet = sheetOf(opened);
+    const session = new DocumentSession(opened.workbook);
+    const before = sheet.names[0]!.formula;
+
+    const result = session.dispatch('print.addArea', {
+      sheetId: sheet.id,
+      range: { startRow: 9, startCol: 4, endRow: 11, endCol: 5 },
+    });
+
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0]?.type).toBe('name.set');
+    expect(sheet.names[0]!.formula).toBe(
+      "'Sales'!$A$1:$C$30,'Sales'!$E$1:$F$6,'Sales'!$E$10:$F$12",
+    );
+    expect(printAreaOf(sheet)).toHaveLength(3);
+    expect(planFor(opened).pageSets).toHaveLength(3);
+
+    // Undo restores the previous name exactly, not a rewritten equivalent.
+    session.undo();
+    expect(sheet.names[0]!.formula).toBe(before);
+    expect(planFor(opened).pageSets).toHaveLength(2);
+  });
+
+  it('adds from the selection when no range is given', () => {
+    const opened = openFixture('print-areas.xlsx');
+    const sheet = sheetOf(opened);
+    const session = new DocumentSession(opened.workbook);
+    const selection = { startRow: 0, startCol: 4, endRow: 2, endCol: 5 };
+
+    const result = session.dispatch(
+      'print.addArea',
+      { sheetId: sheet.id },
+      { activeSheetId: sheet.id, selection, activeCell: { row: 0, col: 4 } },
+    );
+
+    expect(result.changes).toHaveLength(1);
+    expect(printAreaOf(sheet)).toEqual([
+      { startRow: 0, startCol: 0, endRow: 29, endCol: 2 },
+      { startRow: 0, startCol: 4, endRow: 5, endCol: 5 },
+      { startRow: 0, startCol: 4, endRow: 2, endCol: 5 },
+    ]);
+  });
+
+  it('sets the area when the sheet has none, and round-trips through the file', () => {
+    const opened = openFixture('print-setup.xlsx');
+    const sheet = sheetOf(opened);
+    const session = new DocumentSession(opened.workbook);
+    session.dispatch('print.addArea', {
+      sheetId: sheet.id,
+      range: { startRow: 2, startCol: 4, endRow: 4, endCol: 5 },
+    });
+    expect(sheet.names.map((name) => name.formula)).toEqual([
+      "'Report'!$A$1:$D$20,'Report'!$E$3:$F$5",
+    ]);
+
+    const saved = save(opened);
+    const workbookXml = partText(saved.bytes, WORKBOOK_PART);
+    expect(workbookXml).toContain(
+      `<definedName name="_xlnm.Print_Area" localSheetId="0">'Report'!$A$1:$D$20,'Report'!$E$3:$F$5</definedName>`,
+    );
+    expect(printAreaOf(openWorkbook(saved.bytes).workbook.sheets[0]!)).toHaveLength(2);
+  });
+
+  it('writes both centring flags as one transaction and the planner honours them', () => {
+    const opened = openFixture('print-areas.xlsx');
+    const sheet = sheetOf(opened);
+    const session = new DocumentSession(opened.workbook);
+    const before = structuredClone(sheet.printSetup);
+    const planBefore = planFor(opened);
+    const firstColumnX = planBefore.pages[0]!.columns[0]!.x;
+    const firstRowY = planBefore.pages[0]!.rows[0]!.y;
+
+    const result = session.dispatch('print.applySetup', {
+      sheetId: sheet.id,
+      setup: { horizontalCentered: true, verticalCentered: true },
+    });
+
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0]?.type).toBe('printSetup.set');
+    // The other print options keep their authored values.
+    expect(sheet.printSetup?.options).toMatchObject({
+      horizontalCentered: true,
+      verticalCentered: true,
+      gridLines: true,
+      headings: true,
+    });
+
+    const plan = planFor(opened);
+    expect(plan.horizontalCentered).toBe(true);
+    expect(plan.verticalCentered).toBe(true);
+    expect(plan.pages[0]!.columns[0]!.x).toBeGreaterThan(firstColumnX);
+    expect(plan.pages[0]!.rows[0]!.y).toBeGreaterThan(firstRowY);
+
+    session.undo();
+    expect(sheet.printSetup).toEqual(before);
+    expect(planFor(opened).horizontalCentered).toBe(false);
+    expect(planFor(opened).pages[0]!.columns[0]!.x).toBe(firstColumnX);
+  });
+
+  it('round-trips the centring flags through the worksheet part', () => {
+    const opened = openFixture('print-areas.xlsx');
+    const sheet = sheetOf(opened);
+    const session = new DocumentSession(opened.workbook);
+    session.dispatch('print.applySetup', {
+      sheetId: sheet.id,
+      setup: { horizontalCentered: true, verticalCentered: true },
+    });
+
+    const saved = save(opened);
+    const sheetXml = partText(saved.bytes, 'xl/worksheets/sheet1.xml');
+    expect(sheetXml).toContain('horizontalCentered="1"');
+    expect(sheetXml).toContain('verticalCentered="1"');
+    const reopened = openWorkbook(saved.bytes);
+    expect(reopened.workbook.sheets[0]!.printSetup?.options).toMatchObject({
+      horizontalCentered: true,
+      verticalCentered: true,
+    });
+  });
+
+  it('sends one centring check box as one patch field', () => {
+    const values = pageSetupValuesOf(sheetOf(openFixture('print-areas.xlsx')));
+    const draft = pageSetupDraftFrom(values);
+    const built = pageSetupDraftPayload({ ...draft, horizontalCentered: true }, values, 'Sales');
+    expect(built.errors).toEqual({});
+    expect(built.payload).toEqual({ setup: { horizontalCentered: true } });
+  });
+
+  it('reads the imported centring flags', () => {
+    const values = pageSetupValuesOf(sheetOf(openFixture('print-setup.xlsx')));
+    expect(values.horizontalCentered).toBe(true);
+    expect(values.verticalCentered).toBe(false);
   });
 });

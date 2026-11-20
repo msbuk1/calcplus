@@ -20,6 +20,12 @@ export interface DialogProps {
   readonly className?: string;
   /** Feature dialogs return focus to the invoker; the shell can return to the grid instead. */
   readonly restoreFocus?: boolean;
+  /**
+   * A dialog opened over this one owns the keyboard and the focus trap (the
+   * print preview's Page Setup button, ticket 47). A suspended shell keeps its
+   * content on screen but stops handling Esc, Tab and focus, and is inert.
+   */
+  readonly suspended?: boolean;
 }
 
 const FOCUSABLE =
@@ -39,6 +45,7 @@ export function Dialog({
   secondaryAction,
   className,
   restoreFocus = true,
+  suspended = false,
 }: DialogProps): JSX.Element {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const defaultRef = useRef<HTMLButtonElement | null>(null);
@@ -64,6 +71,7 @@ export function Dialog({
   // focus can leave the dialog through the backdrop or a programmatic change,
   // and Esc must close even then.
   useEffect(() => {
+    if (suspended) return;
     const dialog = dialogRef.current;
     if (dialog === null) return;
     const onDocumentKeyDown = (event: KeyboardEvent): void => {
@@ -99,7 +107,7 @@ export function Dialog({
       document.removeEventListener('keydown', onDocumentKeyDown, true);
       document.removeEventListener('focusin', onFocusIn);
     };
-  }, [onClose]);
+  }, [onClose, suspended]);
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Enter' && defaultAction !== undefined) {
@@ -120,6 +128,8 @@ export function Dialog({
   return (
     <div
       className="dialog-backdrop"
+      aria-hidden={suspended ? true : undefined}
+      inert={suspended || undefined}
       onPointerDown={(event) => {
         if (event.target !== event.currentTarget) return;
         // A backdrop press keeps the keyboard inside the modal. It never

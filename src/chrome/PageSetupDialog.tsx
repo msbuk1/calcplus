@@ -310,6 +310,27 @@ export function PageSetupDialog({
             ))}
           </div>
           {fieldError(errors.margins, 'page-setup-margins-error')}
+          <fieldset className="page-setup-group">
+            <legend>Centre on page</legend>
+            <label className="page-setup-check">
+              <input
+                type="checkbox"
+                data-testid="page-setup-centre-horizontal"
+                checked={draft.horizontalCentered}
+                onChange={(event) => update({ horizontalCentered: event.target.checked })}
+              />
+              Horizontally
+            </label>
+            <label className="page-setup-check">
+              <input
+                type="checkbox"
+                data-testid="page-setup-centre-vertical"
+                checked={draft.verticalCentered}
+                onChange={(event) => update({ verticalCentered: event.target.checked })}
+              />
+              Vertically
+            </label>
+          </fieldset>
         </div>
       ) : null}
 

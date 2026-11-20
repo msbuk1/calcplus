@@ -236,6 +236,11 @@ export function App(): JSX.Element {
     readonly region: ContextMenuRegion;
   } | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
+  // The Page Setup dialog can open over the print preview (ticket 47). The
+  // preview stays mounted and re-plans from the model while the dialog writes;
+  // `suspended` hands it the keyboard back when the dialog closes.
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const printPageSetupButtonRef = useRef<HTMLButtonElement | null>(null);
   const [formatCellsTab, setFormatCellsTab] = useState<string | null>(null);
   // The Sort dialog's prefill: the range, the header guess and the sheet the
   // command resolved when the menu asked for keys (sort-autofilter §2).
@@ -388,13 +393,13 @@ export function App(): JSX.Element {
     readonly values: PageSetupValues;
     readonly sheetName: string;
   } | null>(() => {
-    if (dialog !== 'page-setup' || document === null) return null;
+    if ((dialog !== 'page-setup' && !pageSetupOpen) || document === null) return null;
     const sheet = document.session.workbook.sheets.find(
       (candidate) => candidate.id === document.sheetId,
     );
     if (sheet === undefined) return null;
     return { values: pageSetupValuesOf(sheet), sheetName: sheet.name };
-  }, [dialog, document]);
+  }, [dialog, pageSetupOpen, document]);
 
   const selectionStatistics = useMemo<SelectionStatistics | null>(() => {
     if (projection === null) return null;
@@ -1148,6 +1153,7 @@ export function App(): JSX.Element {
    */
   const closeDialog = (reason: DialogCloseReason): void => {
     setDialog(null);
+    setPageSetupOpen(false);
     setSortRequest(null);
     lastPrintPlanRef.current = null;
     if (reason === 'escape') {
@@ -1157,6 +1163,24 @@ export function App(): JSX.Element {
     requestAnimationFrame(() => {
       if (window.document.activeElement === window.document.body) focusGrid();
     });
+  };
+
+  /**
+   * The Page Setup dialog's close. Over the preview it closes only the dialog
+   * and leaves the preview open (the shell restores focus to the Page Setup
+   * button); as a standalone dialog it follows the normal close path.
+   */
+  const closePageSetup = (reason: DialogCloseReason): void => {
+    if (pageSetupOpen) {
+      setPageSetupOpen(false);
+      if (reason === 'escape') {
+        // The preview is the top dialog again. Esc does not restore the
+        // invoker through the shell, so put the keyboard back on the button.
+        requestAnimationFrame(() => printPageSetupButtonRef.current?.focus());
+      }
+      return;
+    }
+    closeDialog(reason);
   };
 
   /** A file command must not steal an in-progress cell or formula-bar edit. */
@@ -3164,7 +3188,10 @@ export function App(): JSX.Element {
       case 'print.pageSetup': {
         if (document === null || busy) return null;
         clearPainter();
-        setDialog('page-setup');
+        // From the print preview the dialog opens over it (ticket 47); from
+        // the Page Layout tab it is the only dialog.
+        if (dialog === 'print-preview') setPageSetupOpen(true);
+        else setDialog('page-setup');
         return null;
       }
       case 'file.exportPdf': {
@@ -3546,22 +3573,25 @@ export function App(): JSX.Element {
         />
       ) : null}
 
-      {dialog === 'page-setup' && pageSetupStart !== null ? (
-        <PageSetupDialog
-          initial={pageSetupStart.values}
-          sheetName={pageSetupStart.sheetName}
-          onClose={closeDialog}
-          onApply={applyPageSetup}
-          onPlanPreview={pageSetupPlan}
-        />
-      ) : null}
-
       {dialog === 'print-preview' && printPlan !== null ? (
         <PrintPreviewDialog
           plan={printPlan}
           paperOptions={printPaperOptions()}
           onPaperSizeChange={choosePrintPaper}
+          onCommand={runCommand}
+          suspended={pageSetupOpen}
+          pageSetupButtonRef={printPageSetupButtonRef}
           onClose={closeDialog}
+        />
+      ) : null}
+
+      {(dialog === 'page-setup' || pageSetupOpen) && pageSetupStart !== null ? (
+        <PageSetupDialog
+          initial={pageSetupStart.values}
+          sheetName={pageSetupStart.sheetName}
+          onClose={closePageSetup}
+          onApply={applyPageSetup}
+          onPlanPreview={pageSetupPlan}
         />
       ) : null}
 

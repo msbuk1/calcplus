@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { JSX } from 'react';
+import type { JSX, RefObject } from 'react';
 import type { PrintPlan } from '../print/types';
 import { renderPrintPlan } from '../print/svg-renderer';
 import type { RenderedPrintDocument } from '../print/svg-renderer';
@@ -23,10 +23,20 @@ export interface PrintPreviewDialogProps {
    * itself never touches the model.
    */
   readonly onPaperSizeChange?: (paperSize: number) => void;
+  /**
+   * Dispatches a command ID from the preview (ticket 47). The Page Setup button
+   * sends `print.pageSetup`, which the shell opens over the preview; the preview
+   * stays mounted, so a page-setup write re-plans the pages behind the dialog.
+   */
+  readonly onCommand?: (commandId: string) => void;
   /** The planner's media table; injected for tests. */
   readonly paperOptions?: readonly PrintPaperOption[];
   /** Injected by tests; the window's own print dialog by default. */
   readonly onPrint?: () => void;
+  /** A dialog is open over this one; it owns the keyboard and the focus trap. */
+  readonly suspended?: boolean;
+  /** The Page Setup opener, so the shell can restore focus after a nested close. */
+  readonly pageSetupButtonRef?: RefObject<HTMLButtonElement | null>;
 }
 
 /**
@@ -53,8 +63,11 @@ export function PrintPreviewDialog({
   plan,
   onClose,
   onPaperSizeChange,
+  onCommand,
   paperOptions,
   onPrint,
+  suspended = false,
+  pageSetupButtonRef,
 }: PrintPreviewDialogProps): JSX.Element {
   const rendered = useMemo(() => renderPrintPlan(plan), [plan]);
   const pageCount = rendered.pageCount;
@@ -73,6 +86,7 @@ export function PrintPreviewDialog({
   // The preview owns the paging keys wherever focus sits in the modal, so the
   // keys work from the Print button as well as from the preview itself.
   useEffect(() => {
+    if (suspended) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.defaultPrevented) return;
       const target = event.target;
@@ -100,7 +114,7 @@ export function PrintPreviewDialog({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [page, pageCount, print]);
+  }, [page, pageCount, print, suspended]);
 
   return (
     <>
@@ -108,6 +122,7 @@ export function PrintPreviewDialog({
         title="Print Preview"
         className="print-preview-dialog"
         onClose={onClose}
+        suspended={suspended}
         defaultAction={pageCount > 0 ? { label: 'Print', onSelect: print } : undefined}
         secondaryAction={{ label: 'Close', onSelect: () => onClose('dismiss') }}
       >
@@ -116,6 +131,18 @@ export function PrintPreviewDialog({
             <p className="dialog-hint print-preview-summary" data-testid="print-preview-summary">
               {printPreviewSummary(plan)}
             </p>
+            {onCommand === undefined ? null : (
+              <button
+                ref={pageSetupButtonRef}
+                type="button"
+                className="dialog-button print-preview-page-setup"
+                data-testid="print-preview-page-setup"
+                data-command="print.pageSetup"
+                onClick={() => onCommand('print.pageSetup')}
+              >
+                Page Setup…
+              </button>
+            )}
             <label className="print-preview-paper">
               <span className="print-preview-paper-label">Paper size</span>
               <select

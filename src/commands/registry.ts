@@ -20,6 +20,7 @@ import { insertFunctionCommand } from './insert-function';
 import { mergeCommands } from './merge';
 import { painterCommands } from './painter';
 import {
+  printAddAreaCommand,
   printApplySetupCommand,
   printClearAreaCommand,
   printGridlinesCommand,
@@ -98,6 +99,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(printPageSetupCommand);
   registry.register(printApplySetupCommand);
   registry.register(printSetAreaCommand);
+  registry.register(printAddAreaCommand);
   registry.register(printClearAreaCommand);
   registry.register(printGridlinesCommand);
   registry.register(printHeadingsCommand);
