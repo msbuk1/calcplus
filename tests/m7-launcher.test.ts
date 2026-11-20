@@ -157,7 +157,9 @@ describe('launcher build script', () => {
     const withoutGo = makeTemp('calcplus-no-go-');
     const result = spawnSync(process.execPath, [join(root, 'scripts', 'build-launcher.mjs')], {
       cwd: root,
-      env: envWithoutGo(withoutGo),
+      // GO_BIN is an exact choice: pointing it at nothing simulates a machine
+      // without Go, wherever the script would otherwise look.
+      env: { ...envWithoutGo(withoutGo), GO_BIN: join(withoutGo, 'go') },
       encoding: 'utf8',
     });
     expect(result.status).toBe(0);
@@ -173,7 +175,7 @@ describe('launcher build script', () => {
       [join(root, 'scripts', 'build-launcher.mjs'), '--require-go'],
       {
         cwd: root,
-        env: envWithoutGo(withoutGo),
+        env: { ...envWithoutGo(withoutGo), GO_BIN: join(withoutGo, 'go') },
         encoding: 'utf8',
       },
     );
@@ -190,7 +192,7 @@ describe('launcher build script', () => {
       chmodSync(goScript, 0o755);
       const result = spawnSync(process.execPath, [join(root, 'scripts', 'build-launcher.mjs')], {
         cwd: root,
-        env: envWithoutGo(fake),
+        env: { ...envWithoutGo(fake), GO_BIN: goScript },
         encoding: 'utf8',
       });
       expect(result.status).toBe(1);

@@ -60,13 +60,15 @@ const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).ver
 // the usual places. The `go` on PATH can be gccgo (as on Pop!_OS), which is
 // refused below because it cannot cross-compile the Windows .exe and does not
 // link the static Linux binary the release promises.
-const goCandidates = [
-  process.env.GO_BIN,
-  'go',
-  join('/usr/local/go/bin', 'go'),
-  join('/usr/lib/go/bin', 'go'),
-  join(homedir(), 'go', 'bin', 'go'),
-].filter((candidate, index, all) => candidate !== undefined && all.indexOf(candidate) === index);
+const goCandidates =
+  process.env.GO_BIN !== undefined
+    ? [process.env.GO_BIN]
+    : [
+        'go',
+        join('/usr/local/go/bin', 'go'),
+        join('/usr/lib/go/bin', 'go'),
+        join(homedir(), 'go', 'bin', 'go'),
+      ];
 let goCommand = null;
 let goVersion = '';
 let sawGccgo = false;
@@ -170,6 +172,13 @@ function buildLinux() {
 
 function goBuild(goos, goarch, output) {
   console.log(`Building ${goos}/${goarch} launcher`);
+  // The build id is the embedded app's index.html hash: two builds of the
+  // same version stay distinguishable, so a stale running instance is never
+  // silently reused.
+  const buildId = createHash('sha256')
+    .update(readFileSync(join(stageDir, 'index.html')))
+    .digest('hex')
+    .slice(0, 12);
   const result = spawnSync(
     goCommand,
     [
@@ -177,7 +186,7 @@ function goBuild(goos, goarch, output) {
       '-trimpath',
       '-buildvcs=false',
       '-ldflags',
-      `-s -w -X main.version=${version}`,
+      `-s -w -X main.version=${version} -X main.buildID=${buildId}`,
       '-o',
       output,
       '.',

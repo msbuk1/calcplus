@@ -43,6 +43,11 @@ const (
 // version is stamped by scripts/build-launcher.mjs from package.json.
 var version = "0.1.0"
 
+// buildID is stamped from the embedded app's index.html hash, so two builds
+// of the same version are distinguishable (a stale instance must never be
+// silently reused).
+var buildID = "dev"
+
 // bundled carries the staged static build. scripts/build-launcher.mjs copies
 // the app's dist/ into webapp/dist before `go build`; a plain source checkout
 // only has webapp/README.md and builds a binary that explains the missing
@@ -91,9 +96,19 @@ func run(args []string, out io.Writer) error {
 	address := net.JoinHostPort(loopbackHost, strconv.Itoa(*port))
 	appURL := "http://" + address + "/"
 
-	// A second launch reuses the running instance rather than failing or
-	// picking a random port, which would change the browser origin.
-	if isRunning(*port) {
+	// A second launch reuses a running instance of the same build rather than
+	// failing or picking a random port, which would change the browser origin.
+	// A different build on the port is refused: reusing it would silently open
+	// a stale app.
+	if runningBuild, ok := runningInstance(*port); ok {
+		if runningBuild != buildID {
+			return fmt.Errorf(
+				"a different build of calcplus is already running at %s\n"+
+					"Close it first (pkill -x calcplus) and start again, or run with --port N.\n"+
+					"A different port has its own browser origin and storage area",
+				appURL,
+			)
+		}
 		fmt.Fprintf(out, "calcplus is already running at %s\n", appURL)
 		if !*noOpen {
 			openBrowser(appURL, out)
@@ -178,23 +193,27 @@ func staticRoot(distDir string) (fs.FS, error) {
 	return build, nil
 }
 
-// isRunning reports whether the port already holds a calcplus instance.
-func isRunning(port int) bool {
+// runningInstance reports the build id of a calcplus instance on the port.
+func runningInstance(port int) (string, bool) {
 	client := http.Client{Timeout: 750 * time.Millisecond}
 	response, err := client.Get(
 		"http://" + net.JoinHostPort(loopbackHost, strconv.Itoa(port)) + healthPath,
 	)
 	if err != nil {
-		return false
+		return "", false
 	}
 	defer response.Body.Close()
 	var payload struct {
-		App string `json:"app"`
+		App   string `json:"app"`
+		Build string `json:"build"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return false
+		return "", false
 	}
-	return payload.App == "calcplus"
+	if payload.App != "calcplus" {
+		return "", false
+	}
+	return payload.Build, true
 }
 
 // newHandler serves the build and the instance health probe. Directory
@@ -245,6 +264,7 @@ func healthHandler() http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"app":     "calcplus",
 			"version": version,
+			"build":   buildID,
 		})
 	})
 }
