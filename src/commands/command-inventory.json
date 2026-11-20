@@ -2029,7 +2029,7 @@
     "label": "Print",
     "category": "file",
     "enablement": "A workbook is open",
-    "implemented": false,
+    "implemented": true,
     "shortcut": ["Ctrl+P"],
     "menu": [{ "menu": "File", "order": 50 }]
   },
@@ -2040,7 +2040,7 @@
     "label": "Export PDF",
     "category": "file",
     "enablement": "A workbook is open",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
     "menu": [{ "menu": "File", "order": 60 }]
   },
@@ -2051,9 +2051,9 @@
     "label": "Recent files",
     "category": "file",
     "enablement": "The recent list has entries",
-    "implemented": false,
+    "implemented": true,
     "shortcut": [],
-    "menu": [{ "menu": "File", "order": 80 }]
+    "menu": [{ "menu": "File", "order": 70 }]
   },
   {
     "id": "file.recover",
@@ -2062,7 +2062,7 @@
     "label": "Recover unsaved work",
     "category": "file",
     "enablement": "A recovery copy exists",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {

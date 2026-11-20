@@ -5,8 +5,8 @@ runtime, build and test dependency, its licence and the obligations that
 come with it. The release build must include the full licence texts for every
 distributed component; this file is the human-readable index.
 
-The audit was last reviewed on **2026-11-16** for the M4A number-format
-dependency.
+The audit was last reviewed on **2026-11-20** for the M7 PDF export
+(PDFKit plus the OFL print fonts).
 Re-run it whenever a dependency is added, removed or upgraded. The local
 licence gate (`scripts/licence-gate.mjs`) checks the lockfile before each
 commit.
@@ -19,15 +19,34 @@ commit.
 | chevrotain | 6.5.0 | Apache-2.0 | Parser runtime (via HyperFormula) | Include the Apache-2.0 licence text; state any modified files. |
 | tiny-emitter | 2.1.0 | MIT | Event emitter (via HyperFormula) | Include the copyright and permission notice. |
 | React / React DOM | 19.3.x | MIT | UI shell | Include the copyright and permission notice. |
-| fflate | 0.8.x | MIT | ZIP read/write | Include the copyright and permission notice. |
+| fflate | 0.8.x | MIT | ZIP read/write; also PDF stream compression (shared with PDFKit) | Include the copyright and permission notice. |
 | saxes | 6.0.x | ISC | XML parsing | Include the copyright and permission notice. |
 | numfmt | 4.1.3 | MIT | Excel number-format grammar | Include the copyright and permission notice. The Excel seams (built-in ids, 1904 adapter, width layout, colours, grouping and invalid fallback) are calcplus code. |
+| PDFKit | 0.21.x | MIT | Vector PDF export (File → Export PDF) | Include the copyright and permission notice. It is imported on demand, so the ~592 KB chunk is not in the startup bundle. **Dependency review (2026-11-20):** PDFKit 0.21 is MIT, actively maintained, and its browser build imports only `fflate`, `fontkit`, `linebreak` and `png-js` — no Node polyfills are shipped. The spike measured its subsetting and rename seam before the dependency was added (`.scratch/calcplus/research/26-print-pdf-fidelity.md`). |
+| fontkit | 3.0.0 | MIT | Font parsing, subsetting and the plan-time glyph coverage scan (via PDFKit) | Include the copyright and permission notice. It is the same library PDFKit maps glyphs with, so the planner and the renderer cannot disagree. |
+| linebreak | 2.0.0 | MIT | Unicode line breaking (via PDFKit) | Include the copyright and permission notice. |
+| png-js | 3.0.0 | MIT | PNG decoding for the fallback page images (via PDFKit) | Include the copyright and permission notice. |
+| unicode-trie, restructure, brotli | 3.0.0, 3.0.2, 2.1.0 | MIT | Fontkit/PDFKit support libraries | Include the copyright and permission notices. |
+| Selawik, Carlito, Liberation (fonts) | see `assets/fonts` | OFL-1.1 | Embedded PDF text | Separate works, not relicensed under GPLv3. Ship the font files with the licence files in `assets/fonts`; respect the Reserved Font Names `Selawik` and `Liberation` (see below). |
 | Go standard library | toolchain version (1.18 or newer) | BSD-3-Clause | Launcher static file server and embedded app | Include the Go BSD-3-Clause notice and the launcher source with the release. The build script copies the toolchain's licence as `GO-LICENSE`. The launcher uses no third-party Go modules. |
 
-Later milestones add PDFKit (MIT) and the OFL-1.1 fonts. They are not installed
-yet; their notices and obligations are recorded in
-[licensing §2](.scratch/calcplus/spec/licensing.md) and must be added here when
-the dependency lands.
+### The bundled print fonts
+
+`assets/fonts` holds the font files every PDF export embeds, with their licence
+files:
+
+| Family | Files | Use | Reserved Font Name |
+|---|---|---|---|
+| Selawik | Regular, Bold | Segoe UI cells (metric clone) | **Selawik** |
+| Carlito | Regular, Bold, Italic, Bold Italic | Calibri cells, the pinned Aptos deviation, and the Greek/Cyrillic supplement | none in the copyright record |
+| Liberation Sans / Serif / Mono | four styles each | Arial, Times New Roman and Courier New cells | **Liberation** (the sources also reserve Arimo, Tinos and Cousine) |
+
+The files ship unmodified. PDFKit subsets what it embeds, and every subset is
+renamed `CALP+<family>` (for example `CALP+Selawik`) in all three font
+descriptors, so no modified font is distributed under a Reserved Font Name
+(licensing §3.6; research/26 §3.3). The subset carries no `name` table of its
+own, so the PDF is the only place the name appears.
+
 
 ### The Go launcher
 

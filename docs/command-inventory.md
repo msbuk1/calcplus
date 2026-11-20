@@ -11,8 +11,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 
 - Feature-matrix IN rows: 57
 - Inventory commands: 105
-- Implemented in this build: 68
-- Planned for a later slice: 37
+- Implemented in this build: 72
+- Planned for a later slice: 33
 - Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -123,10 +123,10 @@ drop-down.
 | `file.rejectEncrypted` | 7. File I/O and printing — Encrypted / password-protected workbooks | Reject encrypted workbook | — | — | — | — | — | The file is encrypted; it is not modified | Planned |
 | `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | — | — | Imported links are preserved and not refreshed | Planned |
 | `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
-| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Planned |
-| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | — | — | — | File | Ctrl+P | A workbook is open | Planned |
-| `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Planned |
-| `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Planned |
+| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
+| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | — | — | — | File | Ctrl+P | A workbook is open | Implemented |
+| `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Implemented |
+| `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Implemented |
 | `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | `show-comments` | — | Review → Comments | — | — | The sheet has imported comments | Planned |
 | `cell.followHyperlink` | 8. Read-only fidelity (render/preserve, no authoring) — Hyperlinks | Follow hyperlink | — | — | — | — | Ctrl+Click | The active cell has a hyperlink | Planned |
 | `fidelity.readOnlyProtection` | 8. Read-only fidelity (render/preserve, no authoring) — Sheet and workbook protection | Preserve sheet and workbook protection | — | — | — | — | — | Imported protection is preserved and not enforced | Planned |

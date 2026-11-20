@@ -156,6 +156,26 @@ export class DocumentSession {
     return this.dirtyCells;
   }
 
+  /**
+   * Persistence §2: a recovered snapshot keeps the package bytes from the last
+   * open, while its model carries the unsaved commands on top. Mark every
+   * sheet record dirty so the next Save writes that model over those bytes.
+   * A restored empty sheet is already consistent with its source part.
+   */
+  markRestored(): void {
+    for (const sheet of this.workbook.sheets) {
+      const cells = new Set<string>(sheet.cells.keys());
+      if (cells.size > 0) this.dirtyCells.set(sheet.id, cells);
+      const rows = new Set<number>(sheet.rowDimensions.keys());
+      const columns = new Set<number>(sheet.columnDimensions.keys());
+      if (rows.size > 0 || columns.size > 0) {
+        this.dirtyDimensions.set(sheet.id, { rows, columns });
+      }
+      if (sheet.merges.length > 0) this.dirtyMerges.add(sheet.id);
+    }
+    this.dirtyWorkbook = true;
+  }
+
   /** Sheets whose merged ranges changed since the last save. */
   dirtyMergeSheets(): ReadonlySet<SheetId> {
     return this.dirtyMerges;

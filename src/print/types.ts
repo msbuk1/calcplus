@@ -124,11 +124,18 @@ export interface PrintDataBarItem {
 
 /**
  * The icon families a conditional-formatting icon set can paint (conditional
- * formatting §5.1 step 8). The renderers implement one glyph per family; the
- * reference geometry is `paintCfIcon` in `src/grid/cf-paint.ts`.
+ * formatting §5.1 step 8). The renderers implement one glyph per family, and
+ * the geometry is `paintCfIcon` in `src/grid/cf-paint.ts`: that shipped canvas
+ * artwork is authoritative, and the formulas below are the ones it draws.
  *
- * - `arrow`: a filled arrow at `-45° + 90° * iconIndex / (iconCount - 1)`
- *   (straight up for the first icon).
+ * The index is clamped to `0 … iconCount - 1` before any family paints, as the
+ * grid clamps it.
+ *
+ * - `arrow`: an up-pointing filled arrow rotated clockwise by
+ *   `-45° + 90° * iconIndex / (iconCount - 1) + 90°` — the canvas's
+ *   `arrowAngle` plus its quarter turn from the up-facing path — so a
+ *   three-icon set points up-right, sideways and down-right. A one-icon set is
+ *   rotated a flat `90°`.
  * - `traffic`: a filled disc with a dark outline.
  * - `sign`: index 0 is a red disc with a white cross, the last index a green
  *   disc with a white tick, and every middle index an amber triangle with a
@@ -137,7 +144,9 @@ export interface PrintDataBarItem {
  * - `rating`: `iconCount` vertical bars; the first `iconIndex + 1` are dark
  *   `#404040`, the rest `#E3E3E3`.
  * - `quarter`: a grey disc with a dark pie wedge of
- *   `iconIndex / (iconCount - 1)`.
+ *   `clamp((iconIndex + 1) / max(1, iconCount - 1))` of a turn, starting at
+ *   12 o'clock and turning clockwise. A clamped fraction of 1 is a full dark
+ *   disc, so the last wedge of a set is solid.
  * - `dot`: a filled circle.
  */
 export type PrintIconFamily = 'arrow' | 'traffic' | 'sign' | 'flag' | 'rating' | 'quarter' | 'dot';

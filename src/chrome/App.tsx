@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { ContextMenuRegion, RibbonTabId } from '@commands/inventory';
+import { exportPdfPlan } from '@commands/chrome';
 import { DocumentSession } from '@commands/session';
 import type {
   CommandResult,
@@ -49,10 +50,14 @@ import { buildCompatibilityReport, buildExportReport } from '@ooxml/report';
 import type { CompatibilityReport, ExportReport } from '@ooxml/report';
 import { compatibilityReportSummary, exportReportSummary } from '@ooxml/report';
 import {
+  EXTERNAL_EDIT_UNSUPPORTED_WARNING,
+  chooseExternalChange,
   confirmCloseDocument,
+  confirmRecoveryRestore,
   confirmReplaceDocument,
   planMacroSave,
   planSignatureSave,
+  shouldWarnBeforeUnload,
 } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
 import { checkExternalLink, internalLocationText, parseInternalLocation } from '@view/hyperlinks';
@@ -98,6 +103,8 @@ import { GoToDialog } from '@chrome/GoToDialog';
 import type { GoToOutcome } from '@chrome/GoToDialog';
 import { InsertFunctionDialog } from '@chrome/InsertFunctionDialog';
 import { NameBox } from '@chrome/NameBox';
+import { PrintPreviewDialog } from '@chrome/PrintPreviewDialog';
+import { RecentDialog } from '@chrome/RecentDialog';
 import { ReportDialog } from '@chrome/ReportDialog';
 import { compatibilitySections, exportSections } from '@chrome/report-view';
 import { Ribbon } from '@chrome/Ribbon';
@@ -119,11 +126,28 @@ import { ribbonControlValues } from '@chrome/ribbon-readouts';
 import { useMediaQuery } from '@chrome/useMediaQuery';
 import {
   canUseFileSystemAccess,
+  ensureHandlePermission,
   pickWorkbookFile,
   readBrowserFile,
+  readFileStamp,
+  readHandleFile,
   saveWorkbookFile,
+  stampChanged,
   type FileHandleLike,
+  type FileStamp,
 } from '@io/file-system';
+import {
+  RECOVERY_DEBOUNCE_MS,
+  RecoveryQuotaError,
+  RecoveryRepository,
+  recoveryIsNewerThanSavedFile,
+  type PendingRecovery,
+} from '@io/recovery';
+import { RecentRepository, recentDocumentId, type RecentEntry } from '@io/recent';
+import { createOriginStorage, type OriginStorage } from '@io/storage';
+import { createPrintPlan } from '../print/planner';
+import { createPrintSnapshot } from '../print/adapter';
+import type { PrintPlan } from '../print/types';
 
 interface LoadedDocument {
   readonly session: DocumentSession;
@@ -137,6 +161,14 @@ interface LoadedDocument {
   /** Lane 4's preserved-part listing for the compatibility report. */
   readonly preservedParts: readonly PreservedPartReport[];
   readonly calculation: CalculationController;
+  /** Persistence §4: the file's stamp at open or last save, for conflict checks. */
+  readonly fileStamp: FileStamp | null;
+  /**
+   * A restored recovery copy holds work the file does not have yet. The
+   * session starts clean (there are no commands yet), so this flag keeps the
+   * close prompt and the Save state honest until the next save.
+   */
+  readonly dirtyFromRecovery: boolean;
 }
 
 type AppDialog =
@@ -148,7 +180,9 @@ type AppDialog =
   | 'insert-function'
   | 'sort'
   | 'compatibility-report'
-  | 'export-report';
+  | 'export-report'
+  | 'print-preview'
+  | 'recent';
 
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
@@ -206,6 +240,13 @@ export function App(): JSX.Element {
   // read-only view of facts the save already reported; it never enters the model.
   const [lastExportReport, setLastExportReport] = useState<ExportReport | null>(null);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
+  // The plan the Print preview window renders. File → Print computes it from
+  // the live display records and drops it on close; it is plain data and never
+  // mutates the model.
+  const [printPlan, setPrintPlan] = useState<PrintPlan | null>(null);
+  // File → Recent files (persistence §3). The list is read from IndexedDB when
+  // the dialog opens; it is display state, never part of the workbook.
+  const [recentEntries, setRecentEntries] = useState<readonly RecentEntry[]>([]);
   // Copy mode's marquee, the paste destination while a Ctrl+C or Ctrl+X
   // snapshot is live. View state only, like the painter's target (ticket 31 B).
   const [copyMarquee, setCopyMarquee] = useState<GridRange | null>(null);
@@ -228,6 +269,38 @@ export function App(): JSX.Element {
   const recoveryRef = useRef<ReturnType<typeof snapshotWorkbook> | null>(null);
   const clipboardRef = useRef<ClipboardSnapshot | null>(null);
   const focusGridAfterDialogRef = useRef(false);
+  // The persistence tables are opened lazily on the page's origin. The refs
+  // keep one repository per tab; the storage itself is shared by the origin.
+  const originStorageRef = useRef<OriginStorage | null>(null);
+  const recoveryRepositoryRef = useRef<RecoveryRepository | null>(null);
+  const recentRepositoryRef = useRef<RecentRepository | null>(null);
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recoveryInFlightRef = useRef(false);
+  const recoveryQueuedRef = useRef(false);
+  const recoveryWriteRef = useRef<() => Promise<void>>(async () => undefined);
+  const recoveryOfferCheckedRef = useRef(false);
+  const recoveryHintRef = useRef<{
+    readonly docId: string;
+    readonly pkg: WorkbookPackage;
+    readonly structuralVersion: number;
+  } | null>(null);
+  const persistRequestedRef = useRef(false);
+  const externalEditWarningRef = useRef<Set<string>>(new Set());
+  /** Bumped when a document is replaced, so a late recovery write cannot revive it. */
+  const loadGenerationRef = useRef(0);
+
+  const originStorage = (): OriginStorage => {
+    originStorageRef.current ??= createOriginStorage();
+    return originStorageRef.current;
+  };
+  const recoveryStore = (): RecoveryRepository => {
+    recoveryRepositoryRef.current ??= new RecoveryRepository(originStorage());
+    return recoveryRepositoryRef.current;
+  };
+  const recentStore = (): RecentRepository => {
+    recentRepositoryRef.current ??= new RecentRepository(originStorage());
+    return recentRepositoryRef.current;
+  };
 
   const active = activeCell(selection);
   const activeView =
@@ -283,13 +356,253 @@ export function App(): JSX.Element {
 
   const nameBoxValue = projection === null ? '' : formatSelectionAddress(selection, projection);
 
+  const clearRecoveryTimer = (): void => {
+    if (recoveryTimerRef.current === null) return;
+    clearTimeout(recoveryTimerRef.current);
+    recoveryTimerRef.current = null;
+  };
+
+  /**
+   * The sheets a recovery write may need to re-serialise. The dirty sets
+   * accumulate until the next save, so this is a safe superset of the sheets
+   * edited since the previous write.
+   */
+  const changedSheetIds = (session: DocumentSession): ReadonlySet<string> => {
+    const ids = new Set<string>();
+    for (const sheetId of session.dirtyCellMap().keys()) ids.add(sheetId);
+    for (const sheetId of session.dirtyMergeSheets()) ids.add(sheetId);
+    for (const sheetId of session.dirtyDimensionSnapshot().keys()) ids.add(sheetId);
+    return ids;
+  };
+
+  const writeRecoveryNow = async (): Promise<void> => {
+    const current = document;
+    if (current === null || !current.session.hasUnsavedChanges) return;
+    if (recoveryInFlightRef.current) {
+      recoveryQueuedRef.current = true;
+      return;
+    }
+    recoveryInFlightRef.current = true;
+    const generation = loadGenerationRef.current;
+    try {
+      if (!persistRequestedRef.current) {
+        persistRequestedRef.current = true;
+        const storage = typeof navigator === 'undefined' ? undefined : navigator.storage;
+        void storage?.persist?.().catch(() => undefined);
+      }
+      const docId = current.session.workbook.id;
+      const hint = recoveryHintRef.current;
+      const sameStructure =
+        hint !== null &&
+        hint.docId === docId &&
+        hint.pkg === current.pkg &&
+        hint.structuralVersion === current.session.structuralVersion;
+      await recoveryStore().save({
+        docId,
+        displayName: current.fileName,
+        snapshot: snapshotWorkbook(current.session.workbook, current.pkg),
+        compatibility: current.compatibility,
+        savedFileModifiedAt: current.fileStamp?.lastModified ?? null,
+        savedFileSize: current.fileStamp?.size ?? null,
+        activeSheetId: current.sheetId,
+        handle: current.handle ?? undefined,
+        changedSheets: sameStructure ? changedSheetIds(current.session) : 'all',
+        partsChanged: !sameStructure,
+      });
+      if (loadGenerationRef.current !== generation) {
+        // The document was replaced while this write was in flight; the copy
+        // belongs to a session the user already discarded.
+        await recoveryStore().discard(docId);
+        return;
+      }
+      recoveryHintRef.current = {
+        docId,
+        pkg: current.pkg,
+        structuralVersion: current.session.structuralVersion,
+      };
+      clearRecoveryTimer();
+    } catch (error) {
+      setStatus(
+        error instanceof RecoveryQuotaError
+          ? `${error.message} The last good copy was kept.`
+          : `The recovery copy could not be written: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+      );
+    } finally {
+      recoveryInFlightRef.current = false;
+      if (recoveryQueuedRef.current) {
+        recoveryQueuedRef.current = false;
+        void recoveryWriteRef.current();
+      }
+    }
+  };
+  recoveryWriteRef.current = writeRecoveryNow;
+
+  const rememberRecent = (picked: {
+    readonly name: string;
+    readonly handle: FileHandleLike | null;
+    readonly stamp: FileStamp | null;
+  }): void => {
+    const origin = originStorage().origin;
+    void recentStore()
+      .remember({
+        id: recentDocumentId(origin, picked.name),
+        name: picked.name,
+        fileSize: picked.stamp?.size ?? null,
+        lastModified: picked.stamp?.lastModified ?? null,
+        handle: picked.handle,
+      })
+      .then(setRecentEntries)
+      .catch(() => undefined);
+  };
+
+  const refreshRecent = async (): Promise<void> => {
+    try {
+      setRecentEntries(await recentStore().list());
+    } catch {
+      setRecentEntries([]);
+    }
+  };
+
+  const offerRecovery = async (manual: boolean): Promise<void> => {
+    try {
+      const repository = recoveryStore();
+      await repository.prune();
+      const pending = await repository.listPending();
+      let candidate: PendingRecovery | null = null;
+      for (const entry of pending) {
+        if (manual || recoveryIsNewerThanSavedFile(entry)) {
+          candidate = entry;
+          break;
+        }
+        // The saved file is newer than the copy, so there is nothing to
+        // restore; the copy is only litter from an earlier crash.
+        await repository.discard(entry.docId);
+      }
+      if (candidate === null) {
+        if (manual) setStatus('There is no unsaved work to recover.');
+        return;
+      }
+      if (!confirmRecoveryRestore(candidate.displayName)) {
+        await repository.discard(candidate.docId);
+        setStatus('Recovery copy discarded.');
+        return;
+      }
+      const restored = await repository.restore(candidate.docId);
+      if (restored === null) {
+        setStatus('The recovery copy could not be read. It was left in local storage.');
+        return;
+      }
+      const compatibility = restored.compatibility ?? {
+        opaquePartPaths: [...restored.workbook.opaqueParts.keys()].sort(),
+        externalLinkParts: [...restored.package.externalLinkParts],
+        hasMacros: [...restored.package.entries.keys()].some((path) =>
+          /vbaproject\.bin$/i.test(path),
+        ),
+        hasDigitalSignatures: [...restored.package.entries.keys()].some(
+          (path) => path.startsWith('_xmlsignatures/') || path.endsWith('.sigs'),
+        ),
+        notes: [],
+      };
+      loadOpened(
+        {
+          workbook: restored.workbook,
+          package: restored.package,
+          initialSheetId:
+            restored.activeSheetId ??
+            firstVisibleSheetId(restored.workbook) ??
+            restored.workbook.sheets[0]?.id ??
+            '',
+          compatibility,
+          conditionalFormatRules: new Map(),
+        },
+        restored.fileName,
+        asFileHandle(restored.handle),
+        restored.savedFileModifiedAt === null && restored.savedFileSize === null
+          ? null
+          : {
+              lastModified: restored.savedFileModifiedAt ?? 0,
+              size: restored.savedFileSize ?? 0,
+            },
+        true,
+      );
+      setStatus('Restored unsaved changes.');
+    } catch (error) {
+      setStatus(
+        `The recovery copy could not be restored: ${
+          error instanceof Error ? error.message : String(error)
+        }. It was left in local storage.`,
+      );
+    }
+  };
+
+  const openRecent = async (entry: RecentEntry): Promise<void> => {
+    if (busy) return;
+    if (entry.handle === null) {
+      // Firefox keeps names only (persistence §3); ask for the file again.
+      setDialog(null);
+      setStatus(`Choose "${entry.name}" again in the file picker.`);
+      fileInputRef.current?.click();
+      return;
+    }
+    setBusy(true);
+    try {
+      if (!(await ensureHandlePermission(entry.handle))) {
+        await recentStore().remove(entry.id);
+        setRecentEntries(await recentStore().list());
+        setStatus(
+          `Permission for "${entry.name}" was denied. It was removed from the recent list.`,
+        );
+        return;
+      }
+      const file = await readHandleFile(entry.handle);
+      if (file === null) {
+        await recentStore().remove(entry.id);
+        setRecentEntries(await recentStore().list());
+        setStatus(`"${entry.name}" is no longer available. It was removed from the recent list.`);
+        return;
+      }
+      if (
+        loadPickedFile({
+          name: entry.name,
+          bytes: file.bytes,
+          handle: entry.handle,
+          stamp: file.stamp,
+        })
+      ) {
+        setDialog(null);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadOpened = (
     opened: ReturnType<typeof openWorkbook>,
     fileName: string,
     handle: FileHandleLike | null,
+    fileStamp: FileStamp | null = null,
+    dirtyFromRecovery = false,
   ): void => {
     document?.calculation.dispose();
+    loadGenerationRef.current += 1;
+    // A replaced document's recovery copy belongs to the session being
+    // discarded; its replacement is either the file just opened or the new
+    // unsaved document, both of which start clean.
+    if (document !== null) {
+      clearRecoveryTimer();
+      void recoveryStore()
+        .discard(document.session.workbook.id)
+        .catch(() => undefined);
+    }
+    recoveryHintRef.current = null;
     const session = new DocumentSession(opened.workbook);
+    // A restored copy carries unsaved commands over the package bytes it kept;
+    // mark them so a later Save writes the recovered model (persistence §2).
+    if (dirtyFromRecovery) session.markRestored();
     const initialSheetId = isSheetVisible(opened.workbook, opened.initialSheetId)
       ? opened.initialSheetId
       : (firstVisibleSheetId(opened.workbook) ?? opened.initialSheetId);
@@ -320,6 +633,8 @@ export function App(): JSX.Element {
         format: fileName.toLowerCase().endsWith('.xlsm') ? 'xlsm' : 'xlsx',
       }),
       calculation,
+      fileStamp,
+      dirtyFromRecovery,
     });
     setSheetViews(initialSheetViews(opened.workbook));
     setSelection(collapseSelection({ row: 0, col: 0 }));
@@ -343,25 +658,41 @@ export function App(): JSX.Element {
     calculation.start();
   };
 
-  const loadPickedFile = (picked: {
-    name: string;
-    bytes: Uint8Array;
-    handle: FileHandleLike | null;
-  }): void => {
-    if (!confirmReplaceDocument(document?.session.hasUnsavedChanges ?? false)) {
+  const loadPickedFile = (
+    picked: {
+      name: string;
+      bytes: Uint8Array;
+      handle: FileHandleLike | null;
+      stamp: FileStamp | null;
+    },
+    replaceConfirmed = false,
+  ): boolean => {
+    if (
+      !replaceConfirmed &&
+      !confirmReplaceDocument(
+        document !== null && (document.session.hasUnsavedChanges || document.dirtyFromRecovery),
+      )
+    ) {
       setStatus('Open cancelled. Unsaved changes were kept.');
-      return;
+      return false;
     }
     try {
-      loadOpened(openWorkbook(picked.bytes, picked.name), picked.name, picked.handle);
+      loadOpened(openWorkbook(picked.bytes, picked.name), picked.name, picked.handle, picked.stamp);
+      rememberRecent(picked);
+      return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
+      return false;
     }
   };
 
   const newWorkbook = (): void => {
     if (busy) return;
-    if (!confirmReplaceDocument(document?.session.hasUnsavedChanges ?? false)) {
+    if (
+      !confirmReplaceDocument(
+        document !== null && (document.session.hasUnsavedChanges || document.dirtyFromRecovery),
+      )
+    ) {
       setStatus('New workbook cancelled. Unsaved changes were kept.');
       return;
     }
@@ -376,11 +707,19 @@ export function App(): JSX.Element {
   const closeWorkbook = (): void => {
     if (document === null || busy) return;
     // Persistence §4: an unsaved workbook asks before the session is discarded.
-    if (!confirmCloseDocument(document.session.hasUnsavedChanges)) {
+    if (!confirmCloseDocument(document.session.hasUnsavedChanges || document.dirtyFromRecovery)) {
       setStatus('Close cancelled. Unsaved changes were kept.');
       return;
     }
     document.calculation.dispose();
+    loadGenerationRef.current += 1;
+    clearRecoveryTimer();
+    // Persistence §2: closing discards the session, so its recovery copy goes
+    // with it. The close prompt already protected the unsaved work.
+    void recoveryStore()
+      .discard(document.session.workbook.id)
+      .catch(() => undefined);
+    recoveryHintRef.current = null;
     setDocument(null);
     setSheetViews({});
     setSelection(collapseSelection({ row: 0, col: 0 }));
@@ -425,38 +764,84 @@ export function App(): JSX.Element {
 
   const saveFile = async (saveAs: boolean): Promise<void> => {
     if (document === null || busy) return;
-    // File-compat §6.3: the default Save keeps .xlsm; Save As from a macro
-    // workbook converts to .xlsx and only after explicit confirmation.
-    const macroPlan = planMacroSave({
-      fileName: document.fileName,
-      hasMacros: document.compatibility.hasMacros,
-      saveAs,
-    });
-    if (macroPlan === null) {
-      setStatus('Save As cancelled. The workbook was not written.');
-      return;
-    }
-    // File-compat §6.5: a signed package is preserved, but saving invalidates
-    // the signature, so the write is preceded by a confirmation. A save with
-    // nothing to write returns the original bytes and never asks, and an
-    // unsigned workbook has nothing to warn about. Declining writes nothing.
-    if (
-      !planSignatureSave({
-        hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
-        changed: document.session.hasUnsavedChanges,
-      })
-    ) {
-      setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
-      return;
-    }
     setBusy(true);
-    // Snapshot the dirty state before the write await. Edits made while the
-    // browser is writing are not in the saved bytes and must stay dirty.
-    const savedDirty = document.session.dirtyCellSnapshot();
-    const savedDimensions = document.session.dirtyDimensionSnapshot();
-    const savedMerges = document.session.dirtyMergeSnapshot();
-    const savedStructuralVersion = document.session.structuralVersion;
+    let effectiveSaveAs = saveAs;
     try {
+      // Persistence §4: a plain Save compares the file's stamp with the value
+      // captured at open or last save. A newer external file is never
+      // overwritten without an explicit Overwrite choice.
+      if (!effectiveSaveAs && document.handle !== null) {
+        const currentStamp = await readFileStamp(document.handle);
+        if (currentStamp === null) {
+          if (
+            !window.confirm(
+              `calcplus could not read "${document.fileName}" to check for external changes. Save as a new file instead?`,
+            )
+          ) {
+            setStatus('Save cancelled. The file was not touched.');
+            return;
+          }
+          effectiveSaveAs = true;
+        } else if (stampChanged(document.fileStamp, currentStamp)) {
+          const choice = chooseExternalChange(document.fileName);
+          if (choice === 'cancel') {
+            setStatus('Save cancelled. The newer file on disk was not touched.');
+            return;
+          }
+          if (choice === 'reload') {
+            const file = await readHandleFile(document.handle);
+            if (file === null) {
+              setStatus('The newer file could not be read. Local changes were kept.');
+              return;
+            }
+            if (
+              loadPickedFile(
+                {
+                  name: document.fileName,
+                  bytes: file.bytes,
+                  handle: document.handle,
+                  stamp: file.stamp,
+                },
+                true,
+              )
+            ) {
+              setStatus('Reloaded the file from disk. Local changes were discarded.');
+            }
+            return;
+          }
+          if (choice === 'saveAs') effectiveSaveAs = true;
+        }
+      }
+      // File-compat §6.3: the default Save keeps .xlsm; Save As from a macro
+      // workbook converts to .xlsx and only after explicit confirmation.
+      const macroPlan = planMacroSave({
+        fileName: document.fileName,
+        hasMacros: document.compatibility.hasMacros,
+        saveAs: effectiveSaveAs,
+      });
+      if (macroPlan === null) {
+        setStatus('Save As cancelled. The workbook was not written.');
+        return;
+      }
+      // File-compat §6.5: a signed package is preserved, but saving invalidates
+      // the signature, so the write is preceded by a confirmation. A save with
+      // nothing to write returns the original bytes and never asks, and an
+      // unsigned workbook has nothing to warn about. Declining writes nothing.
+      if (
+        !planSignatureSave({
+          hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
+          changed: document.session.hasUnsavedChanges || document.dirtyFromRecovery,
+        })
+      ) {
+        setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
+        return;
+      }
+      // Snapshot the dirty state before the write await. Edits made while the
+      // browser is writing are not in the saved bytes and must stay dirty.
+      const savedDirty = document.session.dirtyCellSnapshot();
+      const savedDimensions = document.session.dirtyDimensionSnapshot();
+      const savedMerges = document.session.dirtyMergeSnapshot();
+      const savedStructuralVersion = document.session.structuralVersion;
       const result = saveWorkbook({
         workbook: document.session.workbook,
         package: document.pkg,
@@ -467,7 +852,7 @@ export function App(): JSX.Element {
       });
       const outcome = await saveWorkbookFile(result.bytes, macroPlan.fileName, document.handle, {
         forceFallback: FORCE_FALLBACK,
-        saveAs,
+        saveAs: effectiveSaveAs,
       });
       if (outcome.method === 'picker' && outcome.handle === null) {
         setStatus('Save As cancelled.');
@@ -505,6 +890,10 @@ export function App(): JSX.Element {
       setLastExportReport(exportReport);
       adoptSavedPackage(document.session.workbook, result.package);
       document.session.markSaved(savedDirty, savedDimensions, savedStructuralVersion, savedMerges);
+      // The write itself moves the file's stamp; capture the new one so the
+      // next Save compares against our own write, not an external edit.
+      const savedStamp = outcome.handle === null ? null : await readFileStamp(outcome.handle);
+      const savedDocumentId = document.session.workbook.id;
       setDocument((current) => {
         // The file write is asynchronous, so a tab switch or a terminal sheet
         // delete may have changed the view since this save began. Adopt only
@@ -521,6 +910,8 @@ export function App(): JSX.Element {
           fileName: outcome.fileName,
           handle: outcome.handle ?? current.handle,
           sheetId,
+          fileStamp: savedStamp,
+          dirtyFromRecovery: false,
           // A confirmed format change removed the macro parts (§6.3), so the
           // next save must not warn about macros that are no longer there.
           compatibility:
@@ -536,7 +927,32 @@ export function App(): JSX.Element {
       });
       setVersion((current) => current + 1);
       recoveryRef.current = null;
-      setStatus(result.noOp ? 'Saved. No changes to write.' : 'Saved.');
+      recoveryHintRef.current = null;
+      // Any recovery write started before this save is now superseded.
+      loadGenerationRef.current += 1;
+      if (document.session.hasUnsavedChanges) {
+        // An edit landed while the browser was writing, so it is not in the
+        // saved bytes. Keep a fresh copy for it instead of dropping the old
+        // one (persistence §2: never lose unsaved work).
+        setTimeout(() => void recoveryWriteRef.current(), 0);
+      } else {
+        void recoveryStore()
+          .discard(savedDocumentId)
+          .catch(() => undefined);
+      }
+      rememberRecent({
+        name: outcome.fileName,
+        handle: outcome.handle ?? document.handle,
+        stamp: savedStamp,
+      });
+      let savedMessage = result.noOp ? 'Saved. No changes to write.' : 'Saved.';
+      if (outcome.method === 'download' && !externalEditWarningRef.current.has(savedDocumentId)) {
+        // Persistence §4: a browser without handles cannot detect external
+        // edits, so say so once per document.
+        externalEditWarningRef.current.add(savedDocumentId);
+        savedMessage = `${savedMessage} ${EXTERNAL_EDIT_UNSUPPORTED_WARNING}`;
+      }
+      setStatus(savedMessage);
       if (exportReport.needsAttention) setDialog('export-report');
     } catch (error) {
       if (error instanceof WorkbookSaveError) {
@@ -685,6 +1101,7 @@ export function App(): JSX.Element {
   const closeDialog = (reason: DialogCloseReason): void => {
     setDialog(null);
     setSortRequest(null);
+    setPrintPlan(null);
     if (reason === 'escape') {
       focusGrid();
       return;
@@ -849,7 +1266,8 @@ export function App(): JSX.Element {
     setCopyMarquee(null);
   };
 
-  const dirty = document?.session.hasUnsavedChanges ?? false;
+  const dirty =
+    document !== null && (document.session.hasUnsavedChanges || document.dirtyFromRecovery);
   const calculation = document?.calculation.state() ?? null;
   const staleCount = calculation?.staleCount ?? 0;
   const activeProjected = projection?.cellAt(active.row, active.col) ?? null;
@@ -919,7 +1337,7 @@ export function App(): JSX.Element {
   }, [narrow]);
 
   useEffect(() => {
-    if (!dirty) return;
+    if (!shouldWarnBeforeUnload(dirty)) return;
     const listener = (event: BeforeUnloadEvent): void => {
       event.preventDefault();
       event.returnValue = '';
@@ -927,6 +1345,48 @@ export function App(): JSX.Element {
     window.addEventListener('beforeunload', listener);
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
+
+  // Persistence §2: debounce a recovery write about three seconds after the
+  // last document edit. `version` moves on every command and undo, so the
+  // effect restarts the timer; view changes do not touch it.
+  useEffect(() => {
+    if (document === null || !document.session.hasUnsavedChanges) return;
+    const timer = setTimeout(() => {
+      if (recoveryTimerRef.current === timer) recoveryTimerRef.current = null;
+      void recoveryWriteRef.current();
+    }, RECOVERY_DEBOUNCE_MS);
+    recoveryTimerRef.current = timer;
+    return () => {
+      if (recoveryTimerRef.current !== timer) return;
+      clearTimeout(timer);
+      recoveryTimerRef.current = null;
+    };
+  }, [document, version]);
+
+  // Persistence §2: also write on `visibilitychange` (hidden) and `pagehide`.
+  // The listener is registered once and reads the latest writer through a ref.
+  useEffect(() => {
+    const flush = (): void => {
+      void recoveryWriteRef.current();
+    };
+    const onVisibility = (): void => {
+      if (window.document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    window.document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  // Persistence §2: offer the newest recovery copy once, at startup. The guard
+  // stops a re-render from asking again in the same session.
+  useEffect(() => {
+    if (recoveryOfferCheckedRef.current) return;
+    recoveryOfferCheckedRef.current = true;
+    void offerRecovery(false);
+  }, []);
 
   // A sheet inserted by a command starts with its imported/default view.
   useEffect(() => {
@@ -1046,6 +1506,11 @@ export function App(): JSX.Element {
       } else if (event.key === 'o' || event.key === 'O') {
         event.preventDefault();
         runCommandRef.current?.('file.open');
+      } else if (!event.shiftKey && (event.key === 'p' || event.key === 'P')) {
+        // Ctrl+P opens the in-app preview; the browser's own print then runs
+        // from the preview, so the plan's pages are what reaches the printer.
+        event.preventDefault();
+        runCommandRef.current?.('file.print');
       } else if (!inTextInput && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault();
         runCommandRef.current?.(event.shiftKey ? 'edit.redo' : 'edit.undo');
@@ -1817,6 +2282,11 @@ export function App(): JSX.Element {
         return cell ?? null;
       },
       hasRecoverySnapshot: () => recoveryRef.current !== null,
+      /** Test hook: force the debounced recovery write and wait for it. */
+      flushRecovery: async () => {
+        await writeRecoveryNow();
+      },
+      getRecoveryPending: () => recoveryStore().listPending(),
       loadBenchmarkSheet,
       getCellRect: (row: number, col: number) => {
         if (projection === null) return null;
@@ -2541,6 +3011,54 @@ export function App(): JSX.Element {
         clearPainter();
         setDialog('export-report');
         return null;
+      case 'file.recent':
+        clearPainter();
+        void refreshRecent();
+        setDialog('recent');
+        return null;
+      case 'file.recover':
+        clearPainter();
+        void offerRecovery(true);
+        return null;
+      case 'file.print': {
+        if (document === null || projection === null || busy) return null;
+        clearPainter();
+        try {
+          // The plan is computed once per print (print-pdf §6) from the same
+          // display records the grid paints, at 100%, never the view zoom.
+          const plan = createPrintPlan(createPrintSnapshot(document.session.workbook, projection));
+          setPrintPlan(plan);
+          setDialog('print-preview');
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error));
+          focusGrid();
+        }
+        return null;
+      }
+      case 'file.exportPdf': {
+        if (document === null || projection === null || busy) return null;
+        clearPainter();
+        try {
+          // The same plan the preview builds, so the PDF matches it (print-pdf §7).
+          const plan = createPrintPlan(createPrintSnapshot(document.session.workbook, projection));
+          setStatus('Building the PDF…');
+          void exportPdfPlan(plan, document.fileName).then(
+            (summary) => {
+              const raster =
+                summary.fallbackPages.length === 0
+                  ? ''
+                  : `; ${summary.fallbackPages.length} page(s) rasterised at 300 DPI`;
+              setStatus(`Exported ${summary.fileName} (${summary.pageCount} pages${raster}).`);
+            },
+            (error: unknown) => {
+              setStatus(error instanceof Error ? error.message : String(error));
+            },
+          );
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : String(error));
+        }
+        return null;
+      }
       case 'help.about':
         clearPainter();
         setDialog('about');
@@ -2895,6 +3413,24 @@ export function App(): JSX.Element {
           onClose={closeDialog}
         />
       ) : null}
+
+      {dialog === 'print-preview' && printPlan !== null ? (
+        <PrintPreviewDialog plan={printPlan} onClose={closeDialog} />
+      ) : null}
+
+      {dialog === 'recent' ? (
+        <RecentDialog
+          entries={recentEntries}
+          onOpen={(entry) => void openRecent(entry)}
+          onRemove={(entry) => {
+            void recentStore()
+              .remove(entry.id)
+              .then(setRecentEntries)
+              .catch(() => undefined);
+          }}
+          onClose={closeDialog}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2902,6 +3438,16 @@ export function App(): JSX.Element {
 /** The picked-up style record is view state returned by `painter.pickup`. */
 function readPainterSnapshot(result: CommandResult): PainterSnapshot | null {
   return result.painter ?? null;
+}
+
+/** The structured-clone value from a recovery record, when it is a handle. */
+function asFileHandle(value: unknown): FileHandleLike | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as Partial<FileHandleLike>;
+  if (typeof candidate.name !== 'string' || typeof candidate.createWritable !== 'function') {
+    return null;
+  }
+  return candidate as FileHandleLike;
 }
 
 function commandTextArgument(args: unknown): string | null {

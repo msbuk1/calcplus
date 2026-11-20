@@ -82,22 +82,24 @@ test('Ctrl+C marks the range and the arrows move the marquee, then Enter pastes 
 
 test('the marquee clamps at the sheet edge instead of wrapping', async ({ page }) => {
   await openFixture(page, fixture);
-  // A1 is the first cell: no row above it and no column before it.
+  // A1 is the first cell: no row above it and no column before it. The fixture
+  // merges A1:B1, and a merged cell is one cell (ticket 38): the copy source
+  // and the marquee cover the whole merged range.
   await clickCell(page, 0, 0);
   await page.keyboard.press('Control+c');
-  await expectMarquee(page, [0, 0], [0, 0]);
+  await expectMarquee(page, [0, 0], [0, 1]);
 
   await page.keyboard.press('ArrowUp');
-  await expectMarquee(page, [0, 0], [0, 0]);
+  await expectMarquee(page, [0, 0], [0, 1]);
   await page.keyboard.press('ArrowLeft');
-  await expectMarquee(page, [0, 0], [0, 0]);
+  await expectMarquee(page, [0, 0], [0, 1]);
 
   // A step that stays inside the sheet still moves the marquee.
   await page.keyboard.press('ArrowRight');
-  await expectMarquee(page, [0, 1], [0, 1]);
+  await expectMarquee(page, [0, 1], [0, 2]);
   await page.keyboard.press('ArrowDown');
-  await expectMarquee(page, [1, 1], [1, 1]);
-  await expect(page.getByTestId('name-box')).toHaveValue('A1');
+  await expectMarquee(page, [1, 1], [1, 2]);
+  await expect(page.getByTestId('name-box')).toHaveValue('A1:B1');
 });
 
 test('Esc ends copy mode without pasting', async ({ page }) => {

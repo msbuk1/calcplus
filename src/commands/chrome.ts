@@ -1,3 +1,5 @@
+import { downloadBytes } from '@io/file-system';
+import type { PrintPlan } from '../print/types';
 import type { CommandDefinition } from './types';
 
 /**
@@ -62,6 +64,42 @@ const fileSaveAsCommand: CommandDefinition<void> = {
 const fileCloseCommand: CommandDefinition<void> = {
   id: 'file.close',
   label: 'Close',
+  category: 'file',
+  keybindings: [],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0 && context.busy !== true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+/**
+ * File → Print opens the preview window. Like the other file commands, its
+ * `run` is a no-op: the shell builds the plan from the live display records and
+ * owns the preview dialog (print-pdf §2).
+ */
+const filePrintCommand: CommandDefinition<void> = {
+  id: 'file.print',
+  label: 'Print',
+  category: 'file',
+  keybindings: ['Ctrl+P'],
+  isEnabled(context) {
+    return context.workbook.sheets.length > 0 && context.busy !== true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+/**
+ * File → Export PDF. Like Print, the command's `run` is a no-op: the shell
+ * owns the live display records and the plan, and calls `exportPdfPlan` below.
+ * The map entry lands before any UI (ui-chrome §4.1).
+ */
+const fileExportPdfCommand: CommandDefinition<void> = {
+  id: 'file.exportPdf',
+  label: 'Export PDF',
   category: 'file',
   keybindings: [],
   isEnabled(context) {
@@ -170,6 +208,42 @@ const fileExportReportCommand: CommandDefinition<void> = {
 };
 
 /**
+ * Persistence §3: the recent list is a chrome-owned dialog. The command is
+ * always enabled; the dialog reports an empty list rather than hiding the File
+ * menu entry, which is how Excel's Recent files behaves.
+ */
+const fileRecentCommand: CommandDefinition<void> = {
+  id: 'file.recent',
+  label: 'Recent files',
+  category: 'file',
+  keybindings: [],
+  isEnabled() {
+    return true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+/**
+ * Persistence §2: the recovery prompt is chrome-owned. It is not in a menu;
+ * the host offers a copy on startup and exposes the command for a manual
+ * check of the pending list.
+ */
+const fileRecoverCommand: CommandDefinition<void> = {
+  id: 'file.recover',
+  label: 'Recover unsaved work',
+  category: 'file',
+  keybindings: [],
+  isEnabled() {
+    return true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+/**
  * The formula autocomplete surface is chrome-owned: the editor and the formula
  * bar render the suggestion list themselves from the published catalogue. The
  * registry entry keeps the command addressable and enablement has one source.
@@ -187,6 +261,62 @@ const formulaAutocompleteCommand: CommandDefinition<void> = {
   },
 };
 
+/**
+ * The result File → Export PDF reports to the status bar.
+ *
+ * `fallbackPages` names the pages that were rasterised at 300 DPI because
+ * their text could not embed (print-pdf §2, §7). An empty list is the normal
+ * vector export.
+ */
+export interface PdfExportSummary {
+  readonly fileName: string;
+  readonly pageCount: number;
+  readonly fallbackPages: readonly number[];
+}
+
+/**
+ * File → Export PDF: the plan becomes a PDF download.
+ *
+ * The plan is the single source of truth, built by the shell from the same
+ * display records the grid and the preview use (print-pdf §2), so the PDF and
+ * the preview cannot disagree. PDFKit and the canvas fallback are imported on
+ * demand: the ~592 KB PDFKit chunk must stay out of the startup bundle
+ * (research/26 §7.1).
+ *
+ * Every page is vector unless `preflightPrintPlan` routed it to the 300 DPI
+ * fallback. A fallback page is rasterised from the same page, never redrawn
+ * differently, and the download carries the plan's page boxes.
+ */
+export async function exportPdfPlan(
+  plan: PrintPlan,
+  workbookFileName: string | null,
+): Promise<PdfExportSummary> {
+  const [{ renderPdf }, { createCanvasRasterizer }] = await Promise.all([
+    import('../print/pdf-renderer'),
+    import('../print/canvas-fallback'),
+  ]);
+  const result = await renderPdf(plan, { rasterize: createCanvasRasterizer() });
+  const fileName = pdfFileName(workbookFileName, plan.sheetName);
+  downloadBytes(result.bytes, fileName, PDF_MIME);
+  return {
+    fileName,
+    pageCount: result.pageCount,
+    fallbackPages: result.fallbackPages,
+  };
+}
+
+const PDF_MIME = 'application/pdf';
+
+/**
+ * The download name: the workbook's stem with a `.pdf` extension, or the sheet
+ * name for a workbook that has never been named.
+ */
+export function pdfFileName(workbookFileName: string | null, sheetName: string): string {
+  const name = workbookFileName?.trim() ?? '';
+  const stem = name.replace(/\.(xlsx|xlsm)$/i, '');
+  return `${stem === '' ? sheetName : stem}.pdf`;
+}
+
 export function chromeCommands(): readonly CommandDefinition<never>[] {
   return [
     fileNewCommand,
@@ -194,12 +324,16 @@ export function chromeCommands(): readonly CommandDefinition<never>[] {
     fileSaveCommand,
     fileSaveAsCommand,
     fileCloseCommand,
+    filePrintCommand,
+    fileExportPdfCommand,
     viewGridlinesCommand,
     viewHeadingsCommand,
     viewZoom100Command,
     nameBoxNavigateCommand,
     fileCompatibilityReportCommand,
     fileExportReportCommand,
+    fileRecentCommand,
+    fileRecoverCommand,
     formulaAutocompleteCommand,
     helpAboutCommand,
   ] as unknown as readonly CommandDefinition<never>[];

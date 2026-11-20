@@ -5,6 +5,12 @@ export default defineConfig({
   esbuild: {
     jsx: 'automatic',
   },
+  // PDFKit is imported on demand by File → Export PDF. Pre-bundling it stops
+  // the dev server from discovering it mid-click and reloading the page, which
+  // otherwise loses the export (the dependency-reload flake).
+  optimizeDeps: {
+    include: ['pdfkit', 'hyperformula'],
+  },
   resolve: {
     alias: {
       '@model': fileURLToPath(new URL('./src/model', import.meta.url)),

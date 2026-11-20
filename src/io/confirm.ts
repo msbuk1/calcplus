@@ -116,3 +116,69 @@ function toXlsxName(fileName: string): string {
   if (/\.xlsx$/i.test(fileName)) return fileName;
   return `${fileName}.xlsx`;
 }
+
+/**
+ * Persistence §2: startup offers Restore or Discard for an unsaved recovery
+ * copy. The OK button restores; Cancel discards the copy, which is why the
+ * question names both outcomes.
+ */
+export function recoveryRestoreQuestion(displayName: string): string {
+  return `Unsaved changes in "${displayName}" were found from an earlier session. Restore them? Choose Cancel to discard the recovery copy.`;
+}
+
+export function confirmRecoveryRestore(
+  displayName: string,
+  confirmFn: (message: string) => boolean = defaultConfirm,
+): boolean {
+  return confirmFn(recoveryRestoreQuestion(displayName));
+}
+
+/** Persistence §4: every external-change branch, plus the no-action choice. */
+export type ExternalChangeChoice = 'reload' | 'overwrite' | 'saveAs' | 'cancel';
+
+export function externalChangeReloadQuestion(displayName: string): string {
+  return `"${displayName}" changed on disk since it was opened. Reload it and discard your unsaved changes?`;
+}
+
+export function externalChangeOverwriteQuestion(displayName: string): string {
+  return `Keep your unsaved changes and overwrite the newer "${displayName}" on disk?`;
+}
+
+export const EXTERNAL_CHANGE_SAVE_AS_QUESTION = 'Save your unsaved changes to a new file instead?';
+
+/**
+ * Persistence §4: an external edit offers Reload (discard local changes),
+ * Overwrite (keep local) or Save As. A browser confirm has two buttons, so the
+ * three branches are asked in order; declining every question cancels and
+ * writes nothing. The app never overwrites a newer external file silently.
+ */
+export function chooseExternalChange(
+  displayName: string,
+  confirmFn: (message: string) => boolean = defaultConfirm,
+): ExternalChangeChoice {
+  if (confirmFn(externalChangeReloadQuestion(displayName))) return 'reload';
+  if (confirmFn(externalChangeOverwriteQuestion(displayName))) return 'overwrite';
+  if (confirmFn(EXTERNAL_CHANGE_SAVE_AS_QUESTION)) return 'saveAs';
+  return 'cancel';
+}
+
+/**
+ * Persistence §4: leaving the tab with unsaved changes prompts. Browsers own
+ * the wording and ignore a page's custom text on `beforeunload`; the app can
+ * only trigger the browser's own prompt. This constant records that limit so
+ * the UI never promises a message it cannot show.
+ */
+export const TAB_CLOSE_WARNING =
+  'This workbook has unsaved changes. The browser will ask before leaving the page; browsers do not let a page choose the wording of that prompt.';
+
+export function shouldWarnBeforeUnload(hasUnsavedChanges: boolean): boolean {
+  return hasUnsavedChanges;
+}
+
+/** Persistence §4: browsers without handles cannot detect external edits. */
+export const EXTERNAL_EDIT_UNSUPPORTED_WARNING =
+  'This browser saves a downloaded copy. Edits made to the file elsewhere cannot be detected and may be overwritten.';
+
+function defaultConfirm(message: string): boolean {
+  return typeof window === 'undefined' ? false : window.confirm(message);
+}
