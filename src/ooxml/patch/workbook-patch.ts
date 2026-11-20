@@ -2,7 +2,14 @@ import type { SheetId, Workbook } from '@model/types';
 import type { Relationship } from '../types';
 import { isFilterDatabaseName } from '../autofilter-xml';
 import { WorkbookSaveError } from '../errors';
-import { decodeXml, encodeXml, isWellFormedXml, openTagStart, parseXml } from '../xml';
+import {
+  decodeXml,
+  encodeXml,
+  escapeXmlAttribute,
+  isWellFormedXml,
+  openTagStart,
+  parseXml,
+} from '../xml';
 
 const AFTER_CALC_PR = new Set([
   'oleSize',
@@ -146,6 +153,27 @@ interface DefinedNameElement {
   readonly text: string;
 }
 
+interface DefinedNamesContainer {
+  readonly prefix: string;
+  readonly start: number;
+  readonly openEnd: number;
+  readonly contentEnd: number;
+  readonly end: number;
+  readonly selfClosing: boolean;
+}
+
+/**
+ * A name the model owns and may author, such as the sheet's
+ * `_xlnm.Print_Area` system name (print-pdf §4). A `null` formula removes a
+ * name the source has; a formula creates one the source lacks or rewrites the
+ * one it has. Every other defined name stays on the preserve/rename path.
+ */
+export interface AuthoredDefinedName {
+  readonly name: string;
+  readonly sheetId: SheetId;
+  readonly formula: string | null;
+}
+
 export interface WorkbookDefinedNamePatchInput {
   readonly bytes: Uint8Array;
   readonly partName: string;
@@ -158,19 +186,25 @@ export interface WorkbookDefinedNamePatchInput {
   readonly sourceSheetIds: readonly (SheetId | null)[];
   /** Sheets removed in this save; their local names leave with them. */
   readonly removedSheetIds: ReadonlySet<SheetId>;
+  /** Sheet-scoped names the model authors, with `null` meaning "remove". */
+  readonly authoredNames?: readonly AuthoredDefinedName[];
 }
 
 /**
  * Rewrite the text of `<definedName>` elements whose model formula changed
  * (a sheet rename or delete rewrites references in place), recompute
  * `localSheetId` after an insert or delete, and remove names owned by a
- * deleted sheet. Everything else in the workbook part stays byte-for-byte as
- * authored. Returns `null` when nothing changed, which keeps no-op saves
- * untouched.
+ * deleted sheet. An authored system name (the print area) is created,
+ * retargeted or removed too. Everything else in the workbook part stays
+ * byte-for-byte as authored. Returns `null` when nothing changed, which keeps
+ * a no-op save untouched.
  */
 export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput): Uint8Array | null {
   const xml = decodeXml(input.bytes);
-  const { records } = parseDefinedNameElements(xml, input.partName);
+  const parsed = parseDefinedNameElements(xml, input.partName);
+  const { records } = parsed;
+  const authored = authoredNameMap(input.authoredNames ?? []);
+  const handledAuthored = new Set<string>();
 
   const currentIndexBySheetId = new Map(
     input.workbook.sheets.map((sheet, index) => [sheet.id, index] as const),
@@ -187,6 +221,10 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
       edits.push({ start: record.start, end: record.end, text: '' });
       continue;
     }
+
+    // A name the model authors is settled by the second pass, which also
+    // knows how to create one the source lacks.
+    if (authored !== null && authored.has(nameKey(ownerSheetId, record.name))) continue;
 
     if (isFilterDatabaseName(record.name)) {
       // File-compat §3: the AutoFilter feature owns this name's text, so a
@@ -257,6 +295,93 @@ export function patchWorkbookDefinedNames(input: WorkbookDefinedNamePatchInput):
     }
   }
 
+  if (authored !== null) {
+    for (const record of records) {
+      const sourceIndex = record.localSheetId === null ? null : Number(record.localSheetId);
+      const ownerSheetId =
+        sourceIndex === null || !Number.isInteger(sourceIndex)
+          ? null
+          : (input.sourceSheetIds[sourceIndex] ?? null);
+      if (ownerSheetId === null || input.removedSheetIds.has(ownerSheetId)) continue;
+      const key = nameKey(ownerSheetId, record.name);
+      const entry = authored.get(key);
+      if (entry === undefined) continue;
+      handledAuthored.add(key);
+      const currentIndex = currentIndexBySheetId.get(ownerSheetId);
+      if (currentIndex === undefined) continue;
+      if (entry.formula === null) {
+        edits.push({ start: record.start, end: record.end, text: '' });
+        continue;
+      }
+      const indexChanged = Number(record.localSheetId) !== currentIndex;
+      const formulaChanged = record.text !== entry.formula;
+      if (!indexChanged && !formulaChanged) continue;
+      const openTag = xml.slice(record.start, record.openEnd);
+      const updatedOpenTag = indexChanged
+        ? replaceDefinedNameAttribute(openTag, 'localSheetId', String(currentIndex))
+        : openTag;
+      if (record.selfClosing) {
+        const closing = record.prefix === '' ? '</definedName>' : `</${record.prefix}:definedName>`;
+        const open = updatedOpenTag.replace(/\/\s*>$/, '>');
+        edits.push({
+          start: record.start,
+          end: record.end,
+          text: `${open}${escapeNameText(entry.formula)}${closing}`,
+        });
+        continue;
+      }
+      if (indexChanged) {
+        edits.push({ start: record.start, end: record.openEnd, text: updatedOpenTag });
+      }
+      if (formulaChanged) {
+        edits.push({
+          start: record.openEnd,
+          end: record.closeStart,
+          text: escapeNameText(entry.formula),
+        });
+      }
+    }
+
+    const created = [...authored.entries()]
+      .filter(([key, entry]) => entry.formula !== null && !handledAuthored.has(key))
+      .map(([, entry]) => entry)
+      .sort(
+        (left, right) =>
+          (currentIndexBySheetId.get(left.sheetId) ?? 0) -
+          (currentIndexBySheetId.get(right.sheetId) ?? 0),
+      )
+      .map((entry) => {
+        const index = currentIndexBySheetId.get(entry.sheetId);
+        if (index === undefined) return '';
+        const prefix = parsed.container?.prefix ?? parsed.prefix;
+        const name = qualified(prefix, 'definedName');
+        return `<${name} name="${escapeXmlAttribute(entry.name)}" localSheetId="${index}" hidden="1">${escapeNameText(entry.formula!)}</${name}>`;
+      })
+      .join('');
+    if (created !== '') {
+      const container = parsed.container;
+      if (container === null) {
+        const prefix = parsed.prefix;
+        const containerTag = qualified(prefix, 'definedNames');
+        edits.push({
+          start: parsed.definedNamesInsert,
+          end: parsed.definedNamesInsert,
+          text: `<${containerTag}>${created}</${containerTag}>`,
+        });
+      } else if (container.selfClosing) {
+        const open = xml.slice(container.start, container.openEnd).replace(/\/\s*>$/, '>');
+        const closing = `</${qualified(container.prefix, 'definedNames')}>`;
+        edits.push({
+          start: container.start,
+          end: container.end,
+          text: `${open}${created}${closing}`,
+        });
+      } else {
+        edits.push({ start: container.contentEnd, end: container.contentEnd, text: created });
+      }
+    }
+  }
+
   if (edits.length === 0) return null;
 
   let patched = xml;
@@ -293,11 +418,34 @@ function replaceDefinedNameAttribute(openTag: string, localName: string, value: 
   return `${openTag.slice(0, insertAt)} ${localName}="${value}"${openTag.slice(insertAt)}`;
 }
 
+/** Children of `<workbook>` that follow `<definedNames>` in schema order. */
+const AFTER_DEFINED_NAMES: ReadonlySet<string> = new Set([
+  'calcPr',
+  'oleSize',
+  'customWorkbookViews',
+  'pivotCaches',
+  'smartTagPr',
+  'smartTagTypes',
+  'webPublishing',
+  'fileRecoveryPr',
+  'webPublishObjects',
+  'extLst',
+]);
+
 function parseDefinedNameElements(
   xml: string,
   partName: string,
-): { readonly records: DefinedNameElement[] } {
+): {
+  readonly prefix: string;
+  readonly records: DefinedNameElement[];
+  readonly container: DefinedNamesContainer | null;
+  readonly definedNamesInsert: number;
+} {
   const records: DefinedNameElement[] = [];
+  let prefix = '';
+  let depth = 0;
+  let definedNamesInsert = -1;
+  let container: DefinedNamesContainer | null = null;
   let current: {
     name: string;
     localSheetId: string | null;
@@ -306,19 +454,31 @@ function parseDefinedNameElements(
     prefix: string;
     text: string;
   } | null = null;
-  let depth = 0;
-  let inDefinedNamesDepth = -1;
 
   parseXml(
     xml,
     {
       onOpenTag(tag, position) {
         depth += 1;
-        if (tag.local === 'definedNames') {
-          inDefinedNamesDepth = depth;
+        if (depth === 1) {
+          prefix = tag.prefix;
           return;
         }
-        if (tag.local === 'definedName' && inDefinedNamesDepth === depth - 1) {
+        if (depth === 2 && definedNamesInsert < 0 && AFTER_DEFINED_NAMES.has(tag.local)) {
+          definedNamesInsert = openTagStart(xml, position);
+        }
+        if (depth === 2 && tag.local === 'definedNames' && container === null) {
+          container = {
+            prefix: tag.prefix,
+            start: openTagStart(xml, position),
+            openEnd: position,
+            contentEnd: position,
+            end: position,
+            selfClosing: false,
+          };
+          return;
+        }
+        if (depth === 3 && tag.local === 'definedName' && container !== null) {
           current = {
             name: attributeValueOf(tag, 'name') ?? '',
             localSheetId: attributeValueOf(tag, 'localSheetId') ?? null,
@@ -330,8 +490,15 @@ function parseDefinedNameElements(
         }
       },
       onCloseTag(tag, start, end) {
-        depth -= 1;
-        if (tag.local === 'definedName' && current !== null) {
+        if (depth === 2 && tag.local === 'definedNames' && container !== null) {
+          const open = container as DefinedNamesContainer;
+          container = {
+            ...open,
+            contentEnd: start,
+            end,
+            selfClosing: open.openEnd === end,
+          };
+        } else if (depth === 3 && tag.local === 'definedName' && current !== null) {
           records.push({
             ...current,
             closeStart: start,
@@ -339,9 +506,8 @@ function parseDefinedNameElements(
             selfClosing: current.openEnd === end,
           });
           current = null;
-          return;
         }
-        if (tag.local === 'definedNames') inDefinedNamesDepth = -1;
+        depth -= 1;
       },
       onText(text) {
         if (current !== null) current.text += text;
@@ -352,7 +518,30 @@ function parseDefinedNameElements(
     },
     partName,
   );
-  return { records };
+
+  const closing = xml.lastIndexOf('</');
+  return {
+    prefix,
+    records,
+    container,
+    definedNamesInsert:
+      definedNamesInsert < 0 ? (closing < 0 ? xml.length : closing) : definedNamesInsert,
+  };
+}
+
+function authoredNameMap(
+  entries: readonly AuthoredDefinedName[],
+): Map<string, AuthoredDefinedName> | null {
+  if (entries.length === 0) return null;
+  return new Map(entries.map((entry) => [nameKey(entry.sheetId, entry.name), entry] as const));
+}
+
+function nameKey(sheetId: SheetId | null, name: string): string {
+  return `${sheetId ?? ''}\u0000${name.toUpperCase()}`;
+}
+
+function qualified(prefix: string, local: string): string {
+  return prefix === '' ? local : `${prefix}:${local}`;
 }
 
 function attributeValueOf(

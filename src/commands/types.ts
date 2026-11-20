@@ -378,14 +378,18 @@ export interface SheetRenameChange {
   readonly after: string;
 }
 
-/** A defined-name formula change, in workbook or sheet scope. */
+/**
+ * A defined-name formula change, in workbook or sheet scope. `null` on one
+ * side creates or removes the name: the print area (print-pdf §4) is the v1
+ * authoring path, and it is a system name, not defined-name authoring.
+ */
 export interface NameSetChange {
   readonly type: 'name.set';
   readonly scope: 'workbook' | 'sheet';
   readonly sheetId: SheetId | null;
   readonly name: string;
-  readonly before: string;
-  readonly after: string;
+  readonly before: string | null;
+  readonly after: string | null;
 }
 
 /**

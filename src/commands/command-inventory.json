@@ -1838,7 +1838,9 @@
         "group": "Sheet Options",
         "kind": "toggle",
         "order": 10,
+        "row": 1,
         "label": "Gridlines",
+        "title": "Gridlines: View",
         "icon": "gridlines"
       },
       {
@@ -1866,8 +1868,10 @@
         "tab": "Page Layout",
         "group": "Sheet Options",
         "kind": "toggle",
-        "order": 20,
+        "order": 30,
+        "row": 2,
         "label": "Headings",
+        "title": "Headings: View",
         "icon": "headings"
       },
       {
@@ -2037,10 +2041,125 @@
     "quickAccess": { "order": 20 }
   },
   {
-    "id": "print.setup",
+    "id": "print.pageSetup",
     "matrixSection": "7. File I/O and printing",
     "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
     "label": "Page Setup",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Page Setup",
+        "kind": "button",
+        "order": 10,
+        "row": 1,
+        "label": "Page Setup",
+        "icon": "page-setup"
+      }
+    ],
+    "icon": "page-setup"
+  },
+  {
+    "id": "print.applySetup",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Apply page setup",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "print.setArea",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Set Print Area",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Page Setup",
+        "kind": "menu",
+        "order": 20,
+        "row": 1,
+        "label": "Print Area",
+        "title": "Print Area",
+        "icon": "print-area",
+        "menu": [
+          { "label": "Set Print Area", "commandId": "print.setArea" },
+          { "label": "Clear Print Area", "commandId": "print.clearArea" }
+        ]
+      }
+    ],
+    "icon": "print-area"
+  },
+  {
+    "id": "print.clearArea",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Clear Print Area",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
+  },
+  {
+    "id": "print.gridlines",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Gridlines and headings show/hide",
+    "label": "Print Gridlines",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Sheet Options",
+        "kind": "toggle",
+        "order": 20,
+        "row": 1,
+        "label": "Print",
+        "title": "Gridlines: Print",
+        "icon": "print"
+      }
+    ],
+    "icon": "print"
+  },
+  {
+    "id": "print.headings",
+    "matrixSection": "6. View and navigation",
+    "matrixFeature": "Gridlines and headings show/hide",
+    "label": "Print Headings",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Page Layout",
+        "group": "Sheet Options",
+        "kind": "toggle",
+        "order": 40,
+        "row": 2,
+        "label": "Print",
+        "title": "Headings: Print",
+        "icon": "print"
+      }
+    ],
+    "icon": "print"
+  },
+  {
+    "id": "print.setup",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Paper size",
     "category": "view",
     "enablement": "A sheet is active",
     "implemented": true,

@@ -52,7 +52,7 @@ import { WorkbookSaveError } from './errors';
 import { planPartPolicy, removeMacroParts, isMacroPartPath, type SavedFormat } from './part-policy';
 import { validatePatchedPart } from './xml';
 import { writePackage } from './zip';
-import { planPrintSetupSave, printSetupChanged } from './print-setup-xml';
+import { planPrintSetupSave, printAreaNameEntries, printSetupChanged } from './print-setup-xml';
 import { dropUnchangedCells } from './rich-text-xml';
 import {
   patchWorkbookDefinedNames,
@@ -190,6 +190,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
       workbook: input.workbook,
       sourceSheetIds,
       removedSheetIds,
+      authoredNames: printAreaNameEntries(input.workbook),
     }) !== null;
 
   // A snapshot restored after a rename or delete carries the rewritten model
@@ -562,6 +563,7 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
         workbook: input.workbook,
         sourceSheetIds,
         removedSheetIds,
+        authoredNames: printAreaNameEntries(input.workbook),
       });
       if (patchedNames !== null) {
         entries.set(workbookPath, patchedNames);

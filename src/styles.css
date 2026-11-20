@@ -2946,3 +2946,84 @@ a:focus-visible,
   background: var(--button-hover);
   color: var(--text);
 }
+
+/* ---------- Page Setup dialog (ticket 44) ---------- */
+
+.page-setup-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.page-setup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 244px;
+  margin-top: 12px;
+}
+
+.page-setup-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.page-setup-group legend {
+  padding: 0 4px;
+  color: var(--disabled);
+  font-size: 12px;
+}
+
+.page-setup-radio,
+.page-setup-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-setup-scale-row {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-setup-number {
+  width: 78px;
+}
+
+.page-setup-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.page-setup-margins {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+.page-setup-margin {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.page-setup-error {
+  flex-basis: 100%;
+  margin: -4px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.page-setup-plan {
+  min-height: 16px;
+  margin-top: 10px;
+}

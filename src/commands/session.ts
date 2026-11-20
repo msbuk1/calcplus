@@ -669,8 +669,8 @@ export class DocumentSession {
       readonly scope: 'workbook' | 'sheet';
       readonly sheetId: SheetId | null;
       readonly name: string;
-      readonly before: string;
-      readonly after: string;
+      readonly before: string | null;
+      readonly after: string | null;
     },
     direction: 'before' | 'after',
   ): void {
@@ -681,12 +681,23 @@ export class DocumentSession {
           ? undefined
           : findSheet(this.workbook, change.sheetId)?.names;
     if (names === undefined) return;
+    const target = direction === 'after' ? change.after : change.before;
     const index = names.findIndex((candidate) => candidate.name === change.name);
-    if (index < 0) return;
-    names[index] = {
-      ...names[index]!,
-      formula: direction === 'after' ? change.after : change.before,
-    };
+    if (target === null) {
+      if (index >= 0) names.splice(index, 1);
+      return;
+    }
+    if (index >= 0) {
+      names[index] = { ...names[index]!, formula: target };
+      return;
+    }
+    // A print area may be authored on a sheet that imported no such name
+    // (print-pdf §4); the change carries the owner, so it is created here.
+    names.push({
+      name: change.name,
+      formula: target,
+      sheetId: change.scope === 'workbook' ? null : change.sheetId,
+    });
   }
 
   private applyCellSnapshots(
@@ -1044,7 +1055,7 @@ function estimateBytes(changes: readonly CommandChange[]): number {
       continue;
     }
     if (change.type === 'name.set') {
-      total += 64 + change.before.length * 2 + change.after.length * 2;
+      total += 64 + (change.before?.length ?? 0) * 2 + (change.after?.length ?? 0) * 2;
       continue;
     }
     if (change.type === 'filter.set') {

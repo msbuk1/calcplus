@@ -10,8 +10,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 57
-- Inventory commands: 106
-- Implemented in this build: 73
+- Inventory commands: 112
+- Implemented in this build: 79
 - Planned for a later slice: 33
 - Out-of-scope rows (V2 or NEVER): 28
 
@@ -109,6 +109,8 @@ Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 | `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | `freeze-panes` | — | View → Window (checked label: Unfreeze Panes) | — | — | A sheet is active | Implemented |
 | `view.zoom` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom | `zoom` | — | View → Zoom | — | — | A sheet is active | Planned |
 | `view.zoom100` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom 100% | `zoom-100` | — | View → Zoom | — | — | A sheet is active | Implemented |
+| `print.gridlines` | 6. View and navigation — Gridlines and headings show/hide | Print Gridlines | `print` | — | Page Layout → Sheet Options | — | — | A sheet is active | Implemented |
+| `print.headings` | 6. View and navigation — Gridlines and headings show/hide | Print Headings | `print` | — | Page Layout → Sheet Options | — | — | A sheet is active | Implemented |
 | `view.gridlines` | 6. View and navigation — Gridlines and headings show/hide | Gridlines | `gridlines` | — | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
 | `view.headings` | 6. View and navigation — Gridlines and headings show/hide | Headings | `headings` | — | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
 | `formulaBar.focus` | 6. View and navigation — Formula bar and name box | Edit in formula bar | — | — | — | — | F2 | A sheet is active | Planned |
@@ -127,7 +129,11 @@ Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 | `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
 | `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
 | `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
-| `print.setup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Page Setup | — | — | — | — | — | A sheet is active | Implemented |
+| `print.applySetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Apply page setup | — | — | — | — | — | A sheet is active | Implemented |
+| `print.clearArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Clear Print Area | — | — | — | — | — | A sheet is active | Implemented |
+| `print.pageSetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Page Setup | `page-setup` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
+| `print.setArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Set Print Area | `print-area` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
+| `print.setup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Paper size | — | — | — | — | — | A sheet is active | Implemented |
 | `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Implemented |
 | `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Implemented |
 | `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | `show-comments` | — | Review → Comments | — | — | The sheet has imported comments | Planned |

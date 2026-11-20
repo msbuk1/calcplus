@@ -4,9 +4,11 @@ import type {
   PrintOptionsRecord,
   PrintSetupRecord,
   Sheet,
+  Workbook,
 } from '@model/types';
 import { parseWholeArea } from '@model/references';
 import { WorkbookSaveError } from './errors';
+import type { AuthoredDefinedName } from './patch/workbook-patch';
 import { decodeXml, encodeXml, escapeXmlAttribute, isWellFormedXml, parseXml } from './xml';
 
 /**
@@ -30,6 +32,23 @@ import { decodeXml, encodeXml, escapeXmlAttribute, isWellFormedXml, parseXml } f
  */
 
 export const PRINT_AREA_NAME = '_xlnm.Print_Area';
+
+/**
+ * The print-area names the model owns, for the workbook part's patch. One
+ * entry per sheet: the name's formula, or `null` when the sheet has none, so
+ * clearing the area removes an imported name instead of leaving it behind
+ * (print-pdf §4). The patch is the only writer of these elements.
+ */
+export function printAreaNameEntries(workbook: Workbook): readonly AuthoredDefinedName[] {
+  return workbook.sheets.map((sheet) => {
+    const name = sheet.names.find((candidate) => isPrintAreaName(candidate.name));
+    return {
+      name: PRINT_AREA_NAME,
+      sheetId: sheet.id,
+      formula: name?.formula ?? null,
+    };
+  });
+}
 
 /** Excel's defaults for the margins a declared element omits. */
 const DEFAULT_MARGINS: PageMarginsRecord = {
@@ -124,7 +143,7 @@ export function printAreaOf(sheet: Sheet): readonly GridRange[] {
   const name = sheet.names.find((candidate) => isPrintAreaName(candidate.name));
   if (name === undefined) return [];
   const ranges: GridRange[] = [];
-  for (const areaText of splitAreas(name.formula)) {
+  for (const areaText of splitPrintAreas(name.formula)) {
     const area = parseWholeArea(areaText);
     if (area === null) continue;
     if (area.sheetName !== null && !sheetsNameEqual(area.sheetName, sheet.name)) continue;
@@ -744,7 +763,7 @@ function decodeEntities(text: string): string {
 // Ranges and numbers
 // ---------------------------------------------------------------------------
 
-function splitAreas(formula: string): string[] {
+export function splitPrintAreas(formula: string): string[] {
   const areas: string[] = [];
   let current = '';
   let quoted = false;

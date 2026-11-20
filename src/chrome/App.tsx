@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { ContextMenuRegion, RibbonTabId } from '@commands/inventory';
 import { exportPdfPlan } from '@commands/chrome';
-import { EMPTY_PRINT_SETUP } from '@commands/print';
+import {
+  EMPTY_PRINT_SETUP,
+  buildPageSetup,
+  normalisePrintAreaText,
+  pageSetupValuesOf,
+} from '@commands/print';
+import type { PageSetupPayload, PageSetupValues } from '@commands/print';
 import { DocumentSession } from '@commands/session';
 import type {
   CommandResult,
@@ -43,6 +49,7 @@ import type { WorkbookPackage } from '@ooxml/types';
 import { WorkbookSaveError } from '@ooxml/errors';
 import { applyRangeTransformPrototype } from '@ooxml/range-transform';
 import { adoptSavedPackage, saveWorkbook } from '@ooxml/save';
+import { printAreaOf } from '@ooxml/print-setup-xml';
 import { snapshotWorkbook } from '@ooxml/snapshot';
 import { listUnsupportedConditionalFormats } from '@ooxml/conditional-format-xml';
 import type { PreservedPartReport } from '@ooxml/part-policy';
@@ -104,6 +111,9 @@ import { GoToDialog } from '@chrome/GoToDialog';
 import type { GoToOutcome } from '@chrome/GoToDialog';
 import { InsertFunctionDialog } from '@chrome/InsertFunctionDialog';
 import { NameBox } from '@chrome/NameBox';
+import { PageSetupDialog } from '@chrome/PageSetupDialog';
+import type { PageSetupOutcome } from '@chrome/PageSetupDialog';
+import type { PageSetupPlanCheck } from '@chrome/page-setup-state';
 import { PrintPreviewDialog } from '@chrome/PrintPreviewDialog';
 import { RecentDialog } from '@chrome/RecentDialog';
 import { ReportDialog } from '@chrome/ReportDialog';
@@ -184,6 +194,7 @@ type AppDialog =
   | 'compatibility-report'
   | 'export-report'
   | 'print-preview'
+  | 'page-setup'
   | 'recent';
 
 const FORCE_FALLBACK =
@@ -368,6 +379,22 @@ export function App(): JSX.Element {
       return lastPrintPlanRef.current;
     }
   }, [dialog, document, projection]);
+
+  /**
+   * The Page Setup dialog's starting values (print-pdf §4, ticket 44). The
+   * dialog owns the draft; this snapshot is only what it opens with.
+   */
+  const pageSetupStart = useMemo<{
+    readonly values: PageSetupValues;
+    readonly sheetName: string;
+  } | null>(() => {
+    if (dialog !== 'page-setup' || document === null) return null;
+    const sheet = document.session.workbook.sheets.find(
+      (candidate) => candidate.id === document.sheetId,
+    );
+    if (sheet === undefined) return null;
+    return { values: pageSetupValuesOf(sheet), sheetName: sheet.name };
+  }, [dialog, document]);
 
   const selectionStatistics = useMemo<SelectionStatistics | null>(() => {
     if (projection === null) return null;
@@ -1780,6 +1807,63 @@ export function App(): JSX.Element {
   };
 
   /**
+   * The Page Setup dialog's live plan (print-pdf §2, ticket 44): the same
+   * planner the preview and the PDF use, run over the draft, so the page count
+   * follows every edit. The command writes the model; the dialog's memo is the
+   * read-only candidate.
+   */
+  const pageSetupPlan = useCallback(
+    (payload: PageSetupPayload): PageSetupPlanCheck | null => {
+      if (document === null || projection === null) return null;
+      const sheet = document.session.workbook.sheets.find(
+        (candidate) => candidate.id === document.sheetId,
+      );
+      if (sheet === undefined) return null;
+      const built = buildPageSetup(sheet.printSetup ?? null, payload.setup ?? {});
+      const problem = Object.values(built.errors).find((message) => message !== undefined);
+      if (problem !== undefined) return { ok: false, message: problem };
+      let printAreas = printAreaOf(sheet);
+      if (payload.printArea !== undefined) {
+        const normalised = normalisePrintAreaText(payload.printArea ?? '', sheet.name);
+        if (!normalised.ok) return { ok: false, message: normalised.message };
+        printAreas = normalised.ranges;
+      }
+      try {
+        const snapshot = createPrintSnapshot(document.session.workbook, projection);
+        const plan = createPrintPlan({ ...snapshot, printSetup: built.setup, printAreas });
+        return {
+          ok: true,
+          pages: plan.pages.length,
+          paperName: plan.paper.name,
+          orientation: plan.paper.orientation,
+        };
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    [document, projection],
+  );
+
+  /**
+   * Submit the Page Setup dialog's changed fields as one `print.applySetup`
+   * transaction. The candidate plan is checked first, so a setup the planner
+   * refuses changes nothing.
+   */
+  const applyPageSetup = (payload: PageSetupPayload): PageSetupOutcome => {
+    if (document === null) return { ok: false, message: 'Open a workbook first.' };
+    const check = pageSetupPlan(payload);
+    if (check !== null && !check.ok) return { ok: false, message: check.message };
+    const result = dispatchSheetCommand('print.applySetup', {
+      sheetId: document.sheetId,
+      setup: payload.setup,
+      printArea: payload.printArea,
+    });
+    if (result === null) return { ok: false, message: 'The page setup could not be applied.' };
+    if (result.changes.length === 0) return { ok: true, message: 'No page setup change.' };
+    return { ok: true, message: result.ui?.message ?? 'Changed the page setup.' };
+  };
+
+  /**
    * A completed fill gesture is one `fill.handle` command: the grid supplies
    * the source block and the whole destination rectangle, the command owns the
    * copy/adjust logic, and the whole gesture is one undo transaction.
@@ -3077,6 +3161,12 @@ export function App(): JSX.Element {
         }
         return null;
       }
+      case 'print.pageSetup': {
+        if (document === null || busy) return null;
+        clearPainter();
+        setDialog('page-setup');
+        return null;
+      }
       case 'file.exportPdf': {
         if (document === null || projection === null || busy) return null;
         clearPainter();
@@ -3453,6 +3543,16 @@ export function App(): JSX.Element {
           emptyMessage="No export has been reported since this workbook was opened."
           copyText={lastExportReport?.text ?? 'Export report\n\nNothing to report.'}
           onClose={closeDialog}
+        />
+      ) : null}
+
+      {dialog === 'page-setup' && pageSetupStart !== null ? (
+        <PageSetupDialog
+          initial={pageSetupStart.values}
+          sheetName={pageSetupStart.sheetName}
+          onClose={closeDialog}
+          onApply={applyPageSetup}
+          onPlanPreview={pageSetupPlan}
         />
       ) : null}
 
