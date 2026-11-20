@@ -1651,7 +1651,10 @@
     "shortcut": ["Ctrl+S"],
     "icon": "save",
     "menu": [{ "menu": "File", "order": 30 }],
-    "quickAccess": { "order": 10 }
+    "quickAccess": {
+      "order": 10,
+      "menu": [{ "label": "Save As", "commandId": "file.saveAs", "shortcut": "Ctrl+Shift+S" }]
+    }
   },
   {
     "id": "file.saveAs",

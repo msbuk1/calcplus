@@ -7,7 +7,12 @@ import {
   RIBBON_ICON_SIZE,
   isRibbonIconName,
 } from '@chrome/ribbon-icons';
-import { RIBBON_TABS, compactControls, ribbonGroupsFor } from '@chrome/ribbon-model';
+import {
+  RIBBON_TABS,
+  compactControls,
+  quickAccessControls,
+  ribbonGroupsFor,
+} from '@chrome/ribbon-model';
 
 /**
  * Ticket 33: every ribbon command carries original artwork, every rendered
@@ -109,6 +114,52 @@ describe('the original ribbon icon family', () => {
       expect(control.icon, control.commandId).toBeDefined();
       expect(isRibbonIconName(control.icon ?? '')).toBe(true);
       expect(control.title.length, control.commandId).toBeGreaterThan(0);
+    }
+  });
+
+  it('renders an icon on every quick-access control', () => {
+    for (const control of quickAccessControls()) {
+      expect(control.icon, control.commandId).toBeDefined();
+      expect(isRibbonIconName(control.icon ?? '')).toBe(true);
+      expect(control.title.length, control.commandId).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the generated inventory doc in step with the map artwork', () => {
+    const doc = readFileSync(new URL('../docs/command-inventory.md', import.meta.url), 'utf8');
+    const iconCells = new Map<string, string>();
+    for (const line of doc.split(/\r?\n/)) {
+      if (!/^\| `[^`]+` \|/.test(line)) continue;
+      const cells = line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim());
+      iconCells.set(cells[0]!.replaceAll('`', ''), cells[3] ?? '');
+    }
+    for (const entry of COMMAND_INVENTORY) {
+      const cell = iconCells.get(entry.id);
+      expect(cell, `${entry.id} is missing from docs/command-inventory.md`).toBeDefined();
+      if (entry.icon !== undefined) {
+        expect(cell, `${entry.id} command icon`).toContain(`\`${entry.icon}\``);
+      }
+      for (const placement of entry.ribbon ?? []) {
+        if (placement.icon === undefined) continue;
+        expect(cell, entry.id).toContain(`\`${placement.icon}\``);
+        for (const item of placement.menu ?? []) {
+          if (item.icon === undefined) continue;
+          expect(cell, `${entry.id} menu item ${item.label}`).toContain(`\`${item.icon}\``);
+        }
+      }
+      if (entry.compact?.icon !== undefined) {
+        expect(cell, `${entry.id} compact`).toContain(`\`${entry.compact.icon}\``);
+      }
+      if (entry.quickAccess?.icon !== undefined) {
+        expect(cell, `${entry.id} quick access`).toContain(`\`${entry.quickAccess.icon}\``);
+      }
+      // The icon column never names artwork outside the family.
+      for (const match of (cell ?? '').matchAll(/`([^`]+)`/g)) {
+        expect(isRibbonIconName(match[1]!), `${entry.id}: ${match[1]}`).toBe(true);
+      }
     }
   });
 });

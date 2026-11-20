@@ -28,7 +28,8 @@ The Icon column names the original SVG artwork in `src/chrome/ribbon-icons.ts`. 
 several ribbon controls lists each distinct icon, including the icons of its split-button menu
 items; the command-level icon is the compact and quick-access fallback.
 The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar
-holds Save, Undo and Redo only; Save As stays in the File menu.
+holds Save, Undo and Redo only; Save As stays in the File menu and on the Save button's split
+drop-down.
 
 | Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -97,7 +98,7 @@ holds Save, Undo and Redo only; Save As stays in the File menu.
 | `file.new` | 5. Workbook and sheets — New blank workbook | New | — | — | — | File | — | No file operation is in progress | Implemented |
 | `file.close` | 5. Workbook and sheets — Open, save, save as, close | Close | — | — | — | File | — | A workbook is open | Implemented |
 | `file.open` | 5. Workbook and sheets — Open, save, save as, close | Open | — | — | — | File | Ctrl+O | No file operation is in progress | Implemented |
-| `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | `save` | Yes (order 10) | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
+| `file.save` | 5. Workbook and sheets — Open, save, save as, close | Save | `save` | Yes (order 10); menu: Save As | — | File | Ctrl+S | A workbook is open and no file operation is in progress | Implemented |
 | `file.saveAs` | 5. Workbook and sheets — Open, save, save as, close | Save As | — | — | — | File | Ctrl+Shift+S | A workbook is open and no file operation is in progress | Implemented |
 | `sheet.delete` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Delete sheet | — | — | — | Sheet tab context menu | — | A visible sheet is active and more than one visible sheet exists | Implemented |
 | `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | `insert` | — | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |

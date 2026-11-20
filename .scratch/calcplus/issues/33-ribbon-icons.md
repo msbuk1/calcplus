@@ -1,6 +1,6 @@
 # 33 — Ribbon icons missing; the ribbon is text-only
 
-Status: open
+Status: resolved
 Type: defect (visual completeness gap against the UI chrome contract)
 Blocked by: none
 
@@ -73,3 +73,25 @@ Cells border-preset defect is a separate ticket and is not in scope here.
 ## Answer
 
 Pending.
+
+## Resolution (2026-11-20)
+
+Most of this ticket had already landed in the chrome sweep (`4051f8b`): the
+original icon family in `src/chrome/ribbon-icons.ts`, the `RibbonIcon`
+component, icon entries for every ribbon placement in
+`src/commands/command-inventory.json`, the generated-doc icon column, and all
+four control kinds drawing the icon (button, toggle, select, split) on the full
+ribbon and the compact bar. The sweep also added most of
+`tests/ribbon-icons.test.ts`.
+
+The remainder was verification, not artwork: no further glyphs were needed.
+Two test gaps were closed.
+
+- `tests/ribbon-icons.test.ts` now resolves an icon for every Quick Access
+  control too, and reads `docs/command-inventory.md` back to check the icon
+  column still names each command, placement, split-menu item, compact and
+  quick-access icon, and never names artwork outside the family.
+- `tests/ribbon-model.test.ts` covers the Save split drop-down (ticket 34).
+
+Acceptance: all seven items hold. The licence gate is green; every glyph is
+hand-written SVG path data with no Microsoft assets, fonts or colours.

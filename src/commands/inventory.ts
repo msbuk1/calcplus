@@ -75,12 +75,19 @@ export interface RibbonPlacement {
 
 /**
  * The Quick Access Toolbar above the ribbon. Save, Undo and Redo are the only
- * placements; Save As stays in the File menu.
+ * placements; Save As stays in the File menu and in the Save button's
+ * drop-down, as the Excel 365 desktop oracle shows it.
  */
 export interface QuickAccessPlacement {
   readonly order?: number;
   /** A name from `src/chrome/ribbon-icons.ts`; defaults to the command icon. */
   readonly icon?: string;
+  /**
+   * A drop-down hanging off the control, opened by its split arrow. Only
+   * `file.saveAs` may ride here: Save carries Save As without giving it a
+   * quick-access button of its own.
+   */
+  readonly menu?: readonly RibbonMenuItem[];
 }
 
 export interface MenuPlacement {

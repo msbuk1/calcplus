@@ -1,6 +1,6 @@
 # 34 — App header places Save, Save As and Undo outside the oracle layout
 
-Status: open
+Status: resolved
 Type: defect (visual completeness gap against the PRD fidelity target)
 Blocked by: none
 
@@ -80,3 +80,34 @@ layers. The Format Cells border-preset defect stays a separate ticket.
 ## Answer
 
 Pending.
+
+## Resolution (2026-11-20)
+
+The sweep (`4051f8b`) had already moved most of this ticket: `AppHeader` now
+renders `QuickAccessToolbar` first, so it sits above the ribbon at the top
+left; Save, Undo and Redo are 24 px icon buttons with command-and-shortcut
+tooltips; the filename's separate dirty dot was deleted and unsaved state moved
+onto the Save button; `quickAccess` placements entered the map and the
+generator; `ui-chrome` §1 and §2 were rewritten to pin the oracle position.
+
+The one piece still missing was the oracle's Save split drop-down. Save As was
+reachable from the File menu and Ctrl+Shift+S only, not from the Save button as
+Excel shows it.
+
+- `QuickAccessPlacement` (`src/commands/inventory.ts`) gains an optional `menu`
+  of `RibbonMenuItem`s. The generator accepts a quick-access drop-down only for
+  `file.saveAs`, checks every row against the map, and prints the rows in the
+  generated Quick access column.
+- `file.save`'s map entry now carries `{ label: "Save As", commandId:
+  "file.saveAs", shortcut: "Ctrl+Shift+S" }` on its `quickAccess.menu`.
+- `QuickAccessToolbar` renders that as the Excel split button: the icon button
+  plus a 12 px arrow, opening the shared `Menu`. Save As is still not a
+  quick-access button of its own; the row dispatches `file.saveAs`.
+- `ui-chrome` §1 and §2 now name the split arrow.
+
+Acceptance: all eight items hold. Keyboard reach and enablement are unchanged
+(the row and the button both go through the command registry).
+
+Tests: `tests/ribbon-model.test.ts` (drop-down shape), `tests/e2e/
+quick-access.spec.ts` (position, icons, tooltips, Save As in the File menu and
+on the arrow, arrow geometry, focus return on Esc).

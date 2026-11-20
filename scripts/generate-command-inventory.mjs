@@ -39,6 +39,11 @@ const CONTEXT_REGION_LABELS = {
 const UI_CHROME_COMMANDS = new Set(['help.about']);
 /** ui-chrome §1 pins the Quick Access Toolbar to these three commands. */
 const QUICK_ACCESS_COMMANDS = new Set(['file.save', 'edit.undo', 'edit.redo']);
+/**
+ * The only command allowed inside a quick-access drop-down. Save carries Save
+ * As on its split arrow; Save As never gets a quick-access placement of its own.
+ */
+const QUICK_ACCESS_MENU_COMMANDS = new Set(['file.saveAs']);
 const COLOUR_PICKERS = new Set(['font', 'fill']);
 const ERROR_LIMIT = 40;
 
@@ -365,6 +370,41 @@ async function main() {
         } else {
           checkIcon(label, quickAccessIcon, 'quick-access icon', iconNames);
         }
+        if (placement.menu !== undefined) {
+          if (!Array.isArray(placement.menu)) {
+            fail(`${label}: "quickAccess.menu" must be an array.`);
+          } else {
+            for (const menuItem of placement.menu) {
+              if (typeof menuItem.label !== 'string' || typeof menuItem.commandId !== 'string') {
+                fail(`${label}: quick-access menu item needs label and commandId.`);
+                continue;
+              }
+              if (!inventory.some((candidate) => candidate.id === menuItem.commandId)) {
+                fail(
+                  `${label}: quick-access menu item names an unknown command: ${menuItem.commandId}`,
+                );
+              }
+              if (!QUICK_ACCESS_MENU_COMMANDS.has(menuItem.commandId)) {
+                fail(
+                  `${label}: only Save As may sit in a quick-access drop-down: ${menuItem.commandId}`,
+                );
+              }
+              if (menuItem.shortcut !== undefined && typeof menuItem.shortcut !== 'string') {
+                fail(
+                  `${label}: quick-access menu item "${menuItem.label}" has a non-string shortcut.`,
+                );
+              }
+              if (menuItem.icon !== undefined) {
+                checkIcon(
+                  label,
+                  menuItem.icon,
+                  `quick-access menu item "${menuItem.label}" icon`,
+                  iconNames,
+                );
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -472,7 +512,10 @@ async function main() {
   lines.push(
     'The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar',
   );
-  lines.push('holds Save, Undo and Redo only; Save As stays in the File menu.');
+  lines.push(
+    "holds Save, Undo and Redo only; Save As stays in the File menu and on the Save button's split",
+  );
+  lines.push('drop-down.');
   lines.push('');
   lines.push(
     '| Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |',
@@ -523,13 +566,19 @@ async function main() {
         ]),
         ...(typeof entry.compact?.icon === 'string' ? [entry.compact.icon] : []),
         ...(typeof entry.quickAccess?.icon === 'string' ? [entry.quickAccess.icon] : []),
+        ...(entry.quickAccess?.menu ?? []).flatMap((item) =>
+          typeof item.icon === 'string' ? [item.icon] : [],
+        ),
       ]),
     ];
     const icon = icons.map((name) => `\`${name}\``).join(', ') || '—';
+    const quickAccessMenu = (entry.quickAccess?.menu ?? []).map((item) => item.label);
     const quickAccess =
       entry.quickAccess === undefined
         ? '—'
-        : `Yes${entry.quickAccess.order === undefined ? '' : ` (order ${entry.quickAccess.order})`}`;
+        : `Yes${entry.quickAccess.order === undefined ? '' : ` (order ${entry.quickAccess.order})`}${
+            quickAccessMenu.length === 0 ? '' : `; menu: ${quickAccessMenu.join(', ')}`
+          }`;
     lines.push(
       `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(icon)} | ${escapeCell(quickAccess)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${entry.implemented ? 'Implemented' : 'Planned'} |`,
     );

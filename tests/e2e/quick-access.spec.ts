@@ -41,6 +41,28 @@ test('quick access sits above the ribbon at the top left with icons and tooltips
   await expect(toolbar.getByRole('button', { name: /Save As/ })).toHaveCount(0);
   await page.getByTestId('file-menu-button').click();
   await expect(page.getByTestId('save-as-button')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Save As also hangs off the Save split arrow, as the oracle shows it. The
+  // arrow sits immediately to the right of the Save icon.
+  const saveOptions = toolbar.getByRole('button', { name: 'Save options' });
+  await expect(saveOptions).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(saveOptions).toHaveAttribute('aria-expanded', 'false');
+  const saveBox = (await save.boundingBox())!;
+  const arrowBox = (await saveOptions.boundingBox())!;
+  expect(arrowBox.x).toBeGreaterThanOrEqual(saveBox.x + saveBox.width - 1);
+  expect(arrowBox.width).toBeLessThan(saveBox.width);
+  await saveOptions.click();
+  const saveMenu = page.getByRole('menu', { name: 'Save options' });
+  await expect(saveMenu).toBeVisible();
+  const saveAsItem = saveMenu.getByRole('menuitem', { name: 'Save As' });
+  await expect(saveAsItem).toBeVisible();
+  await expect(saveAsItem).toHaveAttribute('data-command', 'file.saveAs');
+  await expect(saveAsItem).toContainText('Ctrl+Shift+S');
+  // The drop-down is not a quick-access button of its own.
+  await expect(toolbar.locator('[data-command="file.saveAs"]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(saveOptions).toBeFocused();
 
   // Above the ribbon tabs, and on the left half of the window.
   const toolbarBox = await toolbar.boundingBox();

@@ -104,6 +104,8 @@ export interface ResolvedQuickAccessControl {
   /** The tooltip and accessible name: the command and its first shortcut. */
   readonly title: string;
   readonly icon?: RibbonIconName;
+  /** The split drop-down's authored rows; Save carries Save As here. */
+  readonly menu?: readonly RibbonMenuItem[];
   readonly order: number;
 }
 
@@ -125,6 +127,7 @@ export function quickAccessControls(): readonly ResolvedQuickAccessControl[] {
         label: entry.label,
         title: shortcut === undefined ? entry.label : `${entry.label} (${shortcut})`,
         ...(icon === undefined ? {} : { icon }),
+        ...(entry.quickAccess?.menu === undefined ? {} : { menu: entry.quickAccess.menu }),
         order: entry.quickAccess?.order ?? 100,
       };
     });

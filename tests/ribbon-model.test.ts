@@ -435,6 +435,17 @@ describe('quick access toolbar (ticket 34)', () => {
     );
   });
 
+  it('hangs Save As off the Save split arrow, as the oracle shows it', () => {
+    const [save, ...rest] = quickAccessControls();
+    expect(save?.commandId).toBe('file.save');
+    expect(save?.menu?.map((item) => item.commandId)).toEqual(['file.saveAs']);
+    const rows = ribbonMenuItems(save?.menu ?? [], alwaysEnabled);
+    expect(rows.map((item) => item.label)).toEqual(['Save As']);
+    expect(rows[0]?.shortcut).toBe('Ctrl+Shift+S');
+    // Only Save carries a drop-down; Undo and Redo stay single buttons.
+    expect(rest.every((entry) => entry.menu === undefined)).toBe(true);
+  });
+
   it('draws its icon from the shared original artwork', () => {
     for (const control of quickAccessControls()) {
       expect(inventoryCommand(control.commandId)?.icon).toBeDefined();

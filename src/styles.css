@@ -189,6 +189,47 @@ a:focus-visible,
   box-shadow: 0 0 0 1px var(--chrome-surface);
 }
 
+/* Save's split arrow: Save As hangs off it, never a quick-access button. */
+.quick-access-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.quick-access-split .quick-access-button {
+  border-radius: 3px 0 0 3px;
+}
+
+.quick-access-split-toggle {
+  width: 12px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-left: 0;
+  border-radius: 0 3px 3px 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 8px;
+  line-height: 1;
+}
+
+.quick-access-split-toggle:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--button-hover);
+}
+
+.quick-access-split-toggle:active:not(:disabled) {
+  background: var(--button-pressed);
+}
+
+.quick-access-split-toggle:disabled {
+  color: var(--icon-disabled);
+}
+
+.quick-access-menu {
+  min-width: 190px;
+}
+
 /* ---------- Ribbon ---------- */
 
 .ribbon {
