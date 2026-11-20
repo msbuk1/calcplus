@@ -268,6 +268,11 @@ never leave a silently stale anchor.
 
 **Demo:** print preview and PDF of a formatted report; NVDA and VoiceOver pass; a 250k-cell workbook scrolls at 60 fps; the launcher opens the app offline.
 
+**Demo note (2026-11-20, maintainer).** The NVDA and VoiceOver pass is out
+of the M7 demo: accessibility verification stays V2 with the rest of the
+assistive-technology work (`accessibility.md`). The demo is the print/PDF
+check, the 250k-cell scroll and the offline launcher.
+
 **Exit criteria**
 
 1. Print and PDF match the preview and honour the page setup.
