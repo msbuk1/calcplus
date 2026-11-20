@@ -473,7 +473,7 @@
     "implemented": true,
     "shortcut": ["Ctrl+Z"],
     "icon": "undo",
-    "quickAccess": { "order": 20 }
+    "quickAccess": { "order": 30 }
   },
   {
     "id": "edit.redo",
@@ -485,7 +485,7 @@
     "implemented": true,
     "shortcut": ["Ctrl+Y", "Ctrl+Shift+Z"],
     "icon": "redo",
-    "quickAccess": { "order": 30 }
+    "quickAccess": { "order": 40 }
   },
   {
     "id": "find.search",
@@ -1775,6 +1775,7 @@
         "kind": "button",
         "order": 10,
         "label": "Freeze Panes",
+        "activeLabel": "Unfreeze Panes",
         "icon": "freeze-panes"
       }
     ],
@@ -2031,7 +2032,19 @@
     "enablement": "A workbook is open",
     "implemented": true,
     "shortcut": ["Ctrl+P"],
-    "menu": [{ "menu": "File", "order": 50 }]
+    "icon": "print",
+    "menu": [{ "menu": "File", "order": 50 }],
+    "quickAccess": { "order": 20 }
+  },
+  {
+    "id": "print.setup",
+    "matrixSection": "7. File I/O and printing",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "label": "Page Setup",
+    "category": "view",
+    "enablement": "A sheet is active",
+    "implemented": true,
+    "shortcut": []
   },
   {
     "id": "file.exportPdf",

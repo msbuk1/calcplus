@@ -1,12 +1,81 @@
-import type { PrintPlan } from '../print/types';
+import { DEFAULT_FONT } from '@model/style';
+import { createPrintPlan } from '../print/planner';
+import type { PrintPlan, PrintSheetSnapshot } from '../print/types';
+import { EMPTY_PRINT_SETUP } from '../commands/print';
 
 /**
  * View state for the print preview window (print-pdf §2, ui-chrome §4.1).
  *
  * Pure helpers only: the dialog owns React state, and these functions own the
- * keyboard map and the one-line summary. Keeping them here means the keyboard
- * contract is unit-tested without a browser.
+ * keyboard map, the one-line summary and the paper list. Keeping them here
+ * means the contracts are unit-tested without a browser.
  */
+
+/** One choice in the preview's media list: an OOXML paper code and its name. */
+export interface PrintPaperOption {
+  readonly code: number;
+  readonly name: string;
+}
+
+/**
+ * Ecma-376 `pageSetup@paperSize` codes run 1 … 118. The planner resolves each
+ * code against its own table and names an unknown one `Custom`, so probing the
+ * table through the public planner keeps the list and the table from drifting:
+ * `src/print/planner.ts` owns the only copy.
+ */
+const HIGHEST_PAPER_CODE = 118;
+
+const PAPER_PROBE: PrintSheetSnapshot = {
+  sheetId: 'paper-list',
+  sheetName: '',
+  printAreas: [],
+  usedRange: null,
+  printSetup: null,
+  rowHeight: () => 0,
+  columnWidth: () => 0,
+  columnLabel: () => '',
+  rowLabel: () => '',
+  headingFont: DEFAULT_FONT,
+  cellAt: () => null,
+  cellsIn: () => [],
+  mergesIn: () => [],
+};
+
+let cachedPaperOptions: readonly PrintPaperOption[] | null = null;
+
+/**
+ * Every paper the planner knows, in code order. A plan with no ranges returns
+ * before it reads any sheet geometry, so the probe is cheap; the list is built
+ * once per session.
+ */
+export function printPaperOptions(): readonly PrintPaperOption[] {
+  if (cachedPaperOptions !== null) return cachedPaperOptions;
+  const options: PrintPaperOption[] = [];
+  for (let code = 1; code <= HIGHEST_PAPER_CODE; code += 1) {
+    const paper = createPrintPlan({
+      ...PAPER_PROBE,
+      printSetup: { ...EMPTY_PRINT_SETUP, paperSize: code },
+    }).paper;
+    // A code the table does not name resolves to `Custom`; it is not a choice.
+    if (paper.name !== 'Custom') options.push({ code, name: paper.name });
+  }
+  cachedPaperOptions = options;
+  return options;
+}
+
+/**
+ * The media list's selected option for a plan. A sheet that declares no paper
+ * uses the planner's default (Letter), and an unknown imported code has no
+ * option, so the dialog shows a Custom entry instead.
+ */
+export function printSelectedPaperCode(
+  plan: PrintPlan,
+  options: readonly PrintPaperOption[],
+): number | null {
+  const exact = options.find((option) => option.code === plan.paper.code);
+  if (exact !== undefined) return exact.code;
+  return options.find((option) => option.name === plan.paper.name)?.code ?? null;
+}
 
 /** What a key press in the preview should do, or `null` to leave it alone. */
 export type PrintPreviewKeyAction =

@@ -10,8 +10,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 ## Summary
 
 - Feature-matrix IN rows: 57
-- Inventory commands: 105
-- Implemented in this build: 72
+- Inventory commands: 106
+- Implemented in this build: 73
 - Planned for a later slice: 33
 - Out-of-scope rows (V2 or NEVER): 28
 
@@ -27,9 +27,11 @@ limitation. `format.conditionalRender` is the v1 instance.
 The Icon column names the original SVG artwork in `src/chrome/ribbon-icons.ts`. A command with
 several ribbon controls lists each distinct icon, including the icons of its split-button menu
 items; the command-level icon is the compact and quick-access fallback.
-The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar
-holds Save, Undo and Redo only; Save As stays in the File menu and on the Save button's split
-drop-down.
+The Quick access column names the commands pinned above the ribbon (ui-chrome §1, ticket 42).
+The toolbar holds Save, Print, Undo and Redo; Save As stays in the File menu and on the Save
+button's split drop-down.
+A ribbon control whose label changes with the command’s checked state (ticket 43, Freeze
+Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 
 | Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |
 |---|---|---|---|---|---|---|---|---|---|
@@ -56,8 +58,8 @@ drop-down.
 | `merge.cells` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge Cells | `merge` | — | Home → Alignment (menu) | — | — | A sheet is active and a range is selected | Implemented |
 | `merge.center` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Merge & Center | `merge` | — | Home → Alignment | — | — | A sheet is active and a range is selected | Implemented |
 | `merge.unmerge` | 1. Grid and editing — Merge & Center, Merge Across, Merge Cells, Unmerge | Unmerge | `merge` | — | Home → Alignment (menu) | — | — | A sheet is active and a merged cell is selected | Implemented |
-| `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | `redo` | Yes (order 30) | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
-| `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | `undo` | Yes (order 20) | — | — | Ctrl+Z | The undo history is not empty | Implemented |
+| `edit.redo` | 1. Grid and editing — Undo/redo for every user mutation | Redo | `redo` | Yes (order 40) | — | — | Ctrl+Y, Ctrl+Shift+Z | The redo history is not empty | Implemented |
+| `edit.undo` | 1. Grid and editing — Undo/redo for every user mutation | Undo | `undo` | Yes (order 30) | — | — | Ctrl+Z | The undo history is not empty | Implemented |
 | `find.replaceAll` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace all | — | — | — | — | — | A sheet is active | Implemented |
 | `find.replaceOne` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Replace | `replace` | — | Home → Editing (menu) | Context menu | Ctrl+H | A sheet is active | Implemented |
 | `find.search` | 1. Grid and editing — Find & Replace (values and formulas; sheet or workbook; match case / whole cell; search direction) | Find | `find` | — | Home → Editing | Context menu | Ctrl+F | A sheet is active | Implemented |
@@ -104,7 +106,7 @@ drop-down.
 | `sheet.insert` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Insert sheet | `insert` | — | Home → Cells | — | Shift+F11 | A workbook is open | Implemented |
 | `sheet.rename` | 5. Workbook and sheets — Multi-sheet: insert, delete, rename | Rename sheet | — | — | — | Sheet tab context menu | F2 | A visible sheet is active | Implemented |
 | `fidelity.protection` | 5. Workbook and sheets — Shell protection / workbook protection | Preserve workbook protection | — | — | — | — | — | Imported protection XML is preserved and not enforced | Planned |
-| `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | `freeze-panes` | — | View → Window | — | — | A sheet is active | Implemented |
+| `view.freeze` | 6. View and navigation — Freeze panes (rows and columns) | Freeze Panes | `freeze-panes` | — | View → Window (checked label: Unfreeze Panes) | — | — | A sheet is active | Implemented |
 | `view.zoom` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom | `zoom` | — | View → Zoom | — | — | A sheet is active | Planned |
 | `view.zoom100` | 6. View and navigation — Zoom 10–400% (menu, slider, Ctrl+wheel) | Zoom 100% | `zoom-100` | — | View → Zoom | — | — | A sheet is active | Implemented |
 | `view.gridlines` | 6. View and navigation — Gridlines and headings show/hide | Gridlines | `gridlines` | — | Page Layout → Sheet Options<br>View → Show | — | — | A sheet is active | Implemented |
@@ -124,7 +126,8 @@ drop-down.
 | `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | — | — | Imported links are preserved and not refreshed | Planned |
 | `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
 | `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
-| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | — | — | — | File | Ctrl+P | A workbook is open | Implemented |
+| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
+| `print.setup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Page Setup | — | — | — | — | — | A sheet is active | Implemented |
 | `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Implemented |
 | `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Implemented |
 | `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | `show-comments` | — | Review → Comments | — | — | The sheet has imported comments | Planned |

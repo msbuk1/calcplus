@@ -110,9 +110,10 @@ export interface ResolvedQuickAccessControl {
 }
 
 /**
- * The Quick Access Toolbar above the ribbon: Save, Undo and Redo only, in map
- * order (ui-chrome §1). Save As is not a quick-access command; it stays in the
- * File menu. Enablement still comes from the registry at render time.
+ * The Quick Access Toolbar above the ribbon: Save, Print, Undo and Redo, in map
+ * order (ui-chrome §1, ticket 42). Save As is not a quick-access command; it
+ * stays in the File menu. Enablement still comes from the registry at render
+ * time.
  */
 export function quickAccessControls(): readonly ResolvedQuickAccessControl[] {
   return COMMAND_INVENTORY.filter((entry) => entry.implemented && entry.quickAccess !== undefined)
@@ -155,7 +156,10 @@ const GROUP_ORDER: Readonly<Record<RibbonTabId, readonly string[]>> = {
 /** The default grid: two rows of controls, the group label beneath them. */
 const DEFAULT_ROW_COUNT = 2;
 
-export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[] {
+export function ribbonGroupsFor(
+  tab: RibbonTabId,
+  resolveState?: CommandStateResolver,
+): readonly ResolvedRibbonGroup[] {
   const groups = new Map<string, ResolvedRibbonControl[]>();
   const launchers = new Map<string, RibbonLauncher>();
   for (const entry of COMMAND_INVENTORY) {
@@ -182,12 +186,19 @@ export function ribbonGroupsFor(tab: RibbonTabId): readonly ResolvedRibbonGroup[
         placement.icon !== undefined && isRibbonIconName(placement.icon)
           ? placement.icon
           : undefined;
+      // A checked-state label (ticket 43): Freeze Panes reads Unfreeze Panes
+      // while the active sheet has a split. The authored default stays when the
+      // command reports no checked state.
+      const activeLabel =
+        placement.activeLabel !== undefined && resolveState?.(entry.id).checked === true
+          ? placement.activeLabel
+          : undefined;
       controls.push({
         key: `${entry.id}:${placement.controlId ?? placement.label ?? placement.kind}:${placement.order ?? 100}`,
         kind: placement.kind,
         commandId: entry.id,
-        label: placement.label ?? entry.label,
-        title: placement.title ?? placement.label ?? entry.label,
+        label: activeLabel ?? placement.label ?? entry.label,
+        title: activeLabel ?? placement.title ?? placement.label ?? entry.label,
         ...(placementIcon === undefined ? {} : { icon: placementIcon }),
         iconOnly: placement.iconOnly === true,
         wide: placement.wide === true,

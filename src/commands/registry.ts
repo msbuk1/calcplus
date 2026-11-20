@@ -19,6 +19,7 @@ import { goToCommand } from './goto';
 import { insertFunctionCommand } from './insert-function';
 import { mergeCommands } from './merge';
 import { painterCommands } from './painter';
+import { printSetupCommand } from './print';
 import { sheetDeleteCommand, sheetInsertCommand, sheetRenameCommand } from './sheet';
 import { sortCommand } from './sort';
 import { structureCommands } from './structure';
@@ -85,6 +86,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(sheetDeleteCommand);
   registry.register(sheetRenameCommand);
   registry.register(freezePanesCommand);
+  registry.register(printSetupCommand);
   for (const command of structureCommands()) registry.register(command);
   for (const command of mergeCommands()) registry.register(command);
   registry.register(clearContentsCommand);

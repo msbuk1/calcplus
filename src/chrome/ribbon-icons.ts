@@ -284,6 +284,10 @@ const ICON_DRAWINGS = {
       { cx: 11.5, cy: 11.5, radius: 1.6 },
     ],
   },
+  print: {
+    paths: ['M2.25 6h11.5v5.25H2.25z', 'M4.75 2.5h6.5v3.5h-6.5z', 'M4.75 9h6.5v4.5h-6.5z'],
+    circles: [{ cx: 12, cy: 7.4, radius: 0.55, filled: true }],
+  },
   redo: {
     paths: ['M10.25 4.25 13 7l-2.75 2.75', 'M13 7H6.9A3.9 3.9 0 0 0 3 10.9v.6'],
   },

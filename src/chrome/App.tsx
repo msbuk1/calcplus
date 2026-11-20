@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { ContextMenuRegion, RibbonTabId } from '@commands/inventory';
 import { exportPdfPlan } from '@commands/chrome';
+import { EMPTY_PRINT_SETUP } from '@commands/print';
 import { DocumentSession } from '@commands/session';
 import type {
   CommandResult,
@@ -148,6 +149,7 @@ import { createOriginStorage, type OriginStorage } from '@io/storage';
 import { createPrintPlan } from '../print/planner';
 import { createPrintSnapshot } from '../print/adapter';
 import type { PrintPlan } from '../print/types';
+import { printPaperOptions } from './print-preview-state';
 
 interface LoadedDocument {
   readonly session: DocumentSession;
@@ -240,10 +242,10 @@ export function App(): JSX.Element {
   // read-only view of facts the save already reported; it never enters the model.
   const [lastExportReport, setLastExportReport] = useState<ExportReport | null>(null);
   const [painter, setPainter] = useState<PainterSnapshot | null>(null);
-  // The plan the Print preview window renders. File → Print computes it from
-  // the live display records and drops it on close; it is plain data and never
-  // mutates the model.
-  const [printPlan, setPrintPlan] = useState<PrintPlan | null>(null);
+  // The last plan the Print preview rendered. The live plan is rebuilt from the
+  // display records on every change while the dialog is open, so a paper or
+  // undo edit re-plans the pages; this ref only holds the last good plan.
+  const lastPrintPlanRef = useRef<PrintPlan | null>(null);
   // File → Recent files (persistence §3). The list is read from IndexedDB when
   // the dialog opens; it is display state, never part of the workbook.
   const [recentEntries, setRecentEntries] = useState<readonly RecentEntry[]>([]);
@@ -347,6 +349,25 @@ export function App(): JSX.Element {
       preserved: document.preservedParts,
     });
   }, [document, version]);
+
+  /**
+   * The plan the Print preview renders (print-pdf §2, ticket 42). It is rebuilt
+   * from the live display records whenever the model changes, so a paper write
+   * and its undo re-plan the pages while the dialog stays open.
+   */
+  const printPlan = useMemo<PrintPlan | null>(() => {
+    if (dialog !== 'print-preview' || document === null || projection === null) return null;
+    try {
+      const plan = createPrintPlan(createPrintSnapshot(document.session.workbook, projection));
+      lastPrintPlanRef.current = plan;
+      return plan;
+    } catch {
+      // The paper command validates before it writes, so this only covers an
+      // external change; keep the last good plan on screen rather than losing
+      // the modal to an empty render.
+      return lastPrintPlanRef.current;
+    }
+  }, [dialog, document, projection]);
 
   const selectionStatistics = useMemo<SelectionStatistics | null>(() => {
     if (projection === null) return null;
@@ -1101,7 +1122,7 @@ export function App(): JSX.Element {
   const closeDialog = (reason: DialogCloseReason): void => {
     setDialog(null);
     setSortRequest(null);
-    setPrintPlan(null);
+    lastPrintPlanRef.current = null;
     if (reason === 'escape') {
       focusGrid();
       return;
@@ -1736,6 +1757,26 @@ export function App(): JSX.Element {
       setStatus(error instanceof Error ? error.message : String(error));
       return null;
     }
+  };
+
+  /**
+   * The preview's media list (ticket 42): one choice is one command and one
+   * transaction. The candidate plan is built first, so a paper that would need
+   * more than the planner's page limit is refused before the model changes.
+   */
+  const choosePrintPaper = (paperSize: number): void => {
+    if (document === null || projection === null) return;
+    const snapshot = createPrintSnapshot(document.session.workbook, projection);
+    try {
+      createPrintPlan({
+        ...snapshot,
+        printSetup: { ...(snapshot.printSetup ?? EMPTY_PRINT_SETUP), paperSize },
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    dispatchSheetCommand('print.setup', { sheetId: document.sheetId, paperSize });
   };
 
   /**
@@ -3025,9 +3066,10 @@ export function App(): JSX.Element {
         clearPainter();
         try {
           // The plan is computed once per print (print-pdf §6) from the same
-          // display records the grid paints, at 100%, never the view zoom.
-          const plan = createPrintPlan(createPrintSnapshot(document.session.workbook, projection));
-          setPrintPlan(plan);
+          // display records the grid paints, at 100%, never the view zoom. This
+          // call is a pre-flight: the dialog renders the live plan, rebuilt
+          // whenever the model changes.
+          createPrintPlan(createPrintSnapshot(document.session.workbook, projection));
           setDialog('print-preview');
         } catch (error) {
           setStatus(error instanceof Error ? error.message : String(error));
@@ -3415,7 +3457,12 @@ export function App(): JSX.Element {
       ) : null}
 
       {dialog === 'print-preview' && printPlan !== null ? (
-        <PrintPreviewDialog plan={printPlan} onClose={closeDialog} />
+        <PrintPreviewDialog
+          plan={printPlan}
+          paperOptions={printPaperOptions()}
+          onPaperSizeChange={choosePrintPaper}
+          onClose={closeDialog}
+        />
       ) : null}
 
       {dialog === 'recent' ? (

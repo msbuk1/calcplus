@@ -107,6 +107,48 @@ test('Print reaches window.print() with one page element per plan page', async (
   await expect.poll(() => page.evaluate(() => window.__printCalls)).toBe(1);
 });
 
+test('the media list re-plans the pages live and one undo restores the old paper', async ({
+  page,
+}) => {
+  await openFixture(page, 'print-areas.xlsx');
+  const dialog = await openPreview(page);
+  const summary = dialog.getByTestId('print-preview-summary');
+  const paper = dialog.getByTestId('print-preview-paper');
+  const count = dialog.getByTestId('print-preview-count');
+
+  // The list names the planner's papers and selects the sheet's own (A4).
+  await expect(paper).toHaveValue('9');
+  await expect(paper.locator('option')).toHaveCount(18);
+  await expect(paper.locator('option[value="1"]')).toHaveText('Letter');
+  await expect(paper.locator('option[value="6"]')).toHaveText('Statement');
+  await expect(summary).toContainText('A4 landscape');
+  await expect(summary).toContainText('2 pages');
+
+  // Choosing a paper writes the sheet's page setup and re-plans the pages live:
+  // Statement is much smaller than A4, so the same areas need three pages.
+  await paper.selectOption('6');
+  await expect(paper).toHaveValue('6');
+  await expect(summary).toContainText('Statement landscape');
+  await expect(summary).toContainText('3 pages');
+  await expect(count).toHaveText('Page 1 of 3');
+  await expect(page.getByTestId('print-page')).toHaveCount(3);
+  // The choice is document state: the workbook now has unsaved changes.
+  await expect(page.getByTestId('save-button')).toHaveAttribute('data-unsaved', 'true');
+
+  // One gesture is one transaction: close the preview, undo once, and the
+  // reopened plan is the file's own A4 again.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('undo-button')).toBeEnabled();
+  await page.getByTestId('undo-button').click();
+
+  const reopened = await openPreview(page);
+  await expect(reopened.getByTestId('print-preview-paper')).toHaveValue('9');
+  await expect(reopened.getByTestId('print-preview-summary')).toContainText('A4 landscape');
+  await expect(reopened.getByTestId('print-preview-summary')).toContainText('2 pages');
+  await expect(page.getByTestId('print-page')).toHaveCount(2);
+});
+
 test('a print of the preview is exactly the plan’s page count, with no empty page', async ({
   page,
 }) => {

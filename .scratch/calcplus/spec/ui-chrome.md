@@ -7,13 +7,13 @@ Resolved by [10 — UI chrome architecture and ribbon shell prototype](../issues
 - **Variant A — Ribbon** is the primary shell: Excel desktop fidelity.
 - **Variant B — Compact** is the responsive mode below roughly 900 px, not a separate product.
 - **Variant C — Classic** is rejected.
-- **Quick Access Toolbar.** It sits above the ribbon, anchored top left, and holds Save, Undo and Redo only. Each is a small 16 px monochrome icon button with a tooltip naming the command and its shortcut. Save As is not in it; it stays in the File menu and on the Save button's split arrow. Unsaved changes show on the Save button, not as a separate dot beside the filename. The document name stays in the app header.
+- **Quick Access Toolbar.** It sits above the ribbon, anchored top left, and holds Save, Print, Undo and Redo only. Each is a small 16 px monochrome icon button with a tooltip naming the command and its shortcut. Save As is not in it; it stays in the File menu and on the Save button's split arrow. Unsaved changes show on the Save button, not as a separate dot beside the filename. The document name stays in the app header.
 
 ## 2. Layout
 
 Top to bottom:
 
-1. **App header** — the Quick Access Toolbar at the top left, above the ribbon: Save, Undo and Redo as icon buttons with tooltips. The document name sits in the same strip. Unsaved changes show on the Save button. Save As stays in the File menu and on the Save button's split arrow.
+1. **App header** — the Quick Access Toolbar at the top left, above the ribbon: Save, Print, Undo and Redo as icon buttons with tooltips. The document name sits in the same strip. Unsaved changes show on the Save button. Save As stays in the File menu and on the Save button's split arrow.
 2. **Ribbon** (primary) or **compact bar** (narrow).
 3. **Formula row** — name box, `fx`, formula bar, cancel/enter.
 4. **Grid viewport** — the only vertically scrollable region.
@@ -92,7 +92,7 @@ Every control takes a `commandId`. Enablement and checked state come from the co
 - “Tell me” command search.
 - Alt key tips.
 - Ribbon customisation and a user-editable quick-access toolbar. The fixed
-  Save, Undo and Redo toolbar is v1.
+  Save, Print, Undo and Redo toolbar is v1.
 - Dark mode and theme authoring.
 - Mobile/touch layout.
 - Multiple workbooks per tab.

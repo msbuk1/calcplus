@@ -37,8 +37,8 @@ const CONTEXT_REGION_LABELS = {
 };
 /** The only command allowed to use the ui-chrome pseudo-row instead of the feature matrix. */
 const UI_CHROME_COMMANDS = new Set(['help.about']);
-/** ui-chrome §1 pins the Quick Access Toolbar to these three commands. */
-const QUICK_ACCESS_COMMANDS = new Set(['file.save', 'edit.undo', 'edit.redo']);
+/** ui-chrome §1 pins the Quick Access Toolbar to these commands; ticket 42 adds Print. */
+const QUICK_ACCESS_COMMANDS = new Set(['file.save', 'file.print', 'edit.undo', 'edit.redo']);
 /**
  * The only command allowed inside a quick-access drop-down. Save carries Save
  * As on its split arrow; Save As never gets a quick-access placement of its own.
@@ -146,6 +146,14 @@ async function runtimeCatalog() {
           .list()
           .map((command) => command.id),
       ),
+      // A state-dependent label (ticket 43) is only meaningful on a command
+      // that reports a checked state.
+      checkedCommands: new Set(
+        createCommandRegistry()
+          .list()
+          .filter((command) => typeof command.isChecked === 'function')
+          .map((command) => command.id),
+      ),
       iconNames: new Set(iconNames),
     };
   } finally {
@@ -160,7 +168,7 @@ async function main() {
     console.error('command-inventory.json must contain an array.');
     process.exit(1);
   }
-  const { registered, iconNames } = await runtimeCatalog();
+  const { registered, checkedCommands, iconNames } = await runtimeCatalog();
   const matrixByKey = new Map(matrix.map((row) => [`${row.section}::${row.feature}`, row]));
   const byMatrixRow = new Map();
   const seenIds = new Set();
@@ -274,6 +282,19 @@ async function main() {
         // The carve-out requires a tooltip that names the v2 limitation.
         fail(`${label}: a disabled ribbon placement needs a tooltip (title).`);
       }
+      if (placement.activeLabel !== undefined) {
+        // The checked-state label (ticket 43): the entry reads one label while
+        // the command reports state and another while it does not.
+        const defaultLabel = placement.label ?? entry.label;
+        if (typeof placement.activeLabel !== 'string' || placement.activeLabel.trim() === '') {
+          fail(`${label}: ribbon placement "activeLabel" must be a non-empty string.`);
+        } else if (placement.activeLabel === defaultLabel) {
+          fail(`${label}: ribbon placement "activeLabel" must differ from its label.`);
+        }
+        if (!checkedCommands.has(entry.id)) {
+          fail(`${label}: an "activeLabel" needs a command with a checked state (isChecked).`);
+        }
+      }
       for (const option of placement.options ?? []) {
         if (typeof option.label !== 'string' || option.label.trim() === '') {
           fail(`${label}: select option without a label.`);
@@ -356,7 +377,7 @@ async function main() {
         fail(`${label}: "quickAccess" must be an object.`);
       } else {
         if (!QUICK_ACCESS_COMMANDS.has(entry.id)) {
-          fail(`${label}: the Quick Access Toolbar holds Save, Undo and Redo only.`);
+          fail(`${label}: the Quick Access Toolbar holds Save, Print, Undo and Redo only.`);
         }
         if (
           placement.order !== undefined &&
@@ -510,12 +531,16 @@ async function main() {
   );
   lines.push('items; the command-level icon is the compact and quick-access fallback.');
   lines.push(
-    'The Quick access column names the commands pinned above the ribbon (ui-chrome §1). The toolbar',
+    'The Quick access column names the commands pinned above the ribbon (ui-chrome §1, ticket 42).',
   );
   lines.push(
-    "holds Save, Undo and Redo only; Save As stays in the File menu and on the Save button's split",
+    'The toolbar holds Save, Print, Undo and Redo; Save As stays in the File menu and on the Save',
   );
-  lines.push('drop-down.');
+  lines.push("button's split drop-down.");
+  lines.push(
+    'A ribbon control whose label changes with the command’s checked state (ticket 43, Freeze',
+  );
+  lines.push('Panes → Unfreeze Panes) lists the checked label in the Ribbon column.');
   lines.push('');
   lines.push(
     '| Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |',
@@ -534,6 +559,9 @@ async function main() {
       if (placement.kind === 'launcher') notes.add('launcher');
       if (placement.picker !== undefined) notes.add(`${placement.picker} colour picker`);
       if (placement.disabled === true) notes.add('present, disabled');
+      if (placement.activeLabel !== undefined) {
+        notes.add(`checked label: ${placement.activeLabel}`);
+      }
       ribbonAddresses.set(address, notes);
     }
     const ribbon =

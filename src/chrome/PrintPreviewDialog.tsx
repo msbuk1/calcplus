@@ -6,14 +6,25 @@ import type { RenderedPrintDocument } from '../print/svg-renderer';
 import { Dialog } from './Dialog';
 import type { DialogCloseReason } from './Dialog';
 import {
+  printPaperOptions as allPaperOptions,
   printPreviewKeyAction,
   printPreviewPageText,
   printPreviewSummary,
+  printSelectedPaperCode,
 } from './print-preview-state';
+import type { PrintPaperOption } from './print-preview-state';
 
 export interface PrintPreviewDialogProps {
   readonly plan: PrintPlan;
   readonly onClose: (reason: DialogCloseReason) => void;
+  /**
+   * Writes the chosen paper to the sheet's page setup and re-plans. The shell
+   * owns the command dispatch, so one choice is one transaction; the dialog
+   * itself never touches the model.
+   */
+  readonly onPaperSizeChange?: (paperSize: number) => void;
+  /** The planner's media table; injected for tests. */
+  readonly paperOptions?: readonly PrintPaperOption[];
   /** Injected by tests; the window's own print dialog by default. */
   readonly onPrint?: () => void;
 }
@@ -27,6 +38,11 @@ export interface PrintPreviewDialogProps {
  * Up/Down, Home/End) and announced through a live region; the SVG itself is a
  * labelled image ("Page 1 of 3, Sheet1").
  *
+ * The media list is Excel's print-view paper choice (ticket 42): it names every
+ * paper the planner knows and writes the sheet's `pageSetup@paperSize` through
+ * one command. The dialog re-renders from the plan the shell rebuilds, so the
+ * pages re-plan live and undo follows.
+ *
  * The print-only stack is a sibling of the dialog, not part of it: under
  * `@media print` the shell hides everything except that stack, so the browser
  * prints the plan's pages instead of the chrome. Its pages are sized to the
@@ -36,12 +52,17 @@ export interface PrintPreviewDialogProps {
 export function PrintPreviewDialog({
   plan,
   onClose,
+  onPaperSizeChange,
+  paperOptions,
   onPrint,
 }: PrintPreviewDialogProps): JSX.Element {
   const rendered = useMemo(() => renderPrintPlan(plan), [plan]);
   const pageCount = rendered.pageCount;
   const [page, setPage] = useState(0);
   const current = rendered.pages[Math.min(page, Math.max(0, pageCount - 1))];
+  const papers = paperOptions ?? allPaperOptions();
+  const selectedPaper = printSelectedPaperCode(plan, papers);
+  const customPaper = selectedPaper === null;
 
   const print = useCallback((): void => {
     if (pageCount === 0) return;
@@ -91,9 +112,31 @@ export function PrintPreviewDialog({
         secondaryAction={{ label: 'Close', onSelect: () => onClose('dismiss') }}
       >
         <div className="print-preview" data-testid="print-preview">
-          <p className="dialog-hint print-preview-summary" data-testid="print-preview-summary">
-            {printPreviewSummary(plan)}
-          </p>
+          <div className="print-preview-head">
+            <p className="dialog-hint print-preview-summary" data-testid="print-preview-summary">
+              {printPreviewSummary(plan)}
+            </p>
+            <label className="print-preview-paper">
+              <span className="print-preview-paper-label">Paper size</span>
+              <select
+                data-testid="print-preview-paper"
+                value={customPaper ? 'custom' : String(selectedPaper)}
+                disabled={onPaperSizeChange === undefined}
+                onChange={(event) => {
+                  const code = Number(event.target.value);
+                  if (!Number.isInteger(code) || code <= 0 || code === selectedPaper) return;
+                  onPaperSizeChange?.(code);
+                }}
+              >
+                {customPaper ? <option value="custom">Custom</option> : null}
+                {papers.map((paper) => (
+                  <option key={paper.code} value={String(paper.code)}>
+                    {paper.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {current === undefined ? (
             <p className="dialog-hint print-preview-empty" data-testid="print-preview-empty">
               There is nothing to print. The sheet has no used cells and no print area.
@@ -142,8 +185,10 @@ export function PrintPreviewDialog({
                 </button>
               </div>
               <p className="dialog-hint print-preview-hint">
-                Arrow keys and Page Up/Down change the page. The browser print dialog controls the
-                printer, the paper and whether background graphics print.
+                Arrow keys and Page Up/Down change the page. The paper size sets the sheet’s page
+                setup, and the PDF export follows it. Printing opens the browser’s print dialog,
+                which is the printer control: pick the printer, the copies and the duplex setting
+                there, and say whether background graphics print.
               </p>
             </>
           )}

@@ -13,6 +13,7 @@ import type {
   ConditionalFormatRecord,
   GridRange,
   HyperlinkRecord,
+  PrintSetupRecord,
   RowDimension,
   Sheet,
   SheetId,
@@ -251,6 +252,19 @@ export interface SheetFreezeChange {
 }
 
 /**
+ * A sheet's print setup (file-compat §3, print-pdf §4). The paper a user picks
+ * in the print preview is document state, so the change carries the whole
+ * record on both sides and undo restores the previous one in a single step.
+ * `null` means the sheet declared no print setup elements.
+ */
+export interface PrintSetupSetChange {
+  readonly type: 'printSetup.set';
+  readonly sheetId: SheetId;
+  readonly before: PrintSetupRecord | null;
+  readonly after: PrintSetupRecord | null;
+}
+
+/**
  * A merged-range patch. Merge authoring has no per-cell before/after shape;
  * the sheet's merge list is the document state, so the change carries the
  * exact list on both sides. Undo restores the previous list in one step.
@@ -448,6 +462,7 @@ export type CommandChange =
   | StyleSetChange
   | WorkbookDateSystemChange
   | SheetFreezeChange
+  | PrintSetupSetChange
   | DimensionSetChange
   | MergeSetChange
   | SheetAddChange
@@ -504,6 +519,8 @@ export function inverseChange(change: CommandChange): CommandChange {
     case 'workbook.dateSystem':
       return { ...change, before: change.after, after: change.before };
     case 'sheet.freeze':
+      return { ...change, before: change.after, after: change.before };
+    case 'printSetup.set':
       return { ...change, before: change.after, after: change.before };
     case 'dimension.set':
       return { ...change, before: change.after, after: change.before };

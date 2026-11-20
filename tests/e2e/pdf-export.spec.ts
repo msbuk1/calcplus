@@ -48,6 +48,35 @@ test('File → Export PDF downloads a PDF with the preview’s page count', asyn
   await expect(page.getByTestId('status-message')).toContainText('Exported print-areas.pdf');
 });
 
+test('Export PDF follows the paper chosen in the preview', async ({ page }) => {
+  await openFixture(page, 'print-areas.xlsx');
+
+  // Choose Statement (612 × 396pt in landscape) in the preview, then close it.
+  await page.getByTestId('file-menu-button').click();
+  await page.getByRole('menuitem', { name: /^Print/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Print Preview' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId('print-preview-paper').selectOption('6');
+  await expect(dialog.getByTestId('print-preview-summary')).toContainText('Statement landscape');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    (async () => {
+      await page.getByTestId('file-menu-button').click();
+      await page.getByRole('menuitem', { name: /^Export PDF/ }).click();
+    })(),
+  ]);
+
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const pdf = (await readFile(path!)).toString('latin1');
+  // The PDF's page box is the chosen paper, not the A4 the file declared.
+  expect(pdf).toContain('/MediaBox [0 0 612 396]');
+  expect(pdf.match(/\/Type\s*\/Page(?![s])/g) ?? []).toHaveLength(3);
+});
+
 test('a CJK page is rasterised at 300 DPI in the Chromium fallback path', async ({ page }) => {
   // A blank workbook whose only text cannot embed in any bundled face.
   await page.goto('/?fsa=0');

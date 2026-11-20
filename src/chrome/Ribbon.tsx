@@ -44,7 +44,7 @@ export function Ribbon({
   const fileButtonRef = useRef<HTMLButtonElement | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const fileItems = menuItemsFor('File', resolveState);
-  const groups = ribbonGroupsFor(activeTab);
+  const groups = ribbonGroupsFor(activeTab, resolveState);
 
   const focusTab = (index: number): void => {
     const next = (index + RIBBON_TABS.length) % RIBBON_TABS.length;

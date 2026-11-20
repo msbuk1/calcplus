@@ -408,16 +408,47 @@ describe('Data tab', () => {
   });
 });
 
+describe('the View tab freeze entry (ticket 43)', () => {
+  const frozen = (): { enabled: boolean; checked: boolean } => ({ enabled: true, checked: true });
+
+  it('reads Unfreeze Panes while the active sheet has a frozen split', () => {
+    const windowGroup = ribbonGroupsFor('View', frozen).find(
+      (candidate) => candidate.id === 'Window',
+    );
+    const freeze = windowGroup?.controls.find((candidate) => candidate.commandId === 'view.freeze');
+    expect(freeze?.label).toBe('Unfreeze Panes');
+    // The visible label and the accessible name move together.
+    expect(freeze?.title).toBe('Unfreeze Panes');
+    expect(freeze?.icon).toBe('freeze-panes');
+  });
+
+  it('reads Freeze Panes again once the split is gone', () => {
+    const windowGroup = ribbonGroupsFor('View', alwaysEnabled).find(
+      (candidate) => candidate.id === 'Window',
+    );
+    const freeze = windowGroup?.controls.find((candidate) => candidate.commandId === 'view.freeze');
+    expect(freeze?.label).toBe('Freeze Panes');
+    expect(freeze?.title).toBe('Freeze Panes');
+  });
+
+  it('keeps the authored label when no state resolver is supplied', () => {
+    const windowGroup = group('View', 'Window');
+    expect(control(windowGroup, 'view.freeze').label).toBe('Freeze Panes');
+  });
+});
+
 describe('quick access toolbar (ticket 34)', () => {
-  it('holds Save, Undo and Redo in oracle order with shortcut tooltips', () => {
+  it('holds Save, Print, Undo and Redo in oracle order with shortcut tooltips', () => {
     const controls = quickAccessControls();
     expect(controls.map((entry) => entry.commandId)).toEqual([
       'file.save',
+      'file.print',
       'edit.undo',
       'edit.redo',
     ]);
     expect(controls.map((entry) => entry.title)).toEqual([
       'Save (Ctrl+S)',
+      'Print (Ctrl+P)',
       'Undo (Ctrl+Z)',
       'Redo (Ctrl+Y)',
     ]);

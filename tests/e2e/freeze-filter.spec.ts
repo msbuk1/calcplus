@@ -32,14 +32,45 @@ async function selectRange(page: Page, address: string): Promise<void> {
   await expect(nameBox).toHaveValue(address);
 }
 
+test('a fresh sheet offers Freeze Panes; the label follows the split', async ({ page }) => {
+  await page.goto('/?fsa=0');
+  await page.getByTestId('file-menu-button').click();
+  await page.getByRole('menuitem', { name: /^New$/ }).click();
+  await expect(page.getByTestId('file-name')).toHaveText('Untitled.xlsx');
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
+
+  // No split: the entry is Freeze Panes (ticket 43).
+  await expect(page.getByRole('button', { name: 'Freeze Panes', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Unfreeze Panes', exact: true })).toHaveCount(0);
+
+  // Freezing at B1 flips the same entry to Unfreeze Panes.
+  await clickCell(page, 1, 0);
+  await page.getByRole('button', { name: 'Freeze Panes', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__calcplus.getFreeze()))
+    .toEqual({ rows: 1, cols: 0 });
+  const unfreeze = page.getByRole('button', { name: 'Unfreeze Panes', exact: true });
+  await expect(unfreeze).toBeEnabled();
+
+  // Unfreezing from the split point flips it back.
+  await unfreeze.click();
+  await expect
+    .poll(() => page.evaluate(() => window.__calcplus.getFreeze()))
+    .toEqual({ rows: 0, cols: 0 });
+  await expect(page.getByRole('button', { name: 'Freeze Panes', exact: true })).toBeEnabled();
+});
+
 test('Freeze Panes splits at the active cell, moves, unfreezes and undoes', async ({ page }) => {
   await openFixture(page, 'm2-grid.xlsx');
   await clickCell(page, 2, 1);
   await page.getByRole('tab', { name: 'View', exact: true }).click();
 
-  const freeze = page.getByRole('button', { name: 'Freeze Panes', exact: true });
-  await expect(freeze).toBeEnabled();
-  await freeze.click();
+  // m2-grid.xlsx opens with a 1 × 1 split, so the entry already reads
+  // Unfreeze Panes (ticket 43) and pressing at a new cell moves the split.
+  const unfreeze = page.getByRole('button', { name: 'Unfreeze Panes', exact: true });
+  await expect(unfreeze).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Freeze Panes', exact: true })).toHaveCount(0);
+  await unfreeze.click();
   await expect
     .poll(() => page.evaluate(() => window.__calcplus.getFreeze()))
     .toEqual({
@@ -59,20 +90,24 @@ test('Freeze Panes splits at the active cell, moves, unfreezes and undoes', asyn
 
   // A new active cell moves the split; the same cell unfreezes it.
   await selectRange(page, 'C5');
-  await freeze.click();
+  await unfreeze.click();
   await expect
     .poll(() => page.evaluate(() => window.__calcplus.getFreeze()))
     .toEqual({
       rows: 4,
       cols: 2,
     });
-  await freeze.click();
+  await unfreeze.click();
   await expect
     .poll(() => page.evaluate(() => window.__calcplus.getFreeze()))
     .toEqual({
       rows: 0,
       cols: 0,
     });
+  // With no split the entry reads Freeze Panes again.
+  const freeze = page.getByRole('button', { name: 'Freeze Panes', exact: true });
+  await expect(freeze).toBeEnabled();
+  await expect(unfreeze).toHaveCount(0);
 
   // One transaction: undo restores the split that was in place before the press.
   await page.getByTestId('undo-button').click();
@@ -82,6 +117,7 @@ test('Freeze Panes splits at the active cell, moves, unfreezes and undoes', asyn
       rows: 4,
       cols: 2,
     });
+  await expect(unfreeze).toBeEnabled();
 });
 
 test('the AutoFilter button in a header cell opens the column dropdown', async ({ page }) => {

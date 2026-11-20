@@ -574,6 +574,13 @@ export class DocumentSession {
         }
         continue;
       }
+      if (change.type === 'printSetup.set') {
+        const sheet = findSheet(this.workbook, change.sheetId);
+        if (sheet !== undefined) {
+          sheet.printSetup = direction === 'after' ? change.after : change.before;
+        }
+        continue;
+      }
       if (change.type === 'sheet.add') {
         if (direction === 'after') this.insertSheetSnapshot(change.after, change.index);
         else this.removeSheetSnapshot(change.after.id);
@@ -841,6 +848,7 @@ export class DocumentSession {
       if (
         change.type === 'workbook.dateSystem' ||
         change.type === 'sheet.freeze' ||
+        change.type === 'printSetup.set' ||
         change.type === 'sheet.add' ||
         change.type === 'sheet.delete' ||
         change.type === 'sheet.rename' ||
@@ -1025,6 +1033,10 @@ function estimateBytes(changes: readonly CommandChange[]): number {
     }
     if (change.type === 'sheet.freeze') {
       total += 32;
+      continue;
+    }
+    if (change.type === 'printSetup.set') {
+      total += 128;
       continue;
     }
     if (change.type === 'merge.set') {

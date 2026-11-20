@@ -19,17 +19,26 @@ test('quick access sits above the ribbon at the top left with icons and tooltips
   const toolbar = page.getByRole('toolbar', { name: 'Quick access' });
   await expect(toolbar).toBeVisible();
   const save = toolbar.getByTestId('save-button');
+  const print = toolbar.locator('[data-command="file.print"]');
   const undo = toolbar.getByTestId('undo-button');
   const redo = toolbar.getByTestId('redo-button');
 
   await expect(save).toHaveAttribute('title', 'Save (Ctrl+S)');
   await expect(save).toHaveAttribute('aria-label', 'Save (Ctrl+S)');
+  // Ticket 42: Print is the second button, next to Save, with its shortcut.
+  await expect(print).toHaveAttribute('title', 'Print (Ctrl+P)');
+  await expect(print).toHaveAttribute('aria-label', 'Print (Ctrl+P)');
   await expect(undo).toHaveAttribute('title', 'Undo (Ctrl+Z)');
   await expect(redo).toHaveAttribute('title', 'Redo (Ctrl+Y)');
-  for (const button of [save, undo, redo]) {
+  for (const button of [save, print, undo, redo]) {
     await expect(button.locator('svg.ribbon-glyph')).toHaveCount(1);
     await expect(button).toHaveText('');
   }
+  // Left to right: Save, Print, Undo, Redo.
+  const order = await Promise.all([save, print, undo, redo].map((button) => button.boundingBox()));
+  const lefts = order.map((box) => box?.x ?? -1);
+  expect(lefts.every((left) => left >= 0)).toBe(true);
+  expect(lefts).toEqual([...lefts].sort((left, right) => left - right));
 
   // The toolbar counts as the ribbon focus zone; focusing it must not bounce
   // the keyboard to the ribbon body.
@@ -72,6 +81,23 @@ test('quick access sits above the ribbon at the top left with icons and tooltips
   expect(toolbarBox!.y).toBeLessThan(tabsBox!.y);
   const viewport = page.viewportSize()!;
   expect(toolbarBox!.x).toBeLessThan(viewport.width / 2);
+});
+
+test('the Quick Access Print button opens the preview and Esc returns to the grid', async ({
+  page,
+}) => {
+  await openFixture(page, fixture);
+  const print = page.locator('.quick-access-toolbar [data-command="file.print"]');
+  await expect(print).toBeEnabled();
+  await print.click();
+
+  const dialog = page.getByRole('dialog', { name: 'Print Preview' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByTestId('print-preview-paper')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page.getByTestId('grid-shell')).toBeFocused();
 });
 
 test('unsaved changes show on the Save button and no separate dot remains', async ({ page }) => {

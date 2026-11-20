@@ -46,6 +46,13 @@ export interface RibbonPlacement {
   readonly rowSpan?: number;
   readonly label?: string;
   readonly title?: string;
+  /**
+   * The label shown while the command reports a checked state, as Excel's
+   * Freeze Panes entry flips to Unfreeze Panes (ticket 43). Only a command
+   * with an `isChecked` predicate may author it, and the generator rejects a
+   * label that matches the default.
+   */
+  readonly activeLabel?: string;
   /** A name from `src/chrome/ribbon-icons.ts`; every rendered control has one. */
   readonly icon?: string;
   /** The icon alone carries the control's visible identity; the label stays in `title`. */
@@ -74,9 +81,10 @@ export interface RibbonPlacement {
 }
 
 /**
- * The Quick Access Toolbar above the ribbon. Save, Undo and Redo are the only
+ * The Quick Access Toolbar above the ribbon. Save, Print, Undo and Redo are the
  * placements; Save As stays in the File menu and in the Save button's
- * drop-down, as the Excel 365 desktop oracle shows it.
+ * drop-down, as the Excel 365 desktop oracle shows it. Print joined the
+ * toolbar beside Save in ticket 42.
  */
 export interface QuickAccessPlacement {
   readonly order?: number;
