@@ -84,7 +84,9 @@ for (const candidate of goCandidates) {
 if (goCommand === null) {
   if (sawGccgo) {
     console.error('build-launcher: the only Go toolchains found are gccgo, which cannot build the');
-    console.error('  artifacts. gccgo does not cross-compile the Windows .exe and links a dynamic,');
+    console.error(
+      '  artifacts. gccgo does not cross-compile the Windows .exe and links a dynamic,',
+    );
     console.error(
       '  not static, Linux binary. Install the standard Go toolchain from https://go.dev/dl/',
     );
