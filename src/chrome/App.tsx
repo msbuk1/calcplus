@@ -115,6 +115,7 @@ import { resolveCommandState } from '@chrome/command-state';
 import type { ChromeCommandContext } from '@chrome/command-state';
 import { nextFocusZone, type FocusZone } from '@chrome/focus';
 import { contextMenuItems } from '@chrome/ribbon-model';
+import { ribbonControlValues } from '@chrome/ribbon-readouts';
 import { useMediaQuery } from '@chrome/useMediaQuery';
 import {
   canUseFileSystemAccess,
@@ -905,15 +906,12 @@ export function App(): JSX.Element {
     [commandContext],
   );
 
+  // The ribbon readouts and the colour pickers' Current swatch all preview the
+  // active cell (ticket 31). A merged cell is one cell, so they read its
+  // anchor's style (ticket 40).
   const controlValues = useMemo(
-    () => ({
-      'font-family': activeProjected?.style.font.name ?? 'Calibri',
-      'font-size': activeProjected === null ? '11' : String(activeProjected.style.font.size),
-      'number-format': activeProjected?.style.numberFormat ?? 'General',
-      'font-color': activeProjected?.style.font.color ?? '',
-      'fill-color': activeProjected?.style.fill.color ?? '',
-    }),
-    [activeProjected],
+    () => ribbonControlValues(projection, active),
+    [projection, active],
   );
 
   useEffect(() => {

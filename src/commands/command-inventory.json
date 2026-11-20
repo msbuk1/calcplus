@@ -1006,6 +1006,7 @@
         "kind": "split",
         "order": 70,
         "row": 2,
+        "controlId": "fill-color",
         "label": "Fill",
         "title": "Fill Colour",
         "wide": true,

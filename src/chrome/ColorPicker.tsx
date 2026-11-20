@@ -313,6 +313,7 @@ export function ColorPickerPopup({
           <span className="format-colors-preview-label">New</span>
           <span
             className="format-colors-preview-swatch"
+            data-testid={`${testId}-new`}
             data-empty={draft.error === undefined && draftColorValue === null ? 'true' : undefined}
             data-invalid={draft.error === undefined ? undefined : 'true'}
             style={
@@ -335,6 +336,7 @@ export function ColorPickerPopup({
           <span className="format-colors-preview-label">Current</span>
           <span
             className="format-colors-preview-swatch"
+            data-testid={`${testId}-current`}
             data-empty={current.error === undefined && currentColor === null ? 'true' : undefined}
             data-invalid={current.error === undefined ? undefined : 'true'}
             style={
