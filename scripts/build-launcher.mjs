@@ -30,6 +30,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -55,28 +56,47 @@ const requested = args.filter((argument) => argument === '--windows' || argument
 const targets = requested.length === 0 ? ['windows', 'linux'] : requested;
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 
-// GO_BIN picks a toolchain; the default is `go` on PATH. gccgo is refused
-// below because it cannot cross-compile the Windows .exe and does not link the
-// static Linux binary the release promises.
-const goCommand = process.env.GO_BIN ?? 'go';
-const go = spawnSync(goCommand, ['version'], { encoding: 'utf8' });
-if (go.error !== undefined || go.status !== 0) {
+// GO_BIN picks a toolchain; otherwise the script looks for a standard Go in
+// the usual places. The `go` on PATH can be gccgo (as on Pop!_OS), which is
+// refused below because it cannot cross-compile the Windows .exe and does not
+// link the static Linux binary the release promises.
+const goCandidates = [
+  process.env.GO_BIN,
+  'go',
+  join('/usr/local/go/bin', 'go'),
+  join('/usr/lib/go/bin', 'go'),
+  join(homedir(), 'go', 'bin', 'go'),
+].filter((candidate, index, all) => candidate !== undefined && all.indexOf(candidate) === index);
+let goCommand = null;
+let goVersion = '';
+let sawGccgo = false;
+for (const candidate of goCandidates) {
+  const probe = spawnSync(candidate, ['version'], { encoding: 'utf8' });
+  if (probe.error !== undefined || probe.status !== 0) continue;
+  if (probe.stdout.includes('gccgo')) {
+    sawGccgo = true;
+    continue;
+  }
+  goCommand = candidate;
+  goVersion = probe.stdout.trim();
+  break;
+}
+if (goCommand === null) {
+  if (sawGccgo) {
+    console.error('build-launcher: the only Go toolchains found are gccgo, which cannot build the');
+    console.error('  artifacts. gccgo does not cross-compile the Windows .exe and links a dynamic,');
+    console.error(
+      '  not static, Linux binary. Install the standard Go toolchain from https://go.dev/dl/',
+    );
+    console.error('  (or set GO_BIN to it) and run this script again.');
+    process.exit(1);
+  }
   console.log('build-launcher: skipped — Go is not installed.');
   console.log('  Install Go 1.18 or newer from https://go.dev/dl/ and run this script again.');
   console.log('  The browser app still builds with `npm run build`; only the launcher needs Go.');
   process.exit(requireGo ? 1 : 0);
 }
-const goVersion = go.stdout.trim();
-if (goVersion.includes('gccgo')) {
-  console.error('build-launcher: the Go toolchain is gccgo, which cannot build the artifacts.');
-  console.error('  gccgo does not cross-compile the Windows .exe and links a dynamic, not static,');
-  console.error(
-    '  Linux binary. Install the standard Go toolchain from https://go.dev/dl/, or set',
-  );
-  console.error('  GO_BIN to it, then run this script again.');
-  process.exit(1);
-}
-console.log(`Using ${goVersion}`);
+console.log(`Using ${goVersion} (${goCommand})`);
 
 // The app is rebuilt first so the embedded copy is never stale: the release
 // once shipped a bundle from before the ribbon icon work because dist/ was
