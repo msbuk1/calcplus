@@ -138,26 +138,27 @@ test('dragging above the top edge scrolls up, extends and keeps going while held
   page,
 }) => {
   await openGrid(page);
-  await selectCell(page, 'A40');
+  // Anchor deep in the sheet. The loop runs at up to 1800 px/s, about 120 rows
+  // a second, so a drag anchored near the top reaches row 0 and clamps before
+  // "keeps going" can be observed at all.
+  await selectCell(page, 'A400');
   const before = await scrollOffset(page);
   expect(before.y).toBeGreaterThan(0);
 
-  const { box, x } = await pressCell(page, 39, 0);
+  const { box, x } = await pressCell(page, 399, 0);
   // The column header is above the first cell row, so the pointer is past the
   // top edge of the grid body.
   await page.mouse.move(x, box.y + 2, { steps: 4 });
-  await page.waitForTimeout(150);
 
+  // Wait for the movement, not for a length of time: the rate is not fixed.
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeLessThan(before.y);
   const early = await scrollOffset(page);
-  expect(early.y).toBeLessThan(before.y);
   const earlySelection = await selectionState(page);
-  expect(earlySelection.anchor).toEqual({ row: 39, col: 0 });
-  expect(earlySelection.focus.row).toBeLessThan(39);
+  expect(earlySelection.anchor).toEqual({ row: 399, col: 0 });
+  expect(earlySelection.focus.row).toBeLessThan(399);
 
   // No further mouse movement: the loop must keep scrolling on its own.
-  await page.waitForTimeout(400);
-  const later = await scrollOffset(page);
-  expect(later.y).toBeLessThan(early.y);
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeLessThan(early.y);
   const laterSelection = await selectionState(page);
   expect(laterSelection.focus.row).toBeLessThan(earlySelection.focus.row);
 
@@ -176,10 +177,8 @@ test('dragging past the bottom edge scrolls down and extends the range', async (
 
   const { box, x } = await pressCell(page, 2, 0);
   await page.mouse.move(x, box.y + box.height - 2, { steps: 4 });
-  await page.waitForTimeout(400);
 
-  const after = await scrollOffset(page);
-  expect(after.y).toBeGreaterThan(before.y);
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeGreaterThan(before.y);
   const selection = await selectionState(page);
   expect(selection.anchor).toEqual({ row: 2, col: 0 });
   expect(selection.focus.row).toBeGreaterThan(2);
@@ -193,10 +192,8 @@ test('dragging past the right edge scrolls right and extends the range', async (
 
   const { box, y } = await pressCell(page, 2, 0);
   await page.mouse.move(box.x + box.width - 2, y, { steps: 4 });
-  await page.waitForTimeout(400);
 
-  const after = await scrollOffset(page);
-  expect(after.x).toBeGreaterThan(before.x);
+  await expect.poll(async () => (await scrollOffset(page)).x).toBeGreaterThan(before.x);
   const selection = await selectionState(page);
   expect(selection.anchor).toEqual({ row: 2, col: 0 });
   expect(selection.focus.col).toBeGreaterThan(0);
@@ -211,10 +208,8 @@ test('dragging past the left edge scrolls left and extends the range', async ({ 
 
   const { box, y } = await pressCell(page, 2, 25);
   await page.mouse.move(box.x + 2, y, { steps: 4 });
-  await page.waitForTimeout(400);
 
-  const after = await scrollOffset(page);
-  expect(after.x).toBeLessThan(before.x);
+  await expect.poll(async () => (await scrollOffset(page)).x).toBeLessThan(before.x);
   const selection = await selectionState(page);
   expect(selection.anchor).toEqual({ row: 2, col: 25 });
   expect(selection.focus.col).toBeLessThan(25);
@@ -258,24 +253,24 @@ test('edge scrolling clamps at the last cell and never wraps', async ({ page }) 
 test('a frozen row stays put while the rows below scroll', async ({ page }) => {
   await openGrid(page, 1);
   expect(await page.evaluate(() => window.__calcplus.getFreeze())).toEqual({ rows: 1, cols: 0 });
-  await selectCell(page, 'A40');
+  // Deep in the sheet, for the same reason as the top-edge test: the loop can
+  // outrun a short distance to row 0.
+  await selectCell(page, 'A400');
 
   const frozen = await cellRect(page, 0, 1);
   const before = await scrollOffset(page);
   expect(before.y).toBeGreaterThan(0);
 
-  const { box, x } = await pressCell(page, 39, 0);
+  const { box, x } = await pressCell(page, 399, 0);
   await page.mouse.move(x, box.y + 2, { steps: 4 });
-  await page.waitForTimeout(400);
 
-  const after = await scrollOffset(page);
-  expect(after.y).toBeLessThan(before.y);
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeLessThan(before.y);
   // The frozen row keeps its painted position while the body scrolls under it.
   const frozenAfter = await cellRect(page, 0, 1);
   expect(frozenAfter).toEqual(frozen);
   const selection = await selectionState(page);
-  expect(selection.anchor).toEqual({ row: 39, col: 0 });
-  expect(selection.focus.row).toBeLessThan(39);
+  expect(selection.anchor).toEqual({ row: 399, col: 0 });
+  expect(selection.focus.row).toBeLessThan(399);
   await page.mouse.up();
 });
 
@@ -288,8 +283,7 @@ test('a Format Painter drag past the bottom edge paints the revealed rows', asyn
 
   const { box, x } = await pressCell(page, 2, 0);
   await page.mouse.move(x, box.y + box.height - 2, { steps: 4 });
-  await page.waitForTimeout(400);
-  expect((await scrollOffset(page)).y).toBeGreaterThan(0);
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeGreaterThan(0);
   await page.mouse.up();
 
   await expect(page.getByTestId('status-message')).toContainText('Applied formatting');
@@ -315,11 +309,11 @@ test('a fill dragged past the bottom edge is one undo step', async ({ page }) =>
   await page.mouse.move(handle.x, handle.y);
   await page.mouse.down();
   await page.mouse.move(handle.x, box.y + box.height - 2, { steps: 6 });
-  await page.waitForTimeout(500);
 
-  // The preview alone changes no document state.
+  // Wait for the edge scroll to start. By then the preview has had every
+  // chance to mutate document state, and it must not have taken it.
+  await expect.poll(async () => (await scrollOffset(page)).y).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__calcplus.getState().version)).toBe(versionBefore);
-  expect((await scrollOffset(page)).y).toBeGreaterThan(0);
 
   await page.mouse.up();
   const versionAfter = await page.evaluate(() => window.__calcplus.getState().version);
