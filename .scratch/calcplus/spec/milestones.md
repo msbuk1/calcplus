@@ -276,9 +276,12 @@ check, the 250k-cell scroll and the offline launcher.
 **Testing status (2026-11-20, maintainer).** Verified by hand: the Linux
 launcher artifact (the app opens offline at `127.0.0.1:47823`, current
 build, icons and branding correct; the build-id guard refuses to reuse a
-stale instance), and the print preview, print and PDF export checked side
-by side against Excel 365. The output matches the oracle and honours the
-page setup, so **exit criterion 1 is met**. Recorded as **not tested for
+stale instance); the print preview, print and PDF export checked side by
+side against Excel 365, which matches the oracle and honours the page
+setup, so **exit criterion 1 is met**; and the Windows portable `.exe`,
+which runs. Both launcher artifacts therefore build and run, and the
+unsigned-build warning is documented as [known deviations](../../docs/known-deviations.md)
+L-1, so **exit criterion 4 is met**. Recorded as **not tested for
 this milestone**:
 
 - A 250k-cell workbook scrolling at 60 fps in the browser (the demo item;
@@ -286,8 +289,6 @@ this milestone**:
   watched).
 - The recovery, external-edit conflict and close prompts exercised by hand
   (exit criterion 3; the flows are unit and e2e tested).
-- The Windows portable `.exe` and its SmartScreen note (exit criterion 4's
-  Windows half; the Linux tarball is verified).
 
 Also recorded: the performance budgets ran **advisory** throughout because
 no machine met the strict reference class (exit criterion 2's enforcement

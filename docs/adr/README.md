@@ -10,6 +10,7 @@
 | [0006](0006-patch-in-place-xml.md) | Save by patching the original XML; tree-edit only small parts | Accepted |
 | [0007](0007-sheet-projection.md) | The grid reads a projection of the workbook, never the workbook | Accepted |
 | [0008](0008-terminal-sheet-delete.md) | Deleting a sheet is terminal: no undo entry, no archive | Accepted |
+| [0009](0009-browser-app-window.md) | Open the app in a Chromium app window, not a browser tab | Accepted |
 
 Each ADR records the decision, the options considered and the consequences. The
 narrative record is the [spec map](../../.scratch/calcplus/map.md). The

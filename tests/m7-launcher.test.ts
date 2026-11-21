@@ -150,6 +150,37 @@ describe('launcher source', () => {
     ).version;
     expect(source).toContain(`var version = "${packageVersion}"`);
   });
+
+  it('opens an app window in a Chromium browser rather than a tab', () => {
+    // ADR 0009: --app gives a window with no tabs, address bar or bookmarks.
+    expect(source).toContain('"--app=" + target');
+    expect(source).toContain('func appModeCommand(');
+    // Chrome first, Edge as the fallback that ships with Windows.
+    expect(source.indexOf('Google')).toBeLessThan(source.indexOf('Microsoft'));
+  });
+
+  it('keeps the default-browser path as the fallback', () => {
+    // With no Chromium browser installed, or app mode off, the old behaviour
+    // is unchanged and still reaches the user.
+    expect(source).toContain('url.dll,FileProtocolHandler');
+    expect(source).toContain('"xdg-open"');
+  });
+
+  it('has a --no-app-mode escape that opens an ordinary tab', () => {
+    expect(source).toContain('"no-app-mode"');
+    expect(source).toContain('openBrowser(appURL, !*noAppMode, out)');
+  });
+
+  it("uses the user's own browser profile, never a separate storage area", () => {
+    // A dedicated --user-data-dir would hide recovery copies and recent files
+    // from the browser the user opens by hand: storage that looks like data
+    // loss, the trap distribution.md §2 warns about with --port N.
+    expect(source).not.toContain('--user-data-dir');
+  });
+
+  it('says which browser opened the window', () => {
+    expect(source).toContain('Opened in its own window with');
+  });
 });
 
 describe('launcher build script', () => {

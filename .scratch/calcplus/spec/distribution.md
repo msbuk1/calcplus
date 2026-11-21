@@ -15,7 +15,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 
 - One executable per supported OS: Windows x64 and Linux x64.
 - Starts a static HTTP server bound to the literal `127.0.0.1` on a **stable preferred port** (default `47823`); never binds to a LAN interface. Reuse an existing instance if one is already running; if another program owns the port, fail with an actionable message instead of silently choosing a random port. `--port N` is an escape hatch and uses a separate browser origin and storage.
-- Serves the bundled static build and opens the default browser at `http://127.0.0.1:<port>`.
+- Serves the bundled static build and opens the app at `http://127.0.0.1:<port>`. It prefers an **app window** in an installed Chromium browser (`--app`, so no tabs, address bar or bookmarks) and falls back to opening the default browser; `--no-app-mode` forces an ordinary tab. Whichever browser is used, the user's **own profile** is used, so recovery copies, recent files and file handles stay in the storage area that browser already has (ADR 0009).
 - No runtime dependency; portable executable unless the launcher research decides an installer is better.
 - Version shown in the app and/or launcher. Updating means replacing the launcher with a newer release.
 - No background updater and no outbound network calls in v1.
@@ -32,7 +32,7 @@ A true desktop app (Tauri/Electron) is not part of v1. It is only justified if O
 
 - **Chrome/Edge (desktop):** File System Access API for open and save in place; file handles are remembered where permitted.
 - **Firefox:** open through a file picker and save by download; no in-place save, and nothing leaves the machine.
-- The launcher opens the default browser, so both paths must work.
+- The launcher opens a Chromium app window when it can and the default browser otherwise, so both paths must work.
 - `file://` is unsupported: modules, WebAssembly, service workers and the File System Access API require `http://localhost` or HTTPS. Show a clear message if the app is opened from `file://`.
 - Unsupported browsers get a clear compatibility message rather than a broken grid.
 

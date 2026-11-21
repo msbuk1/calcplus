@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -76,6 +77,7 @@ func run(args []string, out io.Writer) error {
 	port := flags.Int("port", defaultPort, "loopback port to use")
 	distDir := flags.String("dist", "", "serve a build from this directory instead of the embedded build (development)")
 	noOpen := flags.Bool("no-open", false, "do not open the default browser")
+	noAppMode := flags.Bool("no-app-mode", false, "open an ordinary browser tab instead of an app window")
 	showVersion := flags.Bool("version", false, "print the version and exit")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -111,7 +113,7 @@ func run(args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "calcplus is already running at %s\n", appURL)
 		if !*noOpen {
-			openBrowser(appURL, out)
+			openBrowser(appURL, !*noAppMode, out)
 		}
 		return nil
 	}
@@ -145,7 +147,7 @@ func run(args []string, out io.Writer) error {
 	}
 	fmt.Fprintln(out, "Close this window, or press Ctrl+C, to stop calcplus.")
 	if !*noOpen {
-		openBrowser(appURL, out)
+		openBrowser(appURL, !*noAppMode, out)
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -297,9 +299,27 @@ func resolveFile(root fs.FS, requestPath string) (string, bool) {
 	return "/" + name, true
 }
 
-// openBrowser starts the default browser. A failure is not fatal: the URL is
-// already printed so the user can open it by hand.
-func openBrowser(target string, out io.Writer) {
+// openBrowser opens the app for the user.
+//
+// With appMode on, an installed Chromium browser is started with --app=<url>,
+// which opens a window with no tabs, no address bar and no bookmarks, so the
+// app reads as its own window rather than a browser tab (ADR 0009). The user's
+// own profile is used, deliberately: recovery copies, recent files and file
+// handles then stay in the storage area that browser already has, so opening the
+// URL by hand later shows the same state.
+//
+// When appMode is off, or no Chromium browser is installed, the default browser
+// is opened as before. A failure is not fatal: the URL is already printed so the
+// user can open it by hand.
+func openBrowser(target string, appMode bool, out io.Writer) {
+	if appMode {
+		if command, args, ok := appModeCommand(target); ok {
+			if err := exec.Command(command, args...).Start(); err == nil {
+				fmt.Fprintf(out, "Opened in its own window with %s.\n", filepath.Base(command))
+				return
+			}
+		}
+	}
 	var command string
 	var args []string
 	switch runtime.GOOS {
@@ -312,5 +332,56 @@ func openBrowser(target string, out io.Writer) {
 	}
 	if err := exec.Command(command, args...).Start(); err != nil {
 		fmt.Fprintf(out, "Could not open the browser automatically; open %s yourself.\n", target)
+	}
+}
+
+// appModeCommand returns the command that opens target in an app window, and
+// whether one was found. Chrome is preferred and Edge is the fallback: Edge
+// ships with every Windows 10 and 11 install, so a Chromium window is available
+// there without asking the user to install anything. Whichever is chosen is the
+// user's own install and their own profile.
+func appModeCommand(target string) (string, []string, bool) {
+	for _, candidate := range chromiumCandidates() {
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		return candidate, []string{"--app=" + target}, true
+	}
+	return "", nil, false
+}
+
+// chromiumCandidates lists the usual install paths of the Chromium browsers
+// that support --app, in preference order. Only the first that exists is used.
+func chromiumCandidates() []string {
+	switch runtime.GOOS {
+	case "windows":
+		var paths []string
+		for _, dir := range []string{
+			os.Getenv("LocalAppData"),
+			os.Getenv("ProgramFiles"),
+			os.Getenv("ProgramFiles(x86)"),
+		} {
+			if dir == "" {
+				continue
+			}
+			paths = append(paths,
+				filepath.Join(dir, "Google", "Chrome", "Application", "chrome.exe"),
+				filepath.Join(dir, "Microsoft", "Edge", "Application", "msedge.exe"),
+			)
+		}
+		return paths
+	case "darwin":
+		return []string{
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+		}
+	default:
+		return []string{
+			"/usr/bin/google-chrome",
+			"/usr/bin/chromium",
+			"/usr/bin/chromium-browser",
+			"/usr/bin/microsoft-edge",
+		}
 	}
 }
