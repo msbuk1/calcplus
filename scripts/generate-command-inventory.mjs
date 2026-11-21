@@ -140,6 +140,11 @@ async function runtimeCatalog() {
     if (!Array.isArray(iconNames) || iconNames.length === 0) {
       throw new Error('src/chrome/ribbon-icons.ts does not export RIBBON_ICON_NAMES.');
     }
+    const catalogModule = await server.ssrLoadModule('/src/engine/function-catalog.ts');
+    const categoryOptions = catalogModule.FUNCTION_CATEGORY_OPTIONS;
+    if (!Array.isArray(categoryOptions) || categoryOptions.length === 0) {
+      throw new Error('src/engine/function-catalog.ts does not export FUNCTION_CATEGORY_OPTIONS.');
+    }
     return {
       registered: new Set(
         createCommandRegistry()
@@ -155,6 +160,8 @@ async function runtimeCatalog() {
           .map((command) => command.id),
       ),
       iconNames: new Set(iconNames),
+      // "All" is dialog-only; a ribbon category menu names one real category.
+      functionCategories: new Set(categoryOptions.filter((category) => category !== 'All')),
     };
   } finally {
     await server.close();
@@ -168,7 +175,7 @@ async function main() {
     console.error('command-inventory.json must contain an array.');
     process.exit(1);
   }
-  const { registered, checkedCommands, iconNames } = await runtimeCatalog();
+  const { registered, checkedCommands, iconNames, functionCategories } = await runtimeCatalog();
   const matrixByKey = new Map(matrix.map((row) => [`${row.section}::${row.feature}`, row]));
   const byMatrixRow = new Map();
   const seenIds = new Set();
@@ -271,6 +278,19 @@ async function main() {
         }
         if (placement.args === undefined) {
           fail(`${label}: a colour picker placement needs args for its main button.`);
+        }
+      }
+      if (placement.functionCategory !== undefined) {
+        // A Function Library menu names its catalogue category; the runtime
+        // builds the items, so the map never copies a function list.
+        if (!functionCategories.has(placement.functionCategory)) {
+          fail(`${label}: unknown function category "${placement.functionCategory}".`);
+        }
+        if (placement.kind !== 'menu') {
+          fail(`${label}: a function-category control must be a menu.`);
+        }
+        if (placement.menu !== undefined) {
+          fail(`${label}: a function-category control builds its menu from the catalogue.`);
         }
       }
       if (placement.disabled === true && entry.implemented === true) {

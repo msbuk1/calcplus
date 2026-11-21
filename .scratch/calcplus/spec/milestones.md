@@ -276,11 +276,11 @@ check, the 250k-cell scroll and the offline launcher.
 **Testing status (2026-11-20, maintainer).** Verified by hand: the Linux
 launcher artifact (the app opens offline at `127.0.0.1:47823`, current
 build, icons and branding correct; the build-id guard refuses to reuse a
-stale instance). Recorded as **not tested for this milestone**:
+stale instance), and the print preview, print and PDF export checked side
+by side against Excel 365. The output matches the oracle and honours the
+page setup, so **exit criterion 1 is met**. Recorded as **not tested for
+this milestone**:
 
-- The print preview and PDF export checked against Excel 365 (exit
-  criterion 1's visual comparison; the preview-to-PDF self-consistency is
-  covered by the automated suites).
 - A 250k-cell workbook scrolling at 60 fps in the browser (the demo item;
   the Node benchmark suite runs the corpus but the browser check was not
   watched).

@@ -9,6 +9,14 @@
 
 export const RIBBON_ICON_SIZE = 16;
 
+/**
+ * The square badge frame shared by the Function Library tiles. Insert and
+ * Merge drew this frame first; every Function Library glyph reuses it so the
+ * ten badges line up down the group. The interior stays open: only open
+ * marks, no closed detail that fills in at 16px.
+ */
+export const RIBBON_BADGE_FRAME = 'M2.75 2.75h10.5v10.5H2.75z';
+
 export interface RibbonIconCircle {
   readonly cx: number;
   readonly cy: number;
@@ -49,7 +57,9 @@ const ICON_DRAWINGS = {
     paths: ['M2.5 3.5h11', 'M8 13V6.5', 'M5.5 8.5 8 6l2.5 2.5'],
   },
   autosum: {
-    paths: ['M12 3H4.75l3.75 5-3.75 5H12'],
+    // The framed sigma is shared by the Home › Editing split and the
+    // Formulas › Function Library tile, so both tabs read the same badge.
+    paths: [RIBBON_BADGE_FRAME, 'M11.1 4.6H5.4l3.1 3.6-3.1 3.6h5.7'],
   },
   bold: {
     paths: [
@@ -227,6 +237,44 @@ const ICON_DRAWINGS = {
     paths: ['M2.75 2.75h10.5v10.5H2.75z', 'M6.5 2.75v10.5', 'M2.75 6.5h10.5'],
     filled: ['M2.75 2.75h3.75v3.75H2.75z'],
   },
+  // The Function Library category menus. Every glyph is the same square badge
+  // frame with only open interior marks; nothing fills in at 16px.
+  'function-recent': {
+    paths: [RIBBON_BADGE_FRAME, 'M8 5.6V8h2.1'],
+  },
+  'function-financial': {
+    paths: [RIBBON_BADGE_FRAME],
+    circles: [{ cx: 8, cy: 8, radius: 2.2 }],
+  },
+  'function-logical': {
+    paths: [RIBBON_BADGE_FRAME, 'M8 5.9 10.1 8 8 10.1 5.9 8z'],
+  },
+  'function-text': {
+    paths: [RIBBON_BADGE_FRAME, 'M5.4 6.2h5.2', 'M8 6.2v4.2'],
+  },
+  'function-date-time': {
+    // A short rule and one marked day. The rule stops inside the frame on
+    // purpose: spanning the full width reads as a solid slab at 16px.
+    paths: [RIBBON_BADGE_FRAME, 'M5.2 6.2h5.6'],
+    circles: [{ cx: 8, cy: 9.8, radius: 1, filled: true }],
+  },
+  'function-lookup': {
+    // The shaft stops short of the head on purpose. Ending it at the tip
+    // piles three strokes onto one point, which rasterises as a blob at 16px.
+    // Two-stroke corners stay open, as the radical and the diamond show.
+    paths: [RIBBON_BADGE_FRAME, 'M4.9 8h3.3', 'M8.2 5.8 10.4 8 8.2 10.2'],
+  },
+  'function-math': {
+    paths: [RIBBON_BADGE_FRAME, 'M4.8 8.5 6 11.2 7.6 5.6h3.4'],
+  },
+  'function-more': {
+    paths: [RIBBON_BADGE_FRAME],
+    circles: [
+      { cx: 5.2, cy: 8, radius: 0.8, filled: true },
+      { cx: 8, cy: 8, radius: 0.8, filled: true },
+      { cx: 10.8, cy: 8, radius: 0.8, filled: true },
+    ],
+  },
   'go-to': {
     paths: ['M8 2.75v1.5', 'M8 11.75v1.5', 'M2.75 8h1.5', 'M11.75 8h1.5'],
     circles: [
@@ -244,6 +292,14 @@ const ICON_DRAWINGS = {
   },
   insert: {
     paths: ['M2.75 2.75h10.5v10.5H2.75z', 'M8 5.5v5', 'M5.5 8h5'],
+  },
+  'insert-function': {
+    paths: [
+      RIBBON_BADGE_FRAME,
+      // An italic f and a subscript x, two open marks inside the badge.
+      'M8.2 4.6H7.4c-.8 0-1.2.5-1.3 1.3L5.2 10.8M4.9 7.4h2.6',
+      'M9.2 7.5 11.9 10.8M11.9 7.5 9.2 10.8',
+    ],
   },
   'increase-decimal': {
     paths: [

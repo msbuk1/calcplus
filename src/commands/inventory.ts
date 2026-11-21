@@ -69,6 +69,13 @@ export interface RibbonPlacement {
   readonly args?: Readonly<Record<string, unknown>>;
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
+  /**
+   * A category menu the ribbon builds from the Insert Function catalogue at
+   * render time. The map names the category, never a copy of its functions, so
+   * the ribbon and the dialog cannot disagree. Must be a Select category other
+   * than "All"; the generator checks it.
+   */
+  readonly functionCategory?: string;
   /** A bold section heading above the menu's items, as Excel shows it. */
   readonly menuHeading?: string;
   /**

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { RibbonSelectOption, RibbonTabId } from '@commands/inventory';
+import type { PublishedFunction } from '@engine/function-registry';
 import { ColorPickerPopup } from './ColorPicker';
 import { Menu } from './Menu';
 import { RibbonIcon } from './RibbonIcon';
@@ -18,6 +19,8 @@ export interface RibbonProps {
   readonly onCommand: (commandId: string, args?: unknown) => void;
   readonly resolveState: CommandStateResolver;
   readonly controlValues: Readonly<Record<string, string>>;
+  /** Functions inserted this session, most recent first, for Recently Used. */
+  readonly recentFunctions?: readonly PublishedFunction[];
   readonly ribbonRef?: RefObject<HTMLElement | null>;
   readonly onFocus?: () => void;
 }
@@ -37,6 +40,7 @@ export function Ribbon({
   onCommand,
   resolveState,
   controlValues,
+  recentFunctions = [],
   ribbonRef,
   onFocus,
 }: RibbonProps): JSX.Element {
@@ -44,7 +48,7 @@ export function Ribbon({
   const fileButtonRef = useRef<HTMLButtonElement | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const fileItems = menuItemsFor('File', resolveState);
-  const groups = ribbonGroupsFor(activeTab, resolveState);
+  const groups = ribbonGroupsFor(activeTab, resolveState, recentFunctions);
 
   const focusTab = (index: number): void => {
     const next = (index + RIBBON_TABS.length) % RIBBON_TABS.length;
@@ -190,9 +194,13 @@ function RibbonGroup({
   const launcher = group.launcher;
   return (
     <div
-      className={
-        launcher === undefined ? 'ribbon-group' : 'ribbon-group ribbon-group-with-launcher'
-      }
+      className={[
+        'ribbon-group',
+        group.id === 'Function Library' ? 'ribbon-group-tiles' : '',
+        launcher === undefined ? '' : 'ribbon-group-with-launcher',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role="group"
       aria-label={group.label}
       data-group={group.label}
@@ -244,6 +252,34 @@ function RibbonGroup({
       )}
       <div className="ribbon-group-label">{group.label}</div>
     </div>
+  );
+}
+
+interface RibbonLabelProps {
+  readonly control: ResolvedRibbonControl;
+  /** Draw the drop-down caret after the label's final line. */
+  readonly caret?: boolean;
+}
+
+/**
+ * A tile label drawn with its authored line breaks. The caret is part of the
+ * last line, as in Excel, rather than an absolute marker in the tile corner.
+ */
+function RibbonLabel({ control, caret = false }: RibbonLabelProps): JSX.Element {
+  const lines = control.labelLines ?? [control.label];
+  return (
+    <span className="ribbon-label">
+      {lines.map((line, index) => (
+        <span className="ribbon-label-line" key={`${line}:${index}`}>
+          {line}
+          {caret && index === lines.length - 1 ? (
+            <span className="ribbon-menu-caret" aria-hidden="true">
+              ▾
+            </span>
+          ) : null}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -322,7 +358,7 @@ function RibbonControl({
           <RibbonIcon name={control.icon} />
         </span>
       )}
-      {iconOnly ? null : <span>{control.label}</span>}
+      {iconOnly ? null : <RibbonLabel control={control} />}
     </button>
   );
 }
@@ -594,7 +630,7 @@ function RibbonMenuControl({
               <RibbonIcon name={control.icon} />
             </span>
           )}
-          {iconOnly ? null : <span>{control.label}</span>}
+          {iconOnly ? null : <RibbonLabel control={control} />}
         </button>
       )}
       <button
@@ -616,10 +652,7 @@ function RibbonMenuControl({
                 <RibbonIcon name={control.icon} />
               </span>
             )}
-            <span>{control.label}</span>
-            <span className="ribbon-menu-caret" aria-hidden="true">
-              ▾
-            </span>
+            <RibbonLabel control={control} caret />
           </>
         ) : (
           '▾'

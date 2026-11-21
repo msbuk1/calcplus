@@ -3133,6 +3133,13 @@ export function App(): JSX.Element {
       }
       case 'formula.insertFunction': {
         if (document === null || busy) return null;
+        // A Function Library category menu names the chosen function in its
+        // args; it takes the dialog's own insert path instead of opening it.
+        const chosen = functionNameArgument(args);
+        if (chosen !== null) {
+          insertFunctionByName(chosen);
+          return null;
+        }
         clearPainter();
         // The command requests the dialog; the chrome owns the surface.
         const result = dispatchSheetCommand('formula.insertFunction', undefined);
@@ -3263,6 +3270,7 @@ export function App(): JSX.Element {
               onCommand={runCommand}
               resolveState={resolveState}
               controlValues={controlValues}
+              recentFunctions={recentFunctions}
               ribbonRef={ribbonRef}
               onFocus={() => setFocusZone('ribbon')}
             />
@@ -3275,6 +3283,7 @@ export function App(): JSX.Element {
           onCommand={runCommand}
           resolveState={resolveState}
           controlValues={controlValues}
+          recentFunctions={recentFunctions}
           ribbonRef={ribbonRef}
           onFocus={() => setFocusZone('ribbon')}
         />
@@ -3631,6 +3640,14 @@ function commandTextArgument(args: unknown): string | null {
   if (typeof args !== 'object' || args === null || !('text' in args)) return null;
   const text = (args as { readonly text?: unknown }).text;
   return typeof text === 'string' ? text : null;
+}
+
+/** A published function named by a Function Library menu item, if any. */
+function functionNameArgument(args: unknown): PublishedFunction | null {
+  if (typeof args !== 'object' || args === null) return null;
+  const name = (args as { readonly name?: unknown }).name;
+  if (typeof name !== 'string') return null;
+  return functionEntry(name)?.name ?? null;
 }
 
 function findQueryArgument(args: unknown): FindQuery | null {

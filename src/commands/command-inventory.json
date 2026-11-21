@@ -1554,7 +1554,7 @@
         "tab": "Formulas",
         "group": "Function Library",
         "kind": "button",
-        "order": 10,
+        "order": 20,
         "label": "AutoSum",
         "title": "AutoSum (Alt+=)",
         "icon": "autosum"
@@ -1597,7 +1597,108 @@
     "category": "formula",
     "enablement": "A sheet is active",
     "implemented": true,
-    "shortcut": []
+    "shortcut": [],
+    "ribbon": [
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "button",
+        "order": 10,
+        "row": 1,
+        "rowSpan": 3,
+        "label": "Insert Function",
+        "title": "Insert Function",
+        "icon": "insert-function"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 30,
+        "row": 1,
+        "label": "Recently Used",
+        "title": "Recently Used",
+        "functionCategory": "Recently used",
+        "icon": "function-recent"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 40,
+        "row": 1,
+        "label": "Financial",
+        "title": "Financial",
+        "functionCategory": "Financial",
+        "icon": "function-financial"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 50,
+        "row": 1,
+        "label": "Logical",
+        "title": "Logical",
+        "functionCategory": "Logical",
+        "icon": "function-logical"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 60,
+        "row": 1,
+        "label": "Text",
+        "title": "Text",
+        "functionCategory": "Text",
+        "icon": "function-text"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 70,
+        "row": 2,
+        "label": "Date & Time",
+        "title": "Date & Time",
+        "functionCategory": "Date & Time",
+        "icon": "function-date-time"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 80,
+        "row": 2,
+        "label": "Lookup & Reference",
+        "title": "Lookup & Reference",
+        "functionCategory": "Lookup & Reference",
+        "icon": "function-lookup"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "menu",
+        "order": 90,
+        "row": 2,
+        "label": "Math & Trig",
+        "title": "Math & Trig",
+        "functionCategory": "Math & Trig",
+        "icon": "function-math"
+      },
+      {
+        "tab": "Formulas",
+        "group": "Function Library",
+        "kind": "button",
+        "order": 100,
+        "row": 2,
+        "label": "More Functions",
+        "title": "More Functions",
+        "icon": "function-more"
+      }
+    ],
+    "icon": "insert-function"
   },
   {
     "id": "formula.evaluate",

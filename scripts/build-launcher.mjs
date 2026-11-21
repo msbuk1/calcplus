@@ -52,7 +52,9 @@ for (const argument of args) {
   }
 }
 const requireGo = args.includes('--require-go');
-const requested = args.filter((argument) => argument === '--windows' || argument === '--linux');
+const requested = args
+  .filter((argument) => argument === '--windows' || argument === '--linux')
+  .map((argument) => argument.slice(2));
 const targets = requested.length === 0 ? ['windows', 'linux'] : requested;
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 
@@ -107,7 +109,14 @@ console.log(`Using ${goVersion} (${goCommand})`);
 // left over from an earlier build. --no-build keeps the old behaviour.
 if (!args.includes('--no-build')) {
   console.log('Building the app (npm run build) so the embedded copy is current');
-  const build = spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: false });
+  // Windows ships npm as npm.cmd. Node refuses to spawn a batch file without a
+  // shell (CVE-2024-27980) and warns when a shell call takes an argument list
+  // (DEP0190), so on Windows run one fixed command string through the shell.
+  // The string is a constant; nothing from the caller reaches it.
+  const build =
+    process.platform === 'win32'
+      ? spawnSync('npm.cmd run build', { cwd: root, stdio: 'inherit', shell: true })
+      : spawnSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', shell: false });
   if (build.status !== 0) {
     console.error('build-launcher: npm run build failed; nothing was packaged.');
     process.exit(1);

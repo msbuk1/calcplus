@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COMMAND_INVENTORY, inventoryCommand } from '@commands/inventory';
+import { functionsInCategory } from '@engine/function-catalog';
+import type { PublishedFunction } from '@engine/function-registry';
 import {
   RIBBON_TABS,
   menuItemsFor,
@@ -405,6 +407,141 @@ describe('Data tab', () => {
       'Clear',
       'Reapply',
     ]);
+  });
+});
+
+describe('Formulas Function Library category menus', () => {
+  const recentFunctions: readonly PublishedFunction[] = ['AVERAGE', 'SUM'];
+
+  function functionLibrary(): ResolvedRibbonGroup {
+    const found = ribbonGroupsFor('Formulas', alwaysEnabled, recentFunctions).find(
+      (candidate) => candidate.id === 'Function Library',
+    );
+    if (found === undefined) throw new Error('No Function Library group on Formulas');
+    return found;
+  }
+
+  it('renders all ten controls in the oracle order', () => {
+    expect(functionLibrary().controls.map((entry) => entry.label)).toEqual([
+      'Insert Function',
+      'AutoSum',
+      'Recently Used',
+      'Financial',
+      'Logical',
+      'Text',
+      'Date & Time',
+      'Lookup & Reference',
+      'Math & Trig',
+      'More Functions',
+    ]);
+  });
+
+  it('keeps Insert Function tall and spreads the category menus across two rows', () => {
+    const controls = functionLibrary().controls;
+    expect(controls[0]).toMatchObject({
+      commandId: 'formula.insertFunction',
+      row: 1,
+      rowSpan: 3,
+      icon: 'insert-function',
+    });
+    expect(controls[1]).toMatchObject({ commandId: 'formula.autosum', row: 1 });
+    expect(controls.slice(2).map((entry) => entry.row)).toEqual([1, 1, 1, 1, 2, 2, 2, 2]);
+    expect(functionLibrary().rowCount).toBe(3);
+  });
+
+  it('pins the two-line tile breaks so the caret can ride the last line', () => {
+    const controls = functionLibrary().controls;
+    expect(controls.map((entry) => entry.labelLines)).toEqual([
+      ['Insert', 'Function'],
+      ['AutoSum'],
+      ['Recently', 'Used'],
+      ['Financial'],
+      ['Logical'],
+      ['Text'],
+      ['Date &', 'Time'],
+      ['Lookup &', 'Reference'],
+      ['Math &', 'Trig'],
+      ['More', 'Functions'],
+    ]);
+    // The visible lines always rebuild the authored label exactly.
+    for (const entry of controls) {
+      expect(entry.labelLines?.join(' '), entry.label).toBe(entry.label);
+    }
+  });
+
+  it('builds every category menu from the Insert Function catalogue', () => {
+    const controls = functionLibrary().controls.filter(
+      (entry) => entry.functionCategory !== undefined,
+    );
+    expect(controls.map((entry) => entry.functionCategory)).toEqual([
+      'Recently used',
+      'Financial',
+      'Logical',
+      'Text',
+      'Date & Time',
+      'Lookup & Reference',
+      'Math & Trig',
+    ]);
+    // The ribbon and the dialog read one source, so their lists agree.
+    for (const control of controls) {
+      const category = control.functionCategory;
+      if (category === undefined) continue;
+      const expected = functionsInCategory(category, recentFunctions).map((entry) => entry.name);
+      expect(
+        control.menu?.map((item) => item.label),
+        category,
+      ).toEqual(expected);
+      for (const item of control.menu ?? []) {
+        expect(item.commandId).toBe('formula.insertFunction');
+        expect(item.args).toEqual({ name: item.label });
+      }
+    }
+    // Financial has no published function yet: the generated list is empty and
+    // the renderer keeps the control closed rather than opening a blank menu.
+    expect(controls[1]?.menu).toEqual([]);
+    // Recently Used fills from the same session list the dialog reads.
+    expect(controls[0]?.menu?.map((item) => item.label)).toEqual(['AVERAGE', 'SUM']);
+  });
+
+  it('maps More Functions to the Insert Function command', () => {
+    expect(functionLibrary().controls.at(-1)).toMatchObject({
+      commandId: 'formula.insertFunction',
+      label: 'More Functions',
+      kind: 'button',
+      icon: 'function-more',
+    });
+  });
+
+  it('keeps V2 formula and name controls off the Formulas tab', () => {
+    const rendered = new Set<string>();
+    for (const entry of groups('Formulas')) {
+      expect(entry.id).toBe('Function Library');
+      for (const control of entry.controls) rendered.add(control.commandId);
+    }
+    // Every planned row in §4 stays off the chrome, including the V2 auditing,
+    // watch-window and manual-calculation commands.
+    const planned = COMMAND_INVENTORY.filter(
+      (entry) => entry.matrixSection === '4. Formulas and names' && entry.implemented === false,
+    ).map((entry) => entry.id);
+    expect(planned).toContain('formula.evaluate');
+    expect(planned).toContain('formula.recalculate');
+    expect(planned).toContain('name.resolve');
+    for (const id of planned) expect(rendered.has(id), id).toBe(false);
+    // The labels the capture rules out never appear, even if an id slips in.
+    const labels = functionLibrary().controls.map((entry) => entry.label);
+    for (const label of [
+      'Trace Precedents',
+      'Trace Dependents',
+      'Show Formulas',
+      'Error Checking',
+      'Evaluate Formula',
+      'Watch Window',
+      'Calculation Options',
+      'Calculate Now',
+      'Calculate Sheet',
+    ]) {
+      expect(labels).not.toContain(label);
+    }
   });
 });
 

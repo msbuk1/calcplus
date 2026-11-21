@@ -11,6 +11,9 @@ import type {
   RibbonSelectOption,
   RibbonTabId,
 } from '@commands/inventory';
+import { FUNCTION_CATEGORY_OPTIONS, functionsInCategory } from '@engine/function-catalog';
+import type { FunctionCategoryOption } from '@engine/function-catalog';
+import type { PublishedFunction } from '@engine/function-registry';
 import type { MenuItemModel } from './Menu';
 import { isRibbonIconName } from './ribbon-icons';
 import type { RibbonIconName } from './ribbon-icons';
@@ -54,6 +57,13 @@ export interface ResolvedRibbonControl {
   readonly args?: Readonly<Record<string, unknown>>;
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
+  /**
+   * Authored visual line breaks for a tile label. The drop-down caret rides
+   * the last line, so the break is fixed rather than left to the browser.
+   */
+  readonly labelLines?: readonly string[];
+  /** The catalogue category this control's generated menu lists. */
+  readonly functionCategory?: FunctionCategoryOption;
   readonly menuHeading?: string;
   /** A colour picker replaces the preset menu for the font and fill colours. */
   readonly picker?: 'font' | 'fill';
@@ -156,9 +166,41 @@ const GROUP_ORDER: Readonly<Record<RibbonTabId, readonly string[]>> = {
 /** The default grid: two rows of controls, the group label beneath them. */
 const DEFAULT_ROW_COUNT = 2;
 
+/**
+ * The Function Library tiles break their labels where Excel 365 breaks them.
+ * The drop-down caret joins the last line, so pinning the break keeps the
+ * two-line shape at every band width and stops the caret wrapping alone.
+ */
+const FUNCTION_LIBRARY_LABEL_LINES: Readonly<Record<string, readonly string[]>> = {
+  'Insert Function': ['Insert', 'Function'],
+  AutoSum: ['AutoSum'],
+  'Recently Used': ['Recently', 'Used'],
+  Financial: ['Financial'],
+  Logical: ['Logical'],
+  Text: ['Text'],
+  'Date & Time': ['Date &', 'Time'],
+  'Lookup & Reference': ['Lookup &', 'Reference'],
+  'Math & Trig': ['Math &', 'Trig'],
+  'More Functions': ['More', 'Functions'],
+};
+
+/**
+ * The Select-category values a generated ribbon menu may name. "All" belongs
+ * to the dialog's searchable list, not to a Function Library menu.
+ */
+const FUNCTION_MENU_CATEGORIES: ReadonlySet<string> = new Set(
+  FUNCTION_CATEGORY_OPTIONS.filter((option) => option !== 'All'),
+);
+
+function functionMenuCategory(value: string | undefined): FunctionCategoryOption | undefined {
+  if (value === undefined || !FUNCTION_MENU_CATEGORIES.has(value)) return undefined;
+  return value as FunctionCategoryOption;
+}
+
 export function ribbonGroupsFor(
   tab: RibbonTabId,
   resolveState?: CommandStateResolver,
+  recentFunctions: readonly PublishedFunction[] = [],
 ): readonly ResolvedRibbonGroup[] {
   const groups = new Map<string, ResolvedRibbonControl[]>();
   const launchers = new Map<string, RibbonLauncher>();
@@ -193,11 +235,26 @@ export function ribbonGroupsFor(
         placement.activeLabel !== undefined && resolveState?.(entry.id).checked === true
           ? placement.activeLabel
           : undefined;
+      // A Function Library category menu is generated from the same catalogue
+      // the Insert Function dialog reads, so the two lists cannot drift.
+      const functionCategory = functionMenuCategory(placement.functionCategory);
+      const categoryMenu =
+        functionCategory === undefined
+          ? undefined
+          : functionsInCategory(functionCategory, recentFunctions).map((functionEntry) => ({
+              label: functionEntry.name,
+              commandId: 'formula.insertFunction',
+              args: { name: functionEntry.name },
+            }));
+      const menu = categoryMenu ?? placement.menu;
+      const label = activeLabel ?? placement.label ?? entry.label;
+      const labelLines =
+        placement.group === 'Function Library' ? FUNCTION_LIBRARY_LABEL_LINES[label] : undefined;
       controls.push({
         key: `${entry.id}:${placement.controlId ?? placement.label ?? placement.kind}:${placement.order ?? 100}`,
         kind: placement.kind,
         commandId: entry.id,
-        label: activeLabel ?? placement.label ?? entry.label,
+        label,
         title: activeLabel ?? placement.title ?? placement.label ?? entry.label,
         ...(placementIcon === undefined ? {} : { icon: placementIcon }),
         iconOnly: placement.iconOnly === true,
@@ -209,7 +266,9 @@ export function ribbonGroupsFor(
         ...(placement.valueFrom === undefined ? {} : { valueFrom: placement.valueFrom }),
         ...(placement.args === undefined ? {} : { args: placement.args }),
         ...(placement.options === undefined ? {} : { options: placement.options }),
-        ...(placement.menu === undefined ? {} : { menu: placement.menu }),
+        ...(menu === undefined ? {} : { menu }),
+        ...(labelLines === undefined ? {} : { labelLines }),
+        ...(functionCategory === undefined ? {} : { functionCategory }),
         ...(placement.menuHeading === undefined ? {} : { menuHeading: placement.menuHeading }),
         ...(placement.picker === undefined ? {} : { picker: placement.picker }),
       });
