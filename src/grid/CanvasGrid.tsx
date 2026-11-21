@@ -64,7 +64,13 @@ export interface CanvasGridProps {
   readonly projection: SheetProjection;
   readonly selection: GridSelection;
   readonly onSelectionChange: (selection: GridSelection) => void;
-  readonly onCommit: (address: GridCellAddress, text: string) => void;
+  /**
+   * Commits the editor's text. Returns `false` when the command layer refused
+   * the edit (an invalid formula, say); the editor then stays open with the
+   * text so it can be corrected, as Excel does, instead of closing and
+   * discarding what was typed.
+   */
+  readonly onCommit: (address: GridCellAddress, text: string) => boolean;
   readonly onClear: (range: GridRange) => void;
   /** In-app clipboard commands; the application owns the snapshot. */
   readonly onCopy?: () => void;
@@ -714,9 +720,18 @@ export function CanvasGrid({
   const commitEditor = (direction: EditorCommitDirection): void => {
     const session = editorSessionRef.current;
     if (session === null) return;
+    if (
+      editorHasChanges(session) &&
+      onCommit(session.address, editorCommitText(session)) === false
+    ) {
+      // The command layer refused the edit (an invalid formula, say). Keep the
+      // editor open with the text so it can be corrected, as Excel does, rather
+      // than closing and discarding the formula the user typed.
+      restoreEditorFocus(session);
+      return;
+    }
     updateEditorSession(null);
     clearPointing();
-    if (editorHasChanges(session)) onCommit(session.address, editorCommitText(session));
     const target = moveAfterCommit(session.address, direction, projection);
     if (target !== null) onSelectionChange(collapseSelection(target));
     containerRef.current?.focus();

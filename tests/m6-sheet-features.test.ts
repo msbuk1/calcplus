@@ -252,6 +252,10 @@ describe('F13 validation-cf.xlsx — validation and every supported CF rule rend
     assertDirtyPartPreserved(beforeXml, afterXml, {
       changedCells: ['K1'],
       changedRows: [1],
+      // K1 sits outside the fixture's `A1:J10` used range, so the save grows
+      // `<dimension ref>` to cover the written cell (ECMA-376: the dimension
+      // is the used range; a cell outside it makes Excel repair the file).
+      rewrittenChildren: ['dimension'],
     });
     expect(afterXml).toContain(
       beforeXml.slice(
@@ -265,7 +269,10 @@ describe('F13 validation-cf.xlsx — validation and every supported CF rule rend
     expect(afterXml).toContain(
       beforeXml.slice(beforeXml.indexOf('<hyperlinks>'), beforeXml.indexOf('<pageMargins')),
     );
-    assertSemanticDiff(original, saved.bytes, ['sheetParts.Rules.cells.length']);
+    assertSemanticDiff(original, saved.bytes, [
+      'sheetParts.Rules.cells.length',
+      'sheetParts.Rules.dimension',
+    ]);
   });
 
   it('evaluates every supported rule type and produces paint operations for them', () => {

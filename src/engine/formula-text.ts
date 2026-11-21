@@ -1,4 +1,4 @@
-import { isAllowedEngineFunction, SHIM_FUNCTION_IDS } from './function-registry';
+import { functionArity, isAllowedEngineFunction, SHIM_FUNCTION_IDS } from './function-registry';
 
 /**
  * Authored-formula screening and engine-only rewriting (formula semantics §9,
@@ -10,7 +10,15 @@ import { isAllowedEngineFunction, SHIM_FUNCTION_IDS } from './function-registry'
  * the model and never written to a file.
  */
 
-export type FormulaSkipReason = 'unsupported-function' | 'unparseable';
+export type FormulaSkipReason = 'unsupported-function' | 'unparseable' | 'invalid-arity';
+
+/** One call whose argument count falls outside its function's accepted range. */
+export interface ArityError {
+  readonly name: string;
+  readonly argCount: number;
+  readonly min: number;
+  readonly max: number;
+}
 
 export interface PreparedFormula {
   /** Engine form without the leading equals sign, or `null` when it must not be sent. */
@@ -18,6 +26,8 @@ export interface PreparedFormula {
   readonly skip: FormulaSkipReason | null;
   /** Uppercase names outside the published set, in source order. */
   readonly unsupportedFunctions: readonly string[];
+  /** Calls with a wrong argument count, in source order; empty when `skip` is not `invalid-arity`. */
+  readonly arityErrors: readonly ArityError[];
 }
 
 interface FormulaToken {
@@ -32,6 +42,12 @@ interface FormulaCall {
   readonly name: string;
   readonly nameStart: number;
   readonly openParen: number;
+  /** Top-level commas seen so far between the call's parentheses. */
+  commas: number;
+  /** True when anything other than whitespace sits between the call's parentheses. */
+  hasContent: boolean;
+  /** Argument count: 0 for `FN()`, otherwise top-level commas plus one. */
+  argCount: number;
 }
 
 interface FormulaScan {
@@ -80,8 +96,12 @@ export function isEngineFormulaEligible(formula: string): boolean {
 
 /**
  * Screen the authored text against the 52-function registry and build the
- * engine form. Unsupported functions and unparseable constructs return
- * `text: null`; the caller keeps the authored text and cached result.
+ * engine form. Unsupported functions, unparseable constructs and calls with a
+ * wrong argument count return `text: null`. The first two merely cannot be
+ * evaluated, so the caller keeps the authored text and cached result.
+ * `invalid-arity` is different: the formula is invalid (Excel refuses it at
+ * entry), and a wrong argument count must never reach a saved file, so entry
+ * points refuse the edit instead of storing the text.
  */
 export function prepareFormula(formula: string): PreparedFormula {
   const cached = preparedCache.get(formula);
@@ -94,19 +114,47 @@ export function prepareFormula(formula: string): PreparedFormula {
 
 function prepareFormulaUncached(formula: string): PreparedFormula {
   if (formula.length === 0 || formula.startsWith('=')) {
-    return { text: null, skip: 'unparseable', unsupportedFunctions: [] };
+    return { text: null, skip: 'unparseable', unsupportedFunctions: [], arityErrors: [] };
   }
   const scan = scanFormula(formula);
   if (scan.issues.length > 0) {
-    return { text: null, skip: 'unparseable', unsupportedFunctions: [] };
+    return { text: null, skip: 'unparseable', unsupportedFunctions: [], arityErrors: [] };
   }
   const unsupportedFunctions = uniqueFunctionNames(scan.calls).filter(
     (name) => !isAllowedEngineFunction(name),
   );
-  if (unsupportedFunctions.length > 0) {
-    return { text: null, skip: 'unsupported-function', unsupportedFunctions };
+  const arityErrors = arityErrorsFor(scan.calls);
+  // Arity wins over the unsupported-function screen: one invalid call makes
+  // the whole formula invalid at entry, whatever else it contains.
+  if (arityErrors.length > 0) {
+    return { text: null, skip: 'invalid-arity', unsupportedFunctions, arityErrors };
   }
-  return { text: rewriteForEngine(formula, scan), skip: null, unsupportedFunctions: [] };
+  if (unsupportedFunctions.length > 0) {
+    return { text: null, skip: 'unsupported-function', unsupportedFunctions, arityErrors: [] };
+  }
+  return {
+    text: rewriteForEngine(formula, scan),
+    skip: null,
+    unsupportedFunctions: [],
+    arityErrors: [],
+  };
+}
+
+/** Calls whose argument count is outside their function's accepted range. */
+function arityErrorsFor(calls: readonly FormulaCall[]): ArityError[] {
+  const errors: ArityError[] = [];
+  for (const call of calls) {
+    const arity = functionArity(call.name.toUpperCase());
+    if (arity === null) continue;
+    if (call.argCount >= arity.min && call.argCount <= arity.max) continue;
+    errors.push({
+      name: call.name.toUpperCase(),
+      argCount: call.argCount,
+      min: arity.min,
+      max: arity.max,
+    });
+  }
+  return errors;
 }
 
 /**
@@ -206,11 +254,21 @@ function scanFormula(formula: string): FormulaScan {
   const calls: FormulaCall[] = [];
   const issues: string[] = [];
   if (hasThreeDimensionalRange(formula)) issues.push('unsupported-construct');
-  const functionParens = new Set<number>();
-  const parenStack: { readonly isFunction: boolean }[] = [];
+  const functionCalls = new Map<number, FormulaCall>();
+  const parenStack: { readonly isFunction: boolean; readonly call: FormulaCall | null }[] = [];
   let index = 0;
   let depth = 0;
   let braceDepth = 0;
+
+  // Anything other than whitespace between a call's parentheses is its
+  // content; only `FN( )` is a zero-argument call. The stack top is the
+  // innermost parenthesised group, so a nested call's tokens never mark the
+  // outer call.
+  const pushToken = (token: FormulaToken): void => {
+    const context = parenStack[parenStack.length - 1];
+    if (context !== undefined && context.call !== null) context.call.hasContent = true;
+    tokens.push(token);
+  };
 
   while (index < formula.length) {
     const character = formula[index] ?? '';
@@ -225,7 +283,7 @@ function scanFormula(formula: string): FormulaScan {
       index = quoted.end;
       if (!quoted.closed) issues.push('unbalanced');
       const text = formula.slice(start, index);
-      tokens.push({
+      pushToken({
         kind: 'string',
         text,
         start,
@@ -240,7 +298,7 @@ function scanFormula(formula: string): FormulaScan {
       const quoted = skipQuoted(formula, index, "'");
       index = quoted.end;
       if (!quoted.closed) issues.push('unbalanced');
-      tokens.push({
+      pushToken({
         kind: 'other',
         text: formula.slice(start, index),
         start,
@@ -259,7 +317,7 @@ function scanFormula(formula: string): FormulaScan {
         index += 1;
         continue;
       }
-      tokens.push({
+      pushToken({
         kind: 'other',
         text: literal,
         start: index,
@@ -277,14 +335,18 @@ function scanFormula(formula: string): FormulaScan {
     }
 
     if (character === '(') {
-      tokens.push({
+      const openIndex = index;
+      pushToken({
         kind: 'paren',
         text: character,
         start: index,
         end: index + 1,
         emptyString: false,
       });
-      parenStack.push({ isFunction: functionParens.has(index) });
+      parenStack.push({
+        isFunction: functionCalls.has(openIndex),
+        call: functionCalls.get(openIndex) ?? null,
+      });
       depth += 1;
       index += 1;
       continue;
@@ -293,8 +355,12 @@ function scanFormula(formula: string): FormulaScan {
     if (character === ')') {
       depth -= 1;
       if (depth < 0) issues.push('unbalanced');
-      parenStack.pop();
-      tokens.push({
+      const closed = parenStack.pop();
+      // `FN()` is zero arguments; `FN(,)` is two empty ones.
+      if (closed !== undefined && closed.call !== null) {
+        closed.call.argCount = closed.call.hasContent ? closed.call.commas + 1 : 0;
+      }
+      pushToken({
         kind: 'paren',
         text: character,
         start: index,
@@ -306,15 +372,19 @@ function scanFormula(formula: string): FormulaScan {
     }
 
     if (character === ',') {
+      const context = parenStack[parenStack.length - 1];
       if (braceDepth === 0) {
-        const context = parenStack[parenStack.length - 1];
         if (depth === 0 || context === undefined || !context.isFunction) {
           // A comma outside a function's argument list is Excel's union
           // operator, which is v2.
           issues.push('unsupported-construct');
+        } else if (context.call !== null) {
+          // A top-level comma separates two arguments of this call. Commas
+          // inside a nested call or an array constant never count here.
+          context.call.commas += 1;
         }
       }
-      tokens.push({
+      pushToken({
         kind: 'comma',
         text: character,
         start: index,
@@ -328,7 +398,7 @@ function scanFormula(formula: string): FormulaScan {
     if (character === ';' || character === '{' || character === '}') {
       if (character === '{') braceDepth += 1;
       else if (character === '}') braceDepth = Math.max(0, braceDepth - 1);
-      tokens.push({
+      pushToken({
         kind: 'other',
         text: character,
         start: index,
@@ -360,13 +430,21 @@ function scanFormula(formula: string): FormulaScan {
       if (isCall) {
         if (!hasMatchingParen(formula, openParen)) issues.push('unbalanced');
         else {
-          calls.push({ name, nameStart: start, openParen });
-          functionParens.add(openParen);
+          const call: FormulaCall = {
+            name,
+            nameStart: start,
+            openParen,
+            commas: 0,
+            hasContent: false,
+            argCount: 0,
+          };
+          calls.push(call);
+          functionCalls.set(openParen, call);
         }
         continue;
       }
 
-      tokens.push({
+      pushToken({
         kind: 'identifier',
         text: name,
         start,
@@ -386,7 +464,7 @@ function scanFormula(formula: string): FormulaScan {
         if ((current === '+' || current === '-') && previous !== 'e' && previous !== 'E') break;
         index += 1;
       }
-      tokens.push({
+      pushToken({
         kind: 'number',
         text: formula.slice(start, index),
         start,
@@ -404,7 +482,7 @@ function scanFormula(formula: string): FormulaScan {
       else if (character === '>' && next === '=') index += 2;
       else if (character === '<' && next === '>') index += 2;
       else index += 1;
-      tokens.push({
+      pushToken({
         kind: 'operator',
         text: twoCharacter.length === 2 && index - start === 2 ? twoCharacter : character,
         start,
@@ -414,7 +492,7 @@ function scanFormula(formula: string): FormulaScan {
       continue;
     }
 
-    tokens.push({
+    pushToken({
       kind: 'other',
       text: character,
       start: index,

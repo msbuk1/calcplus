@@ -473,6 +473,52 @@ describe('formula results the engine evaluated without a command', () => {
   });
 });
 
+describe('used-range dimension covers every written cell', () => {
+  const DIM_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+  const sheet = (dimension: string): Uint8Array =>
+    buildXlsx(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+        `<worksheet xmlns="${DIM_NS}"><dimension ref="${dimension}"/><sheetData>` +
+        '<row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row>' +
+        '<row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c></row>' +
+        '</sheetData></worksheet>',
+    );
+
+  it('expands the declared range when a patch writes a cell outside it', () => {
+    const opened = openWorkbook(sheet('A1:B2'));
+    const session = new DocumentSession(opened.workbook);
+    const model = opened.workbook.sheets[0]!;
+    editCell(session, model.id, 4, 13, numberValue(9));
+
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    const xml = unzipPart(result.bytes, 'xl/worksheets/sheet1.xml');
+    expect(xml).toContain('<c r="N5"');
+    // A cell outside `<dimension ref>` is a spec violation and makes Excel
+    // uncomfortable; the used range grows to cover the written cell.
+    expect(xml).toContain('<dimension ref="A1:N5"/>');
+  });
+
+  it('leaves the declared range alone when every patched cell is inside it', () => {
+    const opened = openWorkbook(sheet('A1:B2'));
+    const session = new DocumentSession(opened.workbook);
+    const model = opened.workbook.sheets[0]!;
+    editCell(session, model.id, 1, 1, numberValue(9));
+
+    const result = saveWorkbook({
+      workbook: opened.workbook,
+      package: opened.package,
+      dirtyCells: session.dirtyCellMap(),
+    });
+    const xml = unzipPart(result.bytes, 'xl/worksheets/sheet1.xml');
+    expect(xml).toContain('<c r="B2"><v>9</v></c>');
+    expect(xml).toContain('<dimension ref="A1:B2"/>');
+  });
+});
+
 describe('property: edited saves are readable and no-op saves are byte-identical', () => {
   it('round-trips random single-cell edits', () => {
     const original = fixture('m1-chart-unknown.xlsx');

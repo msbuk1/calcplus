@@ -59,13 +59,18 @@ import type { CompatibilityReport, ExportReport } from '@ooxml/report';
 import { compatibilityReportSummary, exportReportSummary } from '@ooxml/report';
 import {
   EXTERNAL_EDIT_UNSUPPORTED_WARNING,
+  MACRO_REMOVAL_MESSAGE,
+  SIGNATURE_INVALIDATION_MESSAGE,
   chooseExternalChange,
   confirmCloseDocument,
   confirmRecoveryRestore,
   confirmReplaceDocument,
-  planMacroSave,
+  macroRemovalRequired,
+  macroSavePlan,
   planSignatureSave,
   shouldWarnBeforeUnload,
+  signatureInvalidationRequired,
+  type ExternalChangeAsker,
 } from '@io/confirm';
 import { createSheetProjection } from '@view/projection';
 import { checkExternalLink, internalLocationText, parseInternalLocation } from '@view/hyperlinks';
@@ -96,6 +101,8 @@ import { isPointingBoundary, pointingReference } from '@grid/editor';
 import { resolveNavigation } from '@grid/navigation';
 import { AboutDialog } from '@chrome/AboutDialog';
 import { AppHeader } from '@chrome/AppHeader';
+import { ChoiceDialog } from '@chrome/ChoiceDialog';
+import type { ChoiceAction } from '@chrome/ChoiceDialog';
 import { CompactBar } from '@chrome/CompactBar';
 import { ContextMenu } from '@chrome/ContextMenu';
 import type { DialogCloseReason } from '@chrome/Dialog';
@@ -197,6 +204,19 @@ type AppDialog =
   | 'page-setup'
   | 'recent';
 
+/** What a save prompt shows: a message plus outcome buttons with statements. */
+interface SavePromptBody {
+  readonly title: string;
+  readonly message: string;
+  readonly actions: readonly ChoiceAction[];
+  readonly cancelAction: ChoiceAction;
+}
+
+/** A save prompt awaiting its button; `resolve` resumes the save flow. */
+interface SavePromptRequest extends SavePromptBody {
+  readonly resolve: (id: string) => void;
+}
+
 const FORCE_FALLBACK =
   typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fsa') === '0';
 
@@ -236,6 +256,10 @@ export function App(): JSX.Element {
     readonly region: ContextMenuRegion;
   } | null>(null);
   const [dialog, setDialog] = useState<AppDialog | null>(null);
+  // A save prompt waiting on its button (persistence §4, file-compat §6.3/§6.5).
+  // It is dialog-driven so the button that ends at a file picker is a fresh
+  // user gesture in its own click handler.
+  const [savePrompt, setSavePrompt] = useState<SavePromptRequest | null>(null);
   // The Page Setup dialog can open over the print preview (ticket 47). The
   // preview stays mounted and re-plans from the model while the dialog writes;
   // `suspended` hands it the keyboard back when the dialog closes.
@@ -815,6 +839,41 @@ export function App(): JSX.Element {
     }
   };
 
+  /**
+   * Save prompts are in-page dialogs, not native confirms (persistence §4,
+   * file-compat §6.3/§6.5). A confirm cannot carry the user gesture that
+   * `showSaveFilePicker` needs: the save flow resumes from the resolving
+   * button's click in microtasks of the same task, so the gesture is still
+   * live when the picker opens. Declining or dismissing resolves the
+   * write-nothing id, so no branch writes without an explicit button.
+   */
+  const askSavePrompt = (body: SavePromptBody): Promise<string> =>
+    new Promise((resolve) => {
+      setSavePrompt({ ...body, resolve });
+    });
+
+  const askExternalChange: ExternalChangeAsker = async (prompt) => {
+    const chosen = await askSavePrompt({
+      title: 'File changed on disk',
+      message: prompt.summary,
+      actions: prompt.outcomes.map((outcome) => ({
+        id: outcome.choice,
+        label: outcome.label,
+        statement: outcome.statement,
+      })),
+      cancelAction: { id: 'cancel', label: prompt.cancelLabel },
+    });
+    return chosen === 'reload' || chosen === 'overwrite' || chosen === 'saveAs' ? chosen : 'cancel';
+  };
+
+  const askConfirmSave = (title: string, message: string, confirmLabel: string): Promise<boolean> =>
+    askSavePrompt({
+      title,
+      message,
+      actions: [{ id: 'proceed', label: confirmLabel }],
+      cancelAction: { id: 'cancel', label: 'Cancel' },
+    }).then((id) => id === 'proceed');
+
   const saveFile = async (saveAs: boolean): Promise<void> => {
     if (document === null || busy) return;
     setBusy(true);
@@ -824,19 +883,27 @@ export function App(): JSX.Element {
       // captured at open or last save. A newer external file is never
       // overwritten without an explicit Overwrite choice.
       if (!effectiveSaveAs && document.handle !== null) {
-        const currentStamp = await readFileStamp(document.handle);
+        // Persistence §1/§3: a handle revived from a recovery copy carries no
+        // live permission once the tab is gone, so re-ask before touching the
+        // file. Without this every restored document fell through to Save As,
+        // because getFile() throws and the stamp reads as null.
+        const permitted = await ensureHandlePermission(document.handle);
+        const currentStamp = permitted ? await readFileStamp(document.handle) : null;
         if (currentStamp === null) {
+          const reason = permitted
+            ? `calcplus could not read "${document.fileName}" to check for external changes.`
+            : `calcplus does not have permission to write "${document.fileName}".`;
+          // An in-page dialog, not a confirm: its "Save as a new file" button
+          // must open the picker from its own click handler.
           if (
-            !window.confirm(
-              `calcplus could not read "${document.fileName}" to check for external changes. Save as a new file instead?`,
-            )
+            !(await askConfirmSave('Save as a new file instead?', reason, 'Save as a new file'))
           ) {
             setStatus('Save cancelled. The file was not touched.');
             return;
           }
           effectiveSaveAs = true;
         } else if (stampChanged(document.fileStamp, currentStamp)) {
-          const choice = chooseExternalChange(document.fileName);
+          const choice = await chooseExternalChange(document.fileName, askExternalChange);
           if (choice === 'cancel') {
             setStatus('Save cancelled. The newer file on disk was not touched.');
             return;
@@ -866,28 +933,52 @@ export function App(): JSX.Element {
         }
       }
       // File-compat §6.3: the default Save keeps .xlsm; Save As from a macro
-      // workbook converts to .xlsx and only after explicit confirmation.
-      const macroPlan = planMacroSave({
+      // workbook converts to .xlsx and only after explicit confirmation. On a
+      // Save As the confirmation stands between the user and the file picker,
+      // so it is an in-page dialog whose button carries the gesture to the
+      // picker (see `askSavePrompt`).
+      if (
+        macroRemovalRequired({
+          saveAs: effectiveSaveAs,
+          hasMacros: document.compatibility.hasMacros,
+        }) &&
+        !(await askConfirmSave('Remove macros?', MACRO_REMOVAL_MESSAGE, 'Save as .xlsx'))
+      ) {
+        setStatus('Save As cancelled. The workbook was not written.');
+        return;
+      }
+      const macroPlan = macroSavePlan({
         fileName: document.fileName,
         hasMacros: document.compatibility.hasMacros,
         saveAs: effectiveSaveAs,
       });
-      if (macroPlan === null) {
-        setStatus('Save As cancelled. The workbook was not written.');
-        return;
-      }
       // File-compat §6.5: a signed package is preserved, but saving invalidates
       // the signature, so the write is preceded by a confirmation. A save with
       // nothing to write returns the original bytes and never asks, and an
       // unsigned workbook has nothing to warn about. Declining writes nothing.
+      // Only a Save As write reaches the picker, so only that branch needs the
+      // in-page dialog; a handle write needs no gesture and keeps the confirm.
+      const changed = document.session.hasUnsavedChanges || document.dirtyFromRecovery;
       if (
-        !planSignatureSave({
+        signatureInvalidationRequired({
           hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
-          changed: document.session.hasUnsavedChanges || document.dirtyFromRecovery,
+          changed,
         })
       ) {
-        setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
-        return;
+        const proceed = effectiveSaveAs
+          ? await askConfirmSave(
+              'Invalidate the digital signature?',
+              SIGNATURE_INVALIDATION_MESSAGE,
+              'Save anyway',
+            )
+          : planSignatureSave({
+              hasDigitalSignatures: document.compatibility.hasDigitalSignatures,
+              changed,
+            });
+        if (!proceed) {
+          setStatus('Save cancelled. The workbook was not written; its signature is untouched.');
+          return;
+        }
       }
       // Snapshot the dirty state before the write await. Edits made while the
       // browser is writing are not in the saved bytes and must stay dirty.
@@ -903,10 +994,34 @@ export function App(): JSX.Element {
         dirtyMerges: new Set(savedMerges.keys()),
         options: { format: macroPlan.format },
       });
-      const outcome = await saveWorkbookFile(result.bytes, macroPlan.fileName, document.handle, {
+      // The picker inside this call runs in the task of the prompt button that
+      // chose the write: nothing between a prompt's resolution and here awaits
+      // pending work, so `showSaveFilePicker` sees the button's live user
+      // gesture. Keep it that way: no awaits on pending promises stand between
+      // a save prompt and this call.
+      let outcome = await saveWorkbookFile(result.bytes, macroPlan.fileName, document.handle, {
         forceFallback: FORCE_FALLBACK,
         saveAs: effectiveSaveAs,
       });
+      if (outcome.method === 'stale') {
+        // The handle stayed stale after a refresh, so writing in place is
+        // impossible. Ask with a dialog and write to a new file from that
+        // button's own gesture, which is what carries it into the picker.
+        if (
+          !(await askConfirmSave(
+            'Save as a new file instead?',
+            `calcplus could not write "${document.fileName}" because the file changed on disk and could not be re-read.`,
+            'Save as a new file',
+          ))
+        ) {
+          setStatus('Save cancelled. The file was not touched.');
+          return;
+        }
+        outcome = await saveWorkbookFile(result.bytes, macroPlan.fileName, document.handle, {
+          forceFallback: FORCE_FALLBACK,
+          saveAs: true,
+        });
+      }
       if (outcome.method === 'picker' && outcome.handle === null) {
         setStatus('Save As cancelled.');
         return;
@@ -1021,8 +1136,12 @@ export function App(): JSX.Element {
     }
   };
 
-  const runCellSet = (address: GridCellAddress, rawText: string): void => {
-    if (document === null) return;
+  /**
+   * Commits a cell edit. Returns `false` when the command layer refused it, so
+   * the caller can keep the editor open with the text for correction.
+   */
+  const runCellSet = (address: GridCellAddress, rawText: string): boolean => {
+    if (document === null) return false;
     // A leading equals sign means the user authored a formula. The model keeps
     // the exact text; the worker engine recalculates it asynchronously.
     const isFormula = rawText.startsWith('=');
@@ -1038,13 +1157,17 @@ export function App(): JSX.Element {
     setVersion((current) => current + 1);
     if (result.ui?.message !== undefined) {
       setStatus(result.ui.message);
-      return;
+      // A refusal changes nothing and carries a message; keep the editor open
+      // so the formula can be fixed. A change with a message is accepted (the
+      // rich-text flatten warning) and must close as usual.
+      return result.changes.length > 0;
     }
     if (result.changes.length === 0) {
       setStatus(`${formatCellRef(address.row, address.col)} was unchanged.`);
-      return;
+      return true;
     }
     setStatus(`Edited ${formatCellRef(address.row, address.col)}.`);
+    return true;
   };
 
   const focusGrid = (): void => {
@@ -2558,9 +2681,13 @@ export function App(): JSX.Element {
     // where bar editing started.
     const address = barEditAddressRef.current ?? active;
     barPointingRef.current = null;
+    if (!runCellSet(address, text)) {
+      // The command layer refused the formula (an invalid call, say). Keep the
+      // draft and the caret so it can be corrected instead of clearing the bar.
+      return;
+    }
     setBarDraft(null);
     setBarCaretRequest(null);
-    runCellSet(address, text);
     // The bar's commit moves the selection, so copy mode ends first (ticket 31 B).
     setCopyMarquee(null);
     if (projection !== null) {
@@ -3615,6 +3742,23 @@ export function App(): JSX.Element {
               .catch(() => undefined);
           }}
           onClose={closeDialog}
+        />
+      ) : null}
+
+      {savePrompt !== null ? (
+        <ChoiceDialog
+          title={savePrompt.title}
+          message={savePrompt.message}
+          actions={savePrompt.actions}
+          cancelAction={savePrompt.cancelAction}
+          onChoose={(id) => {
+            const { resolve } = savePrompt;
+            // Clear first: a prompt the continuation raises replaces this one.
+            setSavePrompt(null);
+            // The save flow resumes in microtasks of this click, so a Save As
+            // button carries its user gesture into `showSaveFilePicker`.
+            resolve(id);
+          }}
         />
       ) : null}
     </div>

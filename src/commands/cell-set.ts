@@ -1,3 +1,4 @@
+import { prepareFormula, type ArityError } from '@engine/formula-text';
 import { arrayFormulaForCell } from '@model/formula-ranges';
 import { invalidXmlCharacterMessage } from '@model/text';
 import type { Cell } from '@model/types';
@@ -75,6 +76,24 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
         };
       }
     }
+    // Formula semantics §2 and §9: a call outside its function's argument
+    // range is invalid, not merely unevaluable — Excel refuses such a formula
+    // at entry and keeps the cell's previous value. Complying here is what
+    // keeps Excel from stripping the formula out of the saved file.
+    const authoredFormula = args.formula ?? null;
+    if (authoredFormula !== null) {
+      const prepared = prepareFormula(authoredFormula);
+      const problem = prepared.arityErrors[0];
+      if (prepared.skip === 'invalid-arity' && problem !== undefined) {
+        return {
+          changes: [],
+          ui: {
+            type: 'toast',
+            message: `${arityMessage(problem)} The cell was not changed.`,
+          },
+        };
+      }
+    }
     const after = nextCellState(before, args.value, args.formula ?? null);
     if (cellStateEquals(before, after)) {
       return { changes: [] };
@@ -110,6 +129,22 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
     };
   },
 };
+
+/**
+ * Plain-language description of a wrong argument count, in the shape of the
+ * other entry refusals. Excel only says "There's a problem with this formula";
+ * naming the function and the counts says which problem.
+ */
+function arityMessage(problem: ArityError): string {
+  const given =
+    problem.argCount === 1 ? '1 argument was given' : `${problem.argCount} arguments were given`;
+  if (problem.max === 0) return `${problem.name} takes no arguments, but ${given}.`;
+  if (problem.min === problem.max) {
+    const noun = problem.min === 1 ? 'argument' : 'arguments';
+    return `${problem.name} takes exactly ${problem.min} ${noun}, but ${given}.`;
+  }
+  return `${problem.name} takes ${problem.min} to ${problem.max} arguments, but ${given}.`;
+}
 
 function nextCellState(before: Cell | null, value: CellValue, formula: string | null): Cell | null {
   if (formula !== null) {

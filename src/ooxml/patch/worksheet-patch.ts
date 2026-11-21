@@ -97,8 +97,9 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
           input.syncMerges === true
             ? patchMergeCellsXml(patched, parsed.rootPrefix, input.sheet)
             : patched;
-        if (isWellFormedXml(withMerges) && preservesCellOrder(withMerges, input)) {
-          return { bytes: new TextEncoder().encode(withMerges), mode: 'position' };
+        const finalXml = expandDimensionRef(withMerges);
+        if (isWellFormedXml(finalXml) && preservesCellOrder(finalXml, input)) {
+          return { bytes: new TextEncoder().encode(finalXml), mode: 'position' };
         }
       }
     } catch (error) {
@@ -127,7 +128,115 @@ export function patchWorksheetXml(input: WorksheetSaveInput): WorksheetSaveResul
     sharedStringsTable: input.sharedStringsTable,
     sharedStrings: input.sharedStrings,
   });
-  return { bytes: treeBytes, mode: 'tree' };
+  const treeXml = new TextDecoder().decode(treeBytes);
+  return { bytes: new TextEncoder().encode(expandDimensionRef(treeXml)), mode: 'tree' };
+}
+
+/**
+ * Expand `<dimension ref>` until it covers every cell the part holds
+ * (ECMA-376: the dimension is the worksheet's used range). The patch can
+ * write cells outside the declared range — Excel repaired a calcplus file
+ * that carried cells at N5/N6 under an `A1:I20` dimension — and a cell
+ * outside the declared range is a spec violation. The declared range only
+ * ever grows: it may cover formatted empty cells that hold no `<c>` element.
+ */
+function expandDimensionRef(xml: string): string {
+  const element = /<(?:[\w.-]+:)?dimension\b[^>]*>/.exec(xml);
+  if (element === null) return xml;
+  const refMatch = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(element[0]);
+  if (refMatch === null) return xml;
+  const declared = parseDimensionRange(refMatch[3] ?? '');
+  const extent = cellExtent(xml);
+  if (declared === null || extent === null) return xml;
+  const merged = {
+    startRow: Math.min(declared.startRow, extent.startRow),
+    startCol: Math.min(declared.startCol, extent.startCol),
+    endRow: Math.max(declared.endRow, extent.endRow),
+    endCol: Math.max(declared.endCol, extent.endCol),
+  };
+  if (
+    merged.startRow === declared.startRow &&
+    merged.startCol === declared.startCol &&
+    merged.endRow === declared.endRow &&
+    merged.endCol === declared.endCol
+  ) {
+    return xml;
+  }
+  const text =
+    merged.startRow === merged.endRow && merged.startCol === merged.endCol
+      ? formatCellRef(merged.startRow, merged.startCol)
+      : `${formatCellRef(merged.startRow, merged.startCol)}:${formatCellRef(
+          merged.endRow,
+          merged.endCol,
+        )}`;
+  const absolute = element.index + refMatch.index;
+  return (
+    xml.slice(0, absolute) +
+    `${refMatch[1]}${refMatch[2]}${text}${refMatch[2]}` +
+    xml.slice(absolute + refMatch[0].length)
+  );
+}
+
+/** The smallest rectangle holding every `<c r>` cell in the part, or `null`. */
+function cellExtent(xml: string): {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+} | null {
+  const pattern = /<(?:[\w.-]+:)?c\s[^>]*?\br="([A-Z]+)(\d+)"/gi;
+  let minRow = Number.POSITIVE_INFINITY;
+  let minCol = Number.POSITIVE_INFINITY;
+  let maxRow = -1;
+  let maxCol = -1;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(xml)) !== null) {
+    const col = columnIndex(match[1] ?? '');
+    const row = Number(match[2]) - 1;
+    if (col < 0 || row < 0) continue;
+    if (row < minRow) minRow = row;
+    if (row > maxRow) maxRow = row;
+    if (col < minCol) minCol = col;
+    if (col > maxCol) maxCol = col;
+  }
+  if (maxRow < 0) return null;
+  return { startRow: minRow, startCol: minCol, endRow: maxRow, endCol: maxCol };
+}
+
+function parseDimensionRange(text: string): {
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+} | null {
+  const parts = text.trim().split(':');
+  if (parts.length > 2) return null;
+  const start = parseDimensionAddress(parts[0] ?? '');
+  const end = parseDimensionAddress(parts[1] ?? parts[0] ?? '');
+  if (start === null || end === null) return null;
+  return {
+    startRow: Math.min(start.row, end.row),
+    startCol: Math.min(start.col, end.col),
+    endRow: Math.max(start.row, end.row),
+    endCol: Math.max(start.col, end.col),
+  };
+}
+
+function parseDimensionAddress(text: string): { row: number; col: number } | null {
+  const match = /^([A-Z]+)(\d+)$/i.exec(text.replaceAll('$', ''));
+  if (match === null) return null;
+  const row = Number(match[2]) - 1;
+  const col = columnIndex(match[1] ?? '');
+  if (row < 0 || col < 0) return null;
+  return { row, col };
+}
+
+function columnIndex(letters: string): number {
+  let value = 0;
+  for (const character of letters.toUpperCase()) {
+    value = value * 26 + (character.charCodeAt(0) - 64);
+  }
+  return value - 1;
 }
 
 function patchByPosition(parsed: ParsedWorksheet, input: WorksheetSaveInput): string {

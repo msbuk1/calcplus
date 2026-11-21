@@ -27,7 +27,7 @@ export interface PickedFile {
 }
 
 export interface SaveOutcome {
-  readonly method: 'handle' | 'picker' | 'download';
+  readonly method: 'handle' | 'picker' | 'download' | 'stale';
   readonly handle: FileHandleLike | null;
   readonly fileName: string;
 }
@@ -179,15 +179,14 @@ export async function saveWorkbookFile(
 ): Promise<SaveOutcome> {
   const api = window as unknown as FileSystemAccessWindow;
   if (!options.forceFallback && !options.saveAs && handle !== null) {
-    const writable = await handle.createWritable();
-    try {
-      await writable.write(bufferSource(bytes));
-      await writable.close();
-      return { method: 'handle', handle, fileName: handle.name };
-    } catch (error) {
-      await writable.abort?.();
-      throw error;
-    }
+    const written = await writeThroughHandleRefreshing(handle, bytes);
+    if (written !== null) return written;
+    // The handle could not be brought up to date with the file on disk, so an
+    // in-place write is impossible. Do not fall through to the picker from
+    // here: by this point the user gesture has been spent and
+    // `showSaveFilePicker` would refuse. Report it instead, so the caller can
+    // ask with a dialog whose button carries its own gesture.
+    return { method: 'stale', handle, fileName: handle.name };
   }
 
   if (!options.forceFallback && typeof api.showSaveFilePicker === 'function') {
@@ -215,6 +214,60 @@ export async function saveWorkbookFile(
 
   downloadBytes(bytes, fileName);
   return { method: 'download', handle: null, fileName };
+}
+
+/**
+ * Chrome refuses to write through a handle whose cached view of the file is
+ * out of date, raising `InvalidStateError`: "An operation that depends on
+ * state cached in an interface object was made but the state had changed since
+ * it was read from disk." Another program writing the file — Excel saving it,
+ * say — leaves a handle we are already holding in exactly that state.
+ */
+function isStaleHandleError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'InvalidStateError';
+}
+
+async function writeThroughHandle(handle: FileHandleLike, bytes: Uint8Array): Promise<SaveOutcome> {
+  const writable = await handle.createWritable();
+  try {
+    await writable.write(bufferSource(bytes));
+    await writable.close();
+    return { method: 'handle', handle, fileName: handle.name };
+  } catch (error) {
+    await writable.abort?.();
+    throw error;
+  }
+}
+
+/**
+ * Write through the handle, refreshing it if the file changed underneath it.
+ *
+ * `getFile()` re-reads the file and clears the stale state, so a handle that
+ * Chrome refused to write through will usually take the write on a second
+ * attempt. On the Overwrite path the user has already said to discard the
+ * external edit, so overwriting is what they asked for. `null` means the
+ * handle stayed stale and the caller should offer Save As instead.
+ */
+async function writeThroughHandleRefreshing(
+  handle: FileHandleLike,
+  bytes: Uint8Array,
+): Promise<SaveOutcome | null> {
+  try {
+    return await writeThroughHandle(handle, bytes);
+  } catch (error) {
+    if (!isStaleHandleError(error)) throw error;
+  }
+  try {
+    await handle.getFile?.();
+  } catch {
+    return null;
+  }
+  try {
+    return await writeThroughHandle(handle, bytes);
+  } catch (error) {
+    if (!isStaleHandleError(error)) throw error;
+    return null;
+  }
 }
 
 /**

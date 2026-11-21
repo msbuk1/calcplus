@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { unzipSync, zipSync } from 'fflate';
 import { DocumentSession } from '@commands/session';
 import { HyperFormulaEngine } from '@engine/hyperformula-engine';
-import { prepareFormula } from '@engine/formula-text';
+import { prepareFormula, type FormulaSkipReason } from '@engine/formula-text';
 import type { EngineBatchResult, EngineCellInput, EngineWorkbookInput } from '@engine/port';
 import { WorkbookSaveError } from '@ooxml/errors';
 import { openWorkbook, type OpenedWorkbook } from '@ooxml/open';
@@ -84,10 +84,7 @@ function engineCellInputs(workbook: OpenedWorkbook['workbook']): EngineCellInput
   return cells;
 }
 
-function engineInputValue(
-  cell: Cell,
-  skip: 'unsupported-function' | 'unparseable' | null,
-): CellValue {
+function engineInputValue(cell: Cell, skip: FormulaSkipReason | null): CellValue {
   if (cell.formula === null) return cell.value;
   if (cell.savedResult !== null) return cell.savedResult;
   if (cell.formulaSource !== undefined || cell.richText !== null) return cell.value;
@@ -659,11 +656,18 @@ describe('F8 array-shared.xlsx — legacy arrays and shared groups are read-only
     }
     expect(afterXml).toContain('<c r="B2"><f t="shared" ref="B2:B4" si="0">A2*10</f><v>30</v></c>');
     expect(afterXml).toContain('<c r="D6"><f t="array" ref="D6:D7">A6:A7*2</f><v>4</v></c>');
-    assertDirtyPartPreserved(beforeXml, afterXml, { changedRows: [9] });
+    assertDirtyPartPreserved(beforeXml, afterXml, {
+      changedRows: [9],
+      // A10 sits outside the fixture's `A1:D7` used range, so the save grows
+      // `<dimension ref>` to cover the written cell (ECMA-376: the dimension
+      // is the used range; a cell outside it makes Excel repair the file).
+      rewrittenChildren: ['dimension'],
+    });
     assertSemanticDiff(original, saved.bytes, [
       'calc.fullCalcOnLoad',
       'sheetParts.Sheet1.cells.length',
       'sheetParts.Sheet1.rows.length',
+      'sheetParts.Sheet1.dimension',
     ]);
 
     const reopened = openWorkbook(saved.bytes);

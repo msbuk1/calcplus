@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  EXTERNAL_CHANGE_SAVE_AS_QUESTION,
   EXTERNAL_EDIT_UNSUPPORTED_WARNING,
   TAB_CLOSE_WARNING,
   chooseExternalChange,
   confirmRecoveryRestore,
-  externalChangeOverwriteQuestion,
-  externalChangeReloadQuestion,
+  externalChangePrompt,
   recoveryRestoreQuestion,
   shouldWarnBeforeUnload,
 } from '@io/confirm';
@@ -15,9 +13,10 @@ import { stampChanged, stampOf } from '@io/file-system';
 /**
  * M7 lane 5 — the conflict and close prompts (persistence §2, §4).
  *
- * The storage layer exposes the decision functions; the app injects the
- * browser confirm exactly as the banked signature and macro prompts do. No
- * branch leaves the newer external file overwritten without an explicit yes.
+ * The storage layer exposes the decision functions; the app injects an
+ * in-page dialog asker that resolves with the chosen button. A native confirm
+ * cannot carry the user gesture a file picker needs, so the prompt is one
+ * dialog, and declining its every branch writes nothing.
  */
 
 function answers(...values: boolean[]): {
@@ -51,31 +50,49 @@ describe('external edit detection', () => {
 });
 
 describe('external change prompt', () => {
-  it('offers Reload first, then Overwrite, then Save As', () => {
-    const reload = answers(true);
-    expect(chooseExternalChange('book.xlsx', reload.confirm)).toBe('reload');
-    expect(reload.asked).toEqual([externalChangeReloadQuestion('book.xlsx')]);
-    expect(reload.asked[0]).toContain('changed on disk');
-    expect(reload.asked[0]).toContain('discard your unsaved changes');
-
-    const overwrite = answers(false, true);
-    expect(chooseExternalChange('book.xlsx', overwrite.confirm)).toBe('overwrite');
-    expect(overwrite.asked).toEqual([
-      externalChangeReloadQuestion('book.xlsx'),
-      externalChangeOverwriteQuestion('book.xlsx'),
+  it('offers Reload, Overwrite, Save As and Cancel in the contract order', () => {
+    const prompt = externalChangePrompt('book.xlsx');
+    expect(prompt.displayName).toBe('book.xlsx');
+    expect(prompt.summary).toContain('book.xlsx');
+    expect(prompt.summary).toContain('changed on disk');
+    const order = [...prompt.outcomes.map((outcome) => outcome.choice), 'cancel'];
+    expect(order).toEqual(['reload', 'overwrite', 'saveAs', 'cancel']);
+    expect(prompt.outcomes.map((outcome) => outcome.label)).toEqual([
+      'Reload',
+      'Overwrite',
+      'Save As',
     ]);
-    expect(overwrite.asked[1]).toContain('overwrite the newer');
-
-    const saveAs = answers(false, false, true);
-    expect(chooseExternalChange('book.xlsx', saveAs.confirm)).toBe('saveAs');
-    expect(saveAs.asked[2]).toBe(EXTERNAL_CHANGE_SAVE_AS_QUESTION);
-    expect(saveAs.asked[2]).toContain('new file');
+    expect(prompt.cancelLabel).toBe('Cancel');
   });
 
-  it('writes nothing when every branch is declined', () => {
-    const cancelled = answers(false, false, false);
-    expect(chooseExternalChange('book.xlsx', cancelled.confirm)).toBe('cancel');
-    expect(cancelled.asked).toHaveLength(3);
+  it('states both destructive outcomes plainly', () => {
+    const prompt = externalChangePrompt('book.xlsx');
+    const [reload, overwrite, saveAs] = prompt.outcomes;
+    // One of the two destructive choices loses work either way, so the prompt
+    // names each loss and never overwrites the newer file without an explicit
+    // Overwrite choice.
+    expect(reload!.statement).toContain('discard your unsaved changes');
+    expect(reload!.statement).toContain('unsaved changes are lost');
+    expect(overwrite!.statement).toContain('overwrite the newer');
+    expect(overwrite!.statement).toContain('external edit is lost');
+    expect(saveAs!.statement).toContain('new file');
+  });
+
+  it('resumes the save flow with the chosen outcome', async () => {
+    for (const choice of ['reload', 'overwrite', 'saveAs', 'cancel'] as const) {
+      const asked: unknown[] = [];
+      const picked = await chooseExternalChange('book.xlsx', async (prompt) => {
+        asked.push(prompt);
+        return choice;
+      });
+      expect(picked).toBe(choice);
+      expect(asked).toHaveLength(1);
+    }
+  });
+
+  it('writes nothing when no dialog is wired', async () => {
+    // Declining every branch cancels and writes nothing (persistence §4).
+    await expect(chooseExternalChange('book.xlsx')).resolves.toBe('cancel');
   });
 
   it('says external edits cannot be detected on a browser without handles', () => {

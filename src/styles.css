@@ -1927,6 +1927,37 @@ a:focus-visible,
   font-size: 12px;
 }
 
+/* ---------- Save choice dialog ---------- */
+
+.choice-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.choice-message {
+  margin: 0;
+}
+
+.choice-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.choice-action {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.choice-action .dialog-button {
+  flex: none;
+  min-width: 110px;
+}
+
+.choice-statement {
+  line-height: 1.4;
+}
+
 /* ---------- Insert Function ---------- */
 
 .insert-function-dialog {
