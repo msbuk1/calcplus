@@ -35,6 +35,31 @@ import type {
 const MAX_ROWS = 1_048_576;
 const MAX_COLUMNS = 16_384;
 
+/** Distinct formulas screened before the validation cache clears. */
+const VALIDATE_CACHE_LIMIT = 4096;
+
+/** One input cell after screening: the engine content and the decision made. */
+interface InputPlan {
+  readonly key: string;
+  readonly content: RawCellContent;
+  /** True when the engine accepts the rewritten formula for this cell. */
+  readonly accepted: boolean;
+}
+
+/** A planned engine write, addressed for block writing. */
+interface PlannedWrite {
+  readonly address: SimpleCellAddress;
+  readonly content: RawCellContent;
+}
+
+/** A hole-free block of planned writes: full column run, adjacent rows. */
+interface CellBand {
+  readonly firstRow: number;
+  lastRow: number;
+  readonly firstCol: number;
+  readonly lastCol: number;
+}
+
 /**
  * HyperFormula GPLv3 adapter. It runs inside the formula worker; nothing in
  * this module is imported by the main thread (ADR 0004).
@@ -48,6 +73,7 @@ export class HyperFormulaEngine implements FormulaEngine {
   private readonly formulaCells = new Map<string, EngineCellRef>();
   private readonly circularCells = new Map<string, EngineCellRef>();
   private readonly skippedCells = new Map<string, EngineCellRef>();
+  private readonly validateCache = new Map<string, boolean>();
   private suspended = false;
 
   start(workbook: EngineWorkbookInput): void {
@@ -96,9 +122,26 @@ export class HyperFormulaEngine implements FormulaEngine {
     }
   }
 
+  /**
+   * Bulk load. The worker sends the snapshot in chunks of 10,000 cells and
+   * each chunk lands here, so this writes exactly the listed cells and no
+   * others. Cells are screened first (one plan per cell), then written in
+   * rectangular blocks: a large sheet must not pay the per-call engine cost
+   * for every cell. A block write that throws falls back to the original
+   * per-cell path, so a malformed cell behaves exactly as it always has.
+   */
   load(cells: readonly EngineCellInput[]): void {
     const engine = this.requireEngine();
-    for (const cell of cells) this.setInput(engine, cell);
+    const writes = new Map<string, PlannedWrite>();
+    for (const cell of cells) {
+      const plan = this.planInput(engine, cell);
+      writes.set(plan.key, { address: addressOf(cell), content: plan.content });
+    }
+    try {
+      writePlannedCells(engine, writes);
+    } catch {
+      for (const cell of cells) this.setInput(engine, cell);
+    }
   }
 
   finishLoad(): EngineBatchResult {
@@ -195,6 +238,7 @@ export class HyperFormulaEngine implements FormulaEngine {
     this.formulaCells.clear();
     this.circularCells.clear();
     this.skippedCells.clear();
+    this.validateCache.clear();
     this.suspended = false;
     if (engine !== null) {
       try {
@@ -205,8 +249,12 @@ export class HyperFormulaEngine implements FormulaEngine {
     }
   }
 
-  private setInput(engine: HyperFormula, cell: EngineCellInput): void {
-    const address = addressOf(cell);
+  /**
+   * Screen one input cell, record its bookkeeping state and return the engine
+   * content for it: the rewritten formula when the engine accepts it, the
+   * cached literal otherwise (formula semantics §9).
+   */
+  private planInput(engine: HyperFormula, cell: EngineCellInput): InputPlan {
     const key = keyOf(cell);
 
     if (cell.staleInput !== true && cell.formula !== null) {
@@ -214,14 +262,9 @@ export class HyperFormulaEngine implements FormulaEngine {
       if (prepared.text !== null) {
         const candidate = `=${prepared.text}`;
         if (this.validate(engine, candidate)) {
-          try {
-            engine.setCellContents(address, candidate);
-            this.formulaCells.set(key, refOf(cell));
-            this.skippedCells.delete(key);
-            return;
-          } catch {
-            // Fall through to the cached-value literal.
-          }
+          this.formulaCells.set(key, refOf(cell));
+          this.skippedCells.delete(key);
+          return { key, content: candidate, accepted: true };
         }
       }
     }
@@ -233,7 +276,29 @@ export class HyperFormulaEngine implements FormulaEngine {
     } else {
       this.skippedCells.delete(key);
     }
-    this.setLiteral(engine, address, cell.value);
+    return { key, content: rawContentFor(cell.value), accepted: false };
+  }
+
+  private setInput(engine: HyperFormula, cell: EngineCellInput): void {
+    const plan = this.planInput(engine, cell);
+    const address = addressOf(cell);
+
+    if (!plan.accepted) {
+      // The plan already recorded the cached-value state.
+      this.setLiteral(engine, address, cell.value);
+      return;
+    }
+
+    try {
+      engine.setCellContents(address, plan.content);
+    } catch {
+      // The engine refused the formula: fall back to the cached-value
+      // literal, as a single rejected cell always has.
+      this.formulaCells.delete(plan.key);
+      this.circularCells.delete(plan.key);
+      this.skipFormula(plan.key, refOf(cell));
+      this.setLiteral(engine, address, cell.value);
+    }
   }
 
   private skipFormula(key: string, ref: EngineCellRef): void {
@@ -327,12 +392,24 @@ export class HyperFormulaEngine implements FormulaEngine {
     };
   }
 
+  /**
+   * Parse-check one engine formula. The engine parses the same text to the
+   * same verdict within one workbook build, and a filled-down sheet asks
+   * about the same text thousands of times, so one check per distinct
+   * formula is enough.
+   */
   private validate(engine: HyperFormula, formula: string): boolean {
+    const cached = this.validateCache.get(formula);
+    if (cached !== undefined) return cached;
+    let valid: boolean;
     try {
-      return engine.validateFormula(formula);
+      valid = engine.validateFormula(formula);
     } catch {
-      return false;
+      valid = false;
     }
+    if (this.validateCache.size >= VALIDATE_CACHE_LIMIT) this.validateCache.clear();
+    this.validateCache.set(formula, valid);
+    return valid;
   }
 
   private requireEngine(): HyperFormula {
@@ -351,6 +428,10 @@ function engineConfig(date1904: boolean): Partial<ConfigParams> {
     maxColumns: MAX_COLUMNS,
     nullDate: date1904 ? { year: 1904, month: 1, day: 1 } : { year: 1899, month: 12, day: 31 },
     useArrayArithmetic: false,
+    // Undo and redo live in the model's command history; the engine port
+    // exposes neither. Disabling HyperFormula's undo skips its per-write
+    // bookkeeping, which dominated bulk loads.
+    undoLimit: 0,
     ignoreWhiteSpace: 'any',
     evaluateNullToZero: true,
     caseSensitive: false,
@@ -416,6 +497,94 @@ function rawContentFor(value: CellValue): RawCellContent {
     case 'blank':
       return null;
   }
+}
+
+/**
+ * Write planned contents in rectangular blocks. Only planned addresses are
+ * written: `load` arrives in chunks, so a block must never touch a cell its
+ * chunk did not list. Each block is a hole-free band — a contiguous column
+ * run extended over adjacent rows — so every cell inside a block rectangle
+ * carries planned content and no empty cell is written anywhere.
+ */
+function writePlannedCells(engine: HyperFormula, writes: Map<string, PlannedWrite>): void {
+  const sheets = new Map<number, Map<number, Map<number, RawCellContent>>>();
+  for (const write of writes.values()) {
+    const { sheet, row, col } = write.address;
+    let rows = sheets.get(sheet);
+    if (rows === undefined) {
+      rows = new Map();
+      sheets.set(sheet, rows);
+    }
+    let cols = rows.get(row);
+    if (cols === undefined) {
+      cols = new Map();
+      rows.set(row, cols);
+    }
+    cols.set(col, write.content);
+  }
+  for (const [sheet, rows] of sheets) {
+    for (const band of planBands(rows)) {
+      const contents: RawCellContent[][] = [];
+      for (let row = band.firstRow; row <= band.lastRow; row += 1) {
+        const cols = rows.get(row);
+        // Bands cover only rows that carry planned cells (see planBands), so
+        // anything else is a packing bug; fail the block and let the caller
+        // fall back to the per-cell path.
+        if (cols === undefined) throw new Error('The write band covers an unplanned row');
+        const line: RawCellContent[] = [];
+        for (let col = band.firstCol; col <= band.lastCol; col += 1) {
+          const content = cols.get(col);
+          if (content === undefined) throw new Error('The write band covers an unplanned cell');
+          line.push(content);
+        }
+        contents.push(line);
+      }
+      engine.setCellContents({ sheet, row: band.firstRow, col: band.firstCol }, contents);
+    }
+  }
+}
+
+/**
+ * Pack one sheet's planned writes into hole-free bands. For each row the
+ * contiguous column runs are found; a run over the same columns on the next
+ * row extends its band. Rows and columns are visited in ascending order, so
+ * every address inside a band rectangle is present in `rows`.
+ */
+function planBands(rows: Map<number, Map<number, RawCellContent>>): CellBand[] {
+  const bands: CellBand[] = [];
+  let open = new Map<string, CellBand>();
+  const rowNumbers = [...rows.keys()].sort((left, right) => left - right);
+  for (const row of rowNumbers) {
+    const cols = rows.get(row);
+    if (cols === undefined) continue;
+    const nextOpen = new Map<string, CellBand>();
+    for (const [firstCol, lastCol] of columnRuns(cols)) {
+      const key = `${firstCol}:${lastCol}`;
+      const band = open.get(key);
+      if (band !== undefined && band.lastRow + 1 === row) {
+        band.lastRow = row;
+        nextOpen.set(key, band);
+      } else {
+        const fresh: CellBand = { firstRow: row, lastRow: row, firstCol, lastCol };
+        bands.push(fresh);
+        nextOpen.set(key, fresh);
+      }
+    }
+    open = nextOpen;
+  }
+  return bands;
+}
+
+/** Contiguous column runs of one row: ascending and disjoint. */
+function columnRuns(cols: Map<number, RawCellContent>): [number, number][] {
+  const runs: [number, number][] = [];
+  const colNumbers = [...cols.keys()].sort((left, right) => left - right);
+  for (const col of colNumbers) {
+    const last = runs[runs.length - 1];
+    if (last !== undefined && col === last[1] + 1) last[1] = col;
+    else runs.push([col, col]);
+  }
+  return runs;
 }
 
 function mapEngineValue(value: HyperFormulaCellValue): CellValue {

@@ -436,7 +436,7 @@ describe('Formulas Function Library category menus', () => {
     ]);
   });
 
-  it('keeps Insert Function tall and spreads the category menus across two rows', () => {
+  it('keeps Insert Function tall beside the nine drop-downs in one row', () => {
     const controls = functionLibrary().controls;
     expect(controls[0]).toMatchObject({
       commandId: 'formula.insertFunction',
@@ -445,28 +445,20 @@ describe('Formulas Function Library category menus', () => {
       icon: 'insert-function',
     });
     expect(controls[1]).toMatchObject({ commandId: 'formula.autosum', row: 1 });
-    expect(controls.slice(2).map((entry) => entry.row)).toEqual([1, 1, 1, 1, 2, 2, 2, 2]);
+    // The nine drop-downs carry no row assignment: how they lay out (one row
+    // wide, three columns by three rows narrow) is presentation and lives in
+    // the components and CSS.
+    expect(controls.slice(1).every((entry) => entry.row === 1 && entry.rowSpan === 1)).toBe(true);
     expect(functionLibrary().rowCount).toBe(3);
   });
 
-  it('pins the two-line tile breaks so the caret can ride the last line', () => {
+  it('breaks only the hero label, where the prototype breaks it', () => {
     const controls = functionLibrary().controls;
-    expect(controls.map((entry) => entry.labelLines)).toEqual([
-      ['Insert', 'Function'],
-      ['AutoSum'],
-      ['Recently', 'Used'],
-      ['Financial'],
-      ['Logical'],
-      ['Text'],
-      ['Date &', 'Time'],
-      ['Lookup &', 'Reference'],
-      ['Math &', 'Trig'],
-      ['More', 'Functions'],
-    ]);
-    // The visible lines always rebuild the authored label exactly.
-    for (const entry of controls) {
-      expect(entry.labelLines?.join(' '), entry.label).toBe(entry.label);
-    }
+    expect(controls[0]?.labelLines).toEqual(['Insert', 'Function']);
+    expect(controls[0]?.labelLines?.join(' ')).toBe(controls[0]?.label);
+    // The nine drop-downs wrap naturally in the wide state and clip in the
+    // narrow one; no authored breaks.
+    expect(controls.slice(1).every((entry) => entry.labelLines === undefined)).toBe(true);
   });
 
   it('builds every category menu from the Insert Function catalogue', () => {

@@ -58,8 +58,8 @@ export interface ResolvedRibbonControl {
   readonly options?: readonly RibbonSelectOption[];
   readonly menu?: readonly RibbonMenuItem[];
   /**
-   * Authored visual line breaks for a tile label. The drop-down caret rides
-   * the last line, so the break is fixed rather than left to the browser.
+   * Authored visual line breaks for a label. The Function Library hero is the
+   * only control that carries one; every other label wraps naturally.
    */
   readonly labelLines?: readonly string[];
   /** The catalogue category this control's generated menu lists. */
@@ -167,21 +167,12 @@ const GROUP_ORDER: Readonly<Record<RibbonTabId, readonly string[]>> = {
 const DEFAULT_ROW_COUNT = 2;
 
 /**
- * The Function Library tiles break their labels where Excel 365 breaks them.
- * The drop-down caret joins the last line, so pinning the break keeps the
- * two-line shape at every band width and stops the caret wrapping alone.
+ * The hero's label breaks where the approved prototype breaks it: "Insert"
+ * over "Function", on two lines in both states. The nine drop-downs carry no
+ * authored breaks — their labels wrap naturally, as the prototype does.
  */
 const FUNCTION_LIBRARY_LABEL_LINES: Readonly<Record<string, readonly string[]>> = {
   'Insert Function': ['Insert', 'Function'],
-  AutoSum: ['AutoSum'],
-  'Recently Used': ['Recently', 'Used'],
-  Financial: ['Financial'],
-  Logical: ['Logical'],
-  Text: ['Text'],
-  'Date & Time': ['Date &', 'Time'],
-  'Lookup & Reference': ['Lookup &', 'Reference'],
-  'Math & Trig': ['Math &', 'Trig'],
-  'More Functions': ['More', 'Functions'],
 };
 
 /**

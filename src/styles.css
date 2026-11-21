@@ -485,68 +485,147 @@ a:focus-visible,
   padding: 0 4px;
 }
 
-/* Formulas › Function Library: Excel-style square badges over two-line
-   labels. Every tile keeps one fixed width, so the two rows form clean
-   columns and a long label wraps inside the tile instead of stretching it.
-   The badge frame itself is drawn in the artwork (RIBBON_BADGE_FRAME). */
-.ribbon-group-tiles .ribbon-cell {
-  width: 60px;
-  flex: 0 0 60px;
+/* Formulas › Function Library: the approved prototype's design
+   (PROTOTYPE-function-library.html). One design, two states. WIDE: a 30px
+   icon over each label with the caret under it, all nine drop-downs in one
+   row. NARROW: an 18px icon beside the text with the caret hugging it,
+   three columns by three rows. The hero is tall and caretless; the group
+   label is centred at the bottom of the items column. */
+.ribbon-group.ribbon-function-library {
+  padding: 0 6px;
 }
 
-.ribbon-group-tiles .ribbon-cell > * {
-  width: 100%;
-  min-width: 0;
-}
-
-.ribbon-group-tiles .ribbon-group-row {
+.ribbon-library-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   align-items: stretch;
 }
 
-.ribbon-group-tiles .ribbon-button {
-  position: relative;
+.ribbon-library-hero {
+  width: 72px;
+  flex: none;
+}
+
+.ribbon-library-divider {
+  width: 1px;
+  margin: 4px 8px;
+  flex: none;
+  background: var(--border);
+}
+
+.ribbon-library-hero > *,
+.ribbon-library-item > *,
+.ribbon-library-item .ribbon-button {
   width: 100%;
   height: 100%;
+}
+
+/* The hero: icon over the two-line label, centred, no caret. */
+.ribbon-library-hero .ribbon-button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.ribbon-function-library .ribbon-label-line {
+  display: block;
+}
+
+.ribbon-library-hero .ribbon-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.ribbon-function-library .ribbon-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.ribbon-function-library .ribbon-glyph {
+  width: 100%;
+  height: 100%;
+}
+
+.ribbon-function-library .ribbon-menu-caret {
+  color: var(--disabled);
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* ---------- wide: large icon above, label below, one row ---------- */
+.ribbon-function-library.wide .ribbon-library-items {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.ribbon-function-library.wide .ribbon-library-item {
+  width: 82px;
+  height: 74px;
+  flex: none;
+}
+
+.ribbon-function-library.wide .ribbon-library-item .ribbon-button {
   flex-direction: column;
   justify-content: flex-start;
-  gap: 0;
-  padding: 0 3px;
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 1;
+  gap: 5px;
+  padding: 4px 2px;
   text-align: center;
   white-space: normal;
 }
 
-.ribbon-group-tiles .ribbon-cell-large .ribbon-button {
-  justify-content: center;
-  font-weight: 600;
+.ribbon-function-library.wide .ribbon-library-item .ribbon-label {
+  font-size: 11px;
+  line-height: 1.2;
 }
 
-.ribbon-group-tiles .ribbon-cell-large .ribbon-icon,
-.ribbon-group-tiles .ribbon-cell-large .ribbon-glyph {
-  width: 24px;
-  height: 24px;
+/* ---------- narrow: small icon left, text right, aligned columns ---------- */
+.ribbon-function-library.narrow .ribbon-library-items {
+  display: grid;
+  /* Columns size to their own content and the grid hugs the left. Equal 1fr
+     shares spread the group across the whole bar and read as centred. */
+  grid-template-columns: repeat(3, max-content);
+  justify-content: start;
+  grid-auto-rows: 33%;
+  align-content: stretch;
 }
 
-.ribbon-group-tiles .ribbon-label {
-  display: block;
-  width: 100%;
-  max-width: 100%;
+.ribbon-function-library.narrow .ribbon-library-item .ribbon-button {
+  /* The base .ribbon-button centres its content. In the compact rows the
+     icon and text must hug the left of the column instead. */
+  justify-content: flex-start;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  text-align: left;
 }
 
-/* The authored breaks keep the two-line shape. The caret rides the final
-   line with its label, as Excel draws it, rather than floating at the tile
-   corner where it reads as a stray dot. */
-.ribbon-group-tiles .ribbon-label-line {
-  display: block;
+.ribbon-function-library.narrow .ribbon-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.ribbon-function-library.narrow .ribbon-label {
+  font-size: 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.ribbon-group-tiles .ribbon-menu-caret {
-  display: inline;
-  margin-left: 1px;
-  font-size: 8px;
+.ribbon-function-library.narrow .ribbon-library-item .ribbon-label {
+  line-height: normal;
+}
+
+.ribbon-function-library.narrow .ribbon-library-hero .ribbon-label {
+  line-height: 1.2;
+}
+
+/* The group label sits centred at the bottom of the items column. */
+.ribbon-function-library .ribbon-group-label {
+  padding: 2px 0 3px;
+  font-size: 11px;
 }
 
 .ribbon-glyph {
@@ -2780,18 +2859,6 @@ a:focus-visible,
 
   .ribbon-control-wide {
     display: none;
-  }
-
-  /* The shorter band still fits the two tile rows without clipping. */
-  .ribbon-group-tiles .ribbon-cell {
-    width: 52px;
-    flex: 0 0 52px;
-  }
-
-  .ribbon-group-tiles .ribbon-button {
-    padding: 0 2px;
-    font-size: 9px;
-    line-height: 1;
   }
 
   .ribbon-group-launcher {

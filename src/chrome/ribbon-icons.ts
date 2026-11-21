@@ -9,14 +9,6 @@
 
 export const RIBBON_ICON_SIZE = 16;
 
-/**
- * The square badge frame shared by the Function Library tiles. Insert and
- * Merge drew this frame first; every Function Library glyph reuses it so the
- * ten badges line up down the group. The interior stays open: only open
- * marks, no closed detail that fills in at 16px.
- */
-export const RIBBON_BADGE_FRAME = 'M2.75 2.75h10.5v10.5H2.75z';
-
 export interface RibbonIconCircle {
   readonly cx: number;
   readonly cy: number;
@@ -57,9 +49,9 @@ const ICON_DRAWINGS = {
     paths: ['M2.5 3.5h11', 'M8 13V6.5', 'M5.5 8.5 8 6l2.5 2.5'],
   },
   autosum: {
-    // The framed sigma is shared by the Home › Editing split and the
-    // Formulas › Function Library tile, so both tabs read the same badge.
-    paths: [RIBBON_BADGE_FRAME, 'M11.1 4.6H5.4l3.1 3.6-3.1 3.6h5.7'],
+    // The sigma is shared by the Home › Editing split and the Formulas ›
+    // Function Library drop-down, so both tabs read the same glyph.
+    paths: ['M12 3.5H4.5l3.8 4.5-3.8 4.5H12'],
   },
   bold: {
     paths: [
@@ -237,43 +229,36 @@ const ICON_DRAWINGS = {
     paths: ['M2.75 2.75h10.5v10.5H2.75z', 'M6.5 2.75v10.5', 'M2.75 6.5h10.5'],
     filled: ['M2.75 2.75h3.75v3.75H2.75z'],
   },
-  // The Function Library category menus. Every glyph is the same square badge
-  // frame with only open interior marks; nothing fills in at 16px.
+  // The Function Library drop-downs. The glyphs are the approved prototype's
+  // frameless strokes (PROTOTYPE-function-library.html): open marks on the
+  // 16 x 16 grid, no enclosing frame.
   'function-recent': {
-    paths: [RIBBON_BADGE_FRAME, 'M8 5.6V8h2.1'],
+    paths: ['M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11M8 5v3.2l2.3 1.4'],
   },
   'function-financial': {
-    paths: [RIBBON_BADGE_FRAME],
-    circles: [{ cx: 8, cy: 8, radius: 2.2 }],
+    // A plain dollar sign: an S through with a vertical bar. The curving S
+    // keeps white between its rules at 16px, where a boxed-in S fills solid.
+    paths: ['M8 3.2v9.6', 'M11 5a2.9 2.9 0 0 0-5.2.9c0 2.3 4.5 1.1 4.5 3.6a2.9 2.9 0 0 1-5.3 1.1'],
   },
   'function-logical': {
-    paths: [RIBBON_BADGE_FRAME, 'M8 5.9 10.1 8 8 10.1 5.9 8z'],
+    paths: ['M8 2.6 13.4 8 8 13.4 2.6 8z'],
   },
   'function-text': {
-    paths: [RIBBON_BADGE_FRAME, 'M5.4 6.2h5.2', 'M8 6.2v4.2'],
+    paths: ['M3 3.5h10M8 3.5v9'],
   },
   'function-date-time': {
-    // A short rule and one marked day. The rule stops inside the frame on
-    // purpose: spanning the full width reads as a solid slab at 16px.
-    paths: [RIBBON_BADGE_FRAME, 'M5.2 6.2h5.6'],
-    circles: [{ cx: 8, cy: 9.8, radius: 1, filled: true }],
+    paths: ['M2.5 4h11v9.5h-11zM2.5 7h11M5.2 2.2v2.4M10.8 2.2v2.4'],
   },
   'function-lookup': {
     // The shaft stops short of the head on purpose. Ending it at the tip
     // piles three strokes onto one point, which rasterises as a blob at 16px.
-    // Two-stroke corners stay open, as the radical and the diamond show.
-    paths: [RIBBON_BADGE_FRAME, 'M4.9 8h3.3', 'M8.2 5.8 10.4 8 8.2 10.2'],
+    paths: ['M7 2.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9M10.6 10.6 14 14'],
   },
   'function-math': {
-    paths: [RIBBON_BADGE_FRAME, 'M4.8 8.5 6 11.2 7.6 5.6h3.4'],
+    paths: ['M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11M3.4 8h9.2'],
   },
   'function-more': {
-    paths: [RIBBON_BADGE_FRAME],
-    circles: [
-      { cx: 5.2, cy: 8, radius: 0.8, filled: true },
-      { cx: 8, cy: 8, radius: 0.8, filled: true },
-      { cx: 10.8, cy: 8, radius: 0.8, filled: true },
-    ],
+    paths: ['M3.2 8h.01M8 8h.01M12.8 8h.01'],
   },
   'go-to': {
     paths: ['M8 2.75v1.5', 'M8 11.75v1.5', 'M2.75 8h1.5', 'M11.75 8h1.5'],
@@ -294,11 +279,14 @@ const ICON_DRAWINGS = {
     paths: ['M2.75 2.75h10.5v10.5H2.75z', 'M8 5.5v5', 'M5.5 8h5'],
   },
   'insert-function': {
+    // "fx" exactly as the maintainer ruled: an italic f — broad top hook over
+    // a long slanted stem, crossbar — with an italic x beside it. Stroke
+    // centres keep 2.5 apart so the letters read at 16px, not as a badge.
     paths: [
-      RIBBON_BADGE_FRAME,
-      // An italic f and a subscript x, two open marks inside the badge.
-      'M8.2 4.6H7.4c-.8 0-1.2.5-1.3 1.3L5.2 10.8M4.9 7.4h2.6',
-      'M9.2 7.5 11.9 10.8M11.9 7.5 9.2 10.8',
+      'M9.2 4.3c-.3-1-1.1-1.6-2-1.5-.8.1-1.3.6-1.5 1.3L4.6 12.7',
+      'M3.3 8.9h4.2',
+      'M9 7.3 12.9 12.7',
+      'M12.9 7.2 9 12.8',
     ],
   },
   'increase-decimal': {

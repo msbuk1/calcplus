@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { COMMAND_INVENTORY } from '@commands/inventory';
 import {
-  RIBBON_BADGE_FRAME,
   RIBBON_ICONS,
   RIBBON_ICON_NAMES,
   RIBBON_ICON_SIZE,
@@ -92,21 +91,6 @@ describe('the original ribbon icon family', () => {
     // The tall Insert Function, AutoSum and the eight category menus each read
     // as a different glyph; the category set never repeats the fx mark.
     expect(new Set(icons).size).toBe(10);
-  });
-
-  it('frames every Function Library badge with one shared square', () => {
-    // The same frame Insert and Merge already draw. Pinning the literal keeps
-    // the ten badges from drifting apart again.
-    expect(RIBBON_BADGE_FRAME).toBe('M2.75 2.75h10.5v10.5H2.75z');
-    const library = ribbonGroupsFor('Formulas').find((group) => group.id === 'Function Library');
-    expect(library?.controls).toHaveLength(10);
-    for (const control of library?.controls ?? []) {
-      const icon = control.icon === undefined ? undefined : RIBBON_ICONS[control.icon];
-      expect(icon, control.label).toBeDefined();
-      expect(icon?.paths[0], `${control.label} badge frame`).toBe(RIBBON_BADGE_FRAME);
-    }
-    // AutoSum wears the same frame on Home › Editing and the compact bar.
-    expect(RIBBON_ICONS.autosum.paths[0]).toBe(RIBBON_BADGE_FRAME);
   });
 
   it('keeps the six alignment commands a distinct icon family', () => {

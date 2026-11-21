@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { openFixture } from './grid-helpers';
 
 const fixture = 'm1-chart-unknown.xlsx';
@@ -8,6 +8,35 @@ async function openFormulas(page: Page, width: number): Promise<void> {
   await page.setViewportSize({ width, height: 900 });
   await openFixture(page, fixture);
   await page.getByRole('tab', { name: 'Formulas' }).click();
+}
+
+interface Box {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+interface ItemBox {
+  readonly button: Box;
+  readonly label: Box | null;
+  readonly caret: Box | null;
+}
+
+/** The nine drop-downs' button, label and caret boxes in DOM order. */
+async function itemBoxes(group: Locator): Promise<ItemBox[]> {
+  return group.locator('.ribbon-library-item button').evaluateAll((buttons) => {
+    const rect = (element: Element | null): Box | null => {
+      if (element === null) return null;
+      const box = element.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    };
+    return buttons.map((button) => ({
+      button: rect(button)!,
+      label: rect(button.querySelector('.ribbon-label')),
+      caret: rect(button.querySelector('.ribbon-menu-caret')),
+    }));
+  });
 }
 
 /**
@@ -42,115 +71,122 @@ test('each ribbon row starts at the left of its group', async ({ page }) => {
 });
 
 /**
- * The Formulas › Function Library tiles follow the Excel 365 capture: one
- * fixed width per tile, two clean columns under the tall Insert Function hero,
- * and a drop-down caret that rides the label's last line.
+ * Formulas › Function Library, WIDE state (the approved prototype): the nine
+ * drop-downs sit in one row at one height, and each caret sits under its
+ * label.
  */
-test('Function Library tiles share one width, line up in columns and carry their carets', async ({
+test('wide: the nine drop-downs form one row at equal height, caret under the label', async ({
   page,
 }) => {
   await openFormulas(page, 1440);
   const group = page.locator('[data-group="Function Library"]');
-  const cells = group.locator('.ribbon-cell');
+  const items = await itemBoxes(group);
+  expect(items).toHaveLength(9);
 
-  for (const { width, tileWidth } of [
-    { width: 1440, tileWidth: 60 },
-    { width: 1000, tileWidth: 52 },
-  ]) {
-    await page.setViewportSize({ width, height: 900 });
-    await expect(cells).toHaveCount(10);
-
-    // Cell 1 is the tall Insert Function hero. The other nine are the two rows,
-    // in DOM order: AutoSum, Recently Used, Financial, Logical, Text, then the
-    // four second-row tiles.
-    const tiles = await cells.evaluateAll((elements) =>
-      elements.slice(1).map((element) => {
-        const rect = element.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width };
-      }),
+  for (const [index, item] of items.entries()) {
+    expect(item.button.height, `button ${index}`).toBeCloseTo(items[0]!.button.height, 1);
+    expect(item.button.y, `button ${index}`).toBeCloseTo(items[0]!.button.y, 1);
+  }
+  // One row: the nine run left to right without stacking.
+  for (let index = 1; index < items.length; index += 1) {
+    expect(items[index]!.button.x, `button ${index}`).toBeGreaterThan(items[index - 1]!.button.x);
+  }
+  // The caret sits under the label, not beside it.
+  for (const [index, item] of items.entries()) {
+    expect(item.caret, `caret ${index}`).not.toBeNull();
+    expect(item.label, `label ${index}`).not.toBeNull();
+    expect(item.caret!.y, `caret ${index}`).toBeGreaterThanOrEqual(
+      item.label!.y + item.label!.height - 1,
     );
-    expect(tiles).toHaveLength(9);
-    expect(tiles[0]!.width, `${width}px`).toBe(tileWidth);
-    for (const tile of tiles) expect(tile.width).toBeCloseTo(tileWidth, 1);
-    // The second row repeats the first four columns instead of flowing freely.
-    for (let column = 0; column < 4; column += 1) {
-      expect(tiles[5 + column]!.x, `${width}px column ${column + 1}`).toBeCloseTo(
-        tiles[column]!.x,
+  }
+});
+
+/**
+ * NARROW state: the nine drop-downs stack in three columns by three rows with
+ * aligned column x values, and each caret hugs the end of its text.
+ */
+test('narrow: the nine drop-downs land on a 3 x 3 grid with aligned columns, caret beside the text', async ({
+  page,
+}) => {
+  await openFormulas(page, 920);
+  const group = page.locator('[data-group="Function Library"]');
+  const items = await itemBoxes(group);
+  expect(items).toHaveLength(9);
+
+  // Row-major DOM order: three rows of three. Rows share y, columns share x.
+  for (let row = 0; row < 3; row += 1) {
+    for (let column = 1; column < 3; column += 1) {
+      expect(items[row * 3 + column]!.button.y, `row ${row} column ${column}`).toBeCloseTo(
+        items[row * 3]!.button.y,
+        1,
+      );
+      expect(items[row * 3 + column]!.button.height, `row ${row} column ${column}`).toBeCloseTo(
+        items[0]!.button.height,
         1,
       );
     }
+    if (row > 0) {
+      expect(items[row * 3]!.button.y, `row ${row}`).toBeGreaterThan(items[0]!.button.y);
+    }
+  }
+  for (let column = 0; column < 3; column += 1) {
+    for (let row = 1; row < 3; row += 1) {
+      expect(items[row * 3 + column]!.button.x, `row ${row} column ${column}`).toBeCloseTo(
+        items[column]!.button.x,
+        1,
+      );
+    }
+  }
 
-    for (const name of [
-      'Recently Used',
-      'Financial',
-      'Logical',
-      'Text',
-      'Date & Time',
-      'Lookup & Reference',
-      'Math & Trig',
-    ]) {
-      const caret = group.getByRole('button', { name, exact: true }).locator('.ribbon-menu-caret');
-      await expect(caret).toHaveCount(1);
-      const placement = await caret.evaluate((element) => {
-        const caretRect = element.getBoundingClientRect();
-        const label = element.closest('.ribbon-label');
-        if (label === null) throw new Error('The caret is outside the label');
-        const labelRect = label.getBoundingClientRect();
-        const line = element.parentElement;
-        if (line === null || line.firstChild === null) {
-          throw new Error('The caret has no text line');
-        }
-        const textRange = document.createRange();
-        textRange.selectNodeContents(line.firstChild);
-        const textRect = textRange.getBoundingClientRect();
-        const iconRect = element
-          .closest('.ribbon-button')!
-          .querySelector('.ribbon-icon')!
-          .getBoundingClientRect();
-        return {
-          position: getComputedStyle(element).position,
-          insideLabel:
-            caretRect.left >= labelRect.left - 1 &&
-            caretRect.right <= labelRect.right + 2 &&
-            caretRect.top >= labelRect.top - 2 &&
-            caretRect.top <= labelRect.bottom,
-          besideText:
-            caretRect.left >= textRect.right - 0.5 && caretRect.left - textRect.right <= 3,
-          belowIcon: caretRect.top >= iconRect.bottom - 2,
-        };
-      });
-      expect(placement.position, name).not.toBe('absolute');
-      expect(placement.insideLabel, `${width}px ${name}`).toBe(true);
-      expect(placement.besideText, `${width}px ${name}`).toBe(true);
-      expect(placement.belowIcon, `${width}px ${name}`).toBe(true);
+  // The caret hugs the end of the text and shares its line.
+  for (const [index, item] of items.entries()) {
+    expect(item.caret, `caret ${index}`).not.toBeNull();
+    expect(item.label, `label ${index}`).not.toBeNull();
+    const textRight = item.label!.x + item.label!.width;
+    expect(item.caret!.x, `caret ${index}`).toBeGreaterThanOrEqual(textRight - 0.5);
+    expect(item.caret!.x - textRight, `caret ${index}`).toBeLessThanOrEqual(8);
+    expect(item.caret!.y, `caret ${index}`).toBeLessThan(item.label!.y + item.label!.height);
+    expect(item.caret!.y + item.caret!.height, `caret ${index}`).toBeGreaterThan(item.label!.y);
+  }
+});
+
+/** The hero is the tall Insert Function item, and the only one without a caret. */
+test('the hero is tall and never carries a caret', async ({ page }) => {
+  await openFormulas(page, 1440);
+  const group = page.locator('[data-group="Function Library"]');
+  const hero = group.locator('.ribbon-library-hero button');
+
+  for (const width of [1440, 920]) {
+    await page.setViewportSize({ width, height: 900 });
+    const heroBox = await hero.boundingBox();
+    const items = await itemBoxes(group);
+    expect(heroBox).not.toBeNull();
+    expect(items).toHaveLength(9);
+    expect(heroBox!.height, `${width}px`).toBeGreaterThan(items[0]!.button.height);
+    await expect(hero.locator('.ribbon-menu-caret'), `${width}px`).toHaveCount(0);
+    // The nine all carry one.
+    for (const [index, item] of items.entries()) {
+      expect(item.caret, `${width}px caret ${index}`).not.toBeNull();
     }
   }
 });
 
-test('the Function Library group label keeps air beneath the text at every full-ribbon width', async ({
+/**
+ * The group label is centred at the bottom of the group in both states. The
+ * ui-chrome §5 rule hides ribbon group labels below 1100 px, whatever state
+ * the group is in (the maintainer ruled the contract wins over the prototype).
+ */
+test('the Function Library label shows in the full band and hides below 1100 px', async ({
   page,
 }) => {
   await openFormulas(page, 1440);
   const group = page.locator('[data-group="Function Library"]');
+  const label = group.locator('.ribbon-group-label');
+  await expect(label).toBeVisible();
 
-  for (const width of [1100, 1280, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
-    const air = await group.evaluate((element) => {
-      const label = element.querySelector('.ribbon-group-label');
-      if (label === null) throw new Error('No group label');
-      const textRange = document.createRange();
-      textRange.selectNodeContents(label);
-      const textBottom = textRange.getBoundingClientRect().bottom;
-      const groupRect = element.getBoundingClientRect();
-      const bandRect = element.closest('.ribbon-body')!.getBoundingClientRect();
-      return {
-        display: getComputedStyle(label).display,
-        groupAir: groupRect.bottom - textBottom,
-        bandAir: bandRect.bottom - textBottom,
-      };
-    });
-    expect(air.display, `${width}px`).not.toBe('none');
-    expect(air.groupAir, `${width}px`).toBeGreaterThanOrEqual(3);
-    expect(air.bandAir, `${width}px`).toBeGreaterThanOrEqual(3);
-  }
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(label).toBeHidden();
+
+  await page.setViewportSize({ width: 920, height: 900 });
+  await expect(label).toBeHidden();
 });

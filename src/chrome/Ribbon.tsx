@@ -12,6 +12,17 @@ import type {
   ResolvedRibbonControl,
   ResolvedRibbonGroup,
 } from './ribbon-model';
+import { useMediaQuery } from './useMediaQuery';
+
+/**
+ * The one width that flips the Formulas › Function Library group between its
+ * two states (see the approved prototype, PROTOTYPE-function-library.html):
+ * at this width and above the nine drop-downs sit in one row under 30px
+ * icons; below it they stack into three columns beside 18px icons. The 940
+ * is the prototype's breakpoint and a guess, not a decision — change it here
+ * and both states move together.
+ */
+export const FUNCTION_LIBRARY_WIDE_MIN_WIDTH = 940;
 
 export interface RibbonProps {
   readonly activeTab: RibbonTabId;
@@ -192,13 +203,21 @@ function RibbonGroup({
   onCommand,
 }: RibbonGroupProps): JSX.Element {
   const launcher = group.launcher;
+  // The Formulas › Function Library group has its own responsive design (the
+  // approved prototype); every other group packs the standard band rows.
+  if (group.id === 'Function Library') {
+    return (
+      <FunctionLibraryGroup
+        group={group}
+        resolveState={resolveState}
+        controlValues={controlValues}
+        onCommand={onCommand}
+      />
+    );
+  }
   return (
     <div
-      className={[
-        'ribbon-group',
-        group.id === 'Function Library' ? 'ribbon-group-tiles' : '',
-        launcher === undefined ? '' : 'ribbon-group-with-launcher',
-      ]
+      className={['ribbon-group', launcher === undefined ? '' : 'ribbon-group-with-launcher']
         .filter(Boolean)
         .join(' ')}
       role="group"
@@ -255,31 +274,91 @@ function RibbonGroup({
   );
 }
 
+/**
+ * Formulas › Function Library, built exactly as the approved prototype
+ * (PROTOTYPE-function-library.html): a tall Insert Function hero on the left
+ * behind a thin divider, the nine drop-downs beside it, and the group label
+ * centred at the bottom of that column. WIDE puts a 30px icon over each
+ * label with the caret under it, all nine in one row. NARROW puts an 18px
+ * icon beside the text with the caret hugging it, three columns by three
+ * rows. The hero is the only control without a caret.
+ */
+function FunctionLibraryGroup({
+  group,
+  resolveState,
+  controlValues,
+  onCommand,
+}: RibbonGroupProps): JSX.Element {
+  const wide = useMediaQuery(`(min-width: ${FUNCTION_LIBRARY_WIDE_MIN_WIDTH}px)`);
+  const [hero, ...dropDowns] = group.controls;
+  return (
+    <div
+      className={`ribbon-group ribbon-function-library ${wide ? 'wide' : 'narrow'}`}
+      role="group"
+      aria-label={group.label}
+      data-group={group.label}
+    >
+      <div className="ribbon-library-body">
+        <div className="ribbon-library-hero">
+          {hero === undefined ? null : (
+            <RibbonControl
+              control={hero}
+              resolveState={resolveState}
+              controlValues={controlValues}
+              onCommand={onCommand}
+            />
+          )}
+        </div>
+        <div className="ribbon-library-divider" />
+        <div className="ribbon-library-main">
+          <div className="ribbon-library-items">
+            {dropDowns.map((control) => (
+              <div key={control.key} className="ribbon-library-item">
+                <RibbonControl
+                  control={control}
+                  resolveState={resolveState}
+                  controlValues={controlValues}
+                  onCommand={onCommand}
+                  caret
+                />
+              </div>
+            ))}
+          </div>
+          <div className="ribbon-group-label">{group.label}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface RibbonLabelProps {
   readonly control: ResolvedRibbonControl;
-  /** Draw the drop-down caret after the label's final line. */
+  /** Draw the drop-down caret beside the label. */
   readonly caret?: boolean;
 }
 
 /**
- * A tile label drawn with its authored line breaks. The caret is part of the
- * last line, as in Excel, rather than an absolute marker in the tile corner.
+ * A control's label, drawn with its authored line breaks where it has any.
+ * The drop-down caret is a sibling of the label, not part of its last line,
+ * so a flex row puts it beside the text and a flex column puts it under.
  */
 function RibbonLabel({ control, caret = false }: RibbonLabelProps): JSX.Element {
   const lines = control.labelLines ?? [control.label];
   return (
-    <span className="ribbon-label">
-      {lines.map((line, index) => (
-        <span className="ribbon-label-line" key={`${line}:${index}`}>
-          {line}
-          {caret && index === lines.length - 1 ? (
-            <span className="ribbon-menu-caret" aria-hidden="true">
-              ▾
-            </span>
-          ) : null}
+    <>
+      <span className="ribbon-label">
+        {lines.map((line, index) => (
+          <span className="ribbon-label-line" key={`${line}:${index}`}>
+            {line}
+          </span>
+        ))}
+      </span>
+      {caret ? (
+        <span className="ribbon-menu-caret" aria-hidden="true">
+          ▾
         </span>
-      ))}
-    </span>
+      ) : null}
+    </>
   );
 }
 
@@ -288,6 +367,8 @@ interface RibbonControlProps {
   readonly resolveState: CommandStateResolver;
   readonly controlValues: Readonly<Record<string, string>>;
   readonly onCommand: (commandId: string, args?: unknown) => void;
+  /** Draw the drop-down caret; the Function Library carries one on every drop-down. */
+  readonly caret?: boolean;
 }
 
 function RibbonControl({
@@ -295,6 +376,7 @@ function RibbonControl({
   resolveState,
   controlValues,
   onCommand,
+  caret = false,
 }: RibbonControlProps): JSX.Element {
   const state = resolveState(control.commandId);
   const enabled = !control.disabled && state.enabled;
@@ -358,7 +440,7 @@ function RibbonControl({
           <RibbonIcon name={control.icon} />
         </span>
       )}
-      {iconOnly ? null : <RibbonLabel control={control} />}
+      {iconOnly ? null : <RibbonLabel control={control} caret={caret} />}
     </button>
   );
 }
