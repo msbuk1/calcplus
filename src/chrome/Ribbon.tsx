@@ -16,7 +16,7 @@ import { useMediaQuery } from './useMediaQuery';
 
 /**
  * The one width that flips the Formulas › Function Library group between its
- * two states (see the approved prototype, PROTOTYPE-function-library.html):
+ * two states (see the prototype on the prototype/function-library branch):
  * at this width and above the nine drop-downs sit in one row under 30px
  * icons; below it they stack into three columns beside 18px icons. The 940
  * is the prototype's breakpoint and a guess, not a decision — change it here
@@ -276,7 +276,7 @@ function RibbonGroup({
 
 /**
  * Formulas › Function Library, built exactly as the approved prototype
- * (PROTOTYPE-function-library.html): a tall Insert Function hero on the left
+ * (prototype/function-library branch): a tall Insert Function hero on the left
  * behind a thin divider, the nine drop-downs beside it, and the group label
  * centred at the bottom of that column. WIDE puts a 30px icon over each
  * label with the caret under it, all nine in one row. NARROW puts an 18px

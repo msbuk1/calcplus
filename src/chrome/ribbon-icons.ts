@@ -230,7 +230,7 @@ const ICON_DRAWINGS = {
     filled: ['M2.75 2.75h3.75v3.75H2.75z'],
   },
   // The Function Library drop-downs. The glyphs are the approved prototype's
-  // frameless strokes (PROTOTYPE-function-library.html): open marks on the
+  // frameless strokes (prototype/function-library branch): open marks on the
   // 16 x 16 grid, no enclosing frame.
   'function-recent': {
     paths: ['M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11M8 5v3.2l2.3 1.4'],

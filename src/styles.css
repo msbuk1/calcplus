@@ -486,7 +486,7 @@ a:focus-visible,
 }
 
 /* Formulas › Function Library: the approved prototype's design
-   (PROTOTYPE-function-library.html). One design, two states. WIDE: a 30px
+   (prototype/function-library branch). One design, two states. WIDE: a 30px
    icon over each label with the caret under it, all nine drop-downs in one
    row. NARROW: an 18px icon beside the text with the caret hugging it,
    three columns by three rows. The hero is tall and caretless; the group
