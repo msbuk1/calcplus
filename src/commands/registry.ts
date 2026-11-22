@@ -18,6 +18,7 @@ import { formatCommands } from './format';
 import { goToCommand } from './goto';
 import { insertFunctionCommand } from './insert-function';
 import { mergeCommands } from './merge';
+import { moveCommands } from './move';
 import { painterCommands } from './painter';
 import {
   printAddAreaCommand,
@@ -104,6 +105,7 @@ export function createCommandRegistry(): CommandRegistry {
   registry.register(printGridlinesCommand);
   registry.register(printHeadingsCommand);
   for (const command of structureCommands()) registry.register(command);
+  for (const command of moveCommands()) registry.register(command);
   for (const command of mergeCommands()) registry.register(command);
   registry.register(clearContentsCommand);
   registry.register(clearAllCommand);

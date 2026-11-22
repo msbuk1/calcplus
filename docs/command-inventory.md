@@ -11,8 +11,8 @@ from `ui-chrome` §4.1 and listed under **UI chrome**.
 
 - Feature-matrix IN rows: 57
 - Inventory commands: 113
-- Implemented in this build: 80
-- Planned for a later slice: 33
+- Implemented in this build: 83
+- Planned for a later slice: 30
 - Out-of-scope rows (V2 or NEVER): 28
 
 OUT rows are absent from the chrome: no control is rendered and nothing is greyed out to imply
@@ -45,8 +45,8 @@ Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 | `edit.fillDown` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill down | — | — | — | — | Ctrl+D | A sheet is active and a range is selected | Implemented |
 | `edit.fillRight` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill right | — | — | — | — | Ctrl+R | A sheet is active and a range is selected | Implemented |
 | `fill.handle` | 1. Grid and editing — Fill handle: copy, relative-reference adjustment, double-click to adjacent data | Fill handle | — | — | — | — | — | A sheet is active and the fill handle is visible | Implemented |
-| `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | — | — | A sheet is active and a range is selected | Planned |
-| `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | — | — | A sheet is active and a range is selected | Planned |
+| `edit.dragInsert` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Shift-drag insert | — | — | — | — | — | A sheet is active and a range is selected | Implemented |
+| `edit.dragMove` | 1. Grid and editing — Drag-and-drop move; Shift-drag insert | Drag and drop move | — | — | — | — | — | A sheet is active and a range is selected | Implemented |
 | `structure.deleteCells` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete cells | `delete` | — | Home → Cells | Context menu (Delete) | Ctrl+- | A sheet is active and a range is selected | Implemented |
 | `structure.deleteColumns` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete columns | — | — | — | Context menu (Delete)<br>Context menu (column header) | Ctrl+- | A sheet is active | Implemented |
 | `structure.deleteRows` | 1. Grid and editing — Insert/delete rows, columns and cells (shift right/down options) | Delete rows | — | — | — | Context menu (Delete)<br>Context menu (row header) | Ctrl+- | A sheet is active | Implemented |
@@ -126,7 +126,7 @@ Panes → Unfreeze Panes) lists the checked label in the Ribbon column.
 | `file.importCsv` | 7. File I/O and printing — CSV import and export | Import CSV | — | — | — | — | — | A CSV parser is available | Planned |
 | `file.rejectEncrypted` | 7. File I/O and printing — Encrypted / password-protected workbooks | Reject encrypted workbook | — | — | — | — | — | The file is encrypted; it is not modified | Planned |
 | `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | — | — | Imported links are preserved and not refreshed | Planned |
-| `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Planned |
+| `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Implemented |
 | `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
 | `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
 | `print.addArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Add to Print Area | — | — | — | — | — | A sheet is active | Implemented |

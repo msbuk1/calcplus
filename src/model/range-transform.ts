@@ -7,6 +7,7 @@ import type {
   ColumnOffset,
   CommentRecord,
   ConditionalFormatRecord,
+  DefinedName,
   GridRange,
   HyperlinkRecord,
   RowDimension,
@@ -24,6 +25,7 @@ import {
   findDefinedName,
   formatAreaReference,
   parseWholeArea,
+  rangeOfArea,
   type AreaReference,
 } from './references';
 
@@ -65,6 +67,30 @@ import {
 
 export type StructureAxis = 'row' | 'column';
 export type StructureKind = 'insert' | 'delete';
+
+/**
+ * One drag-and-drop move (feature matrix §1 "Drag-and-drop move; Shift-drag
+ * insert"; ticket 49). The source rectangle's cells land at `to`, the source's
+ * new top-left, and every reference that points at a moved cell follows it.
+ * A reference that only partly covers the moved rectangle cannot follow and
+ * keeps its authored text, which is what Excel keeps there too.
+ *
+ * `prior` is the structural edit a Shift-drag insert rides on: the move opens
+ * the gap (an Insert Cells & Shift Down/Right banded edit at `to`) and lands
+ * the carried cells in it. Every coordinate maps through `prior` first unless
+ * it is carried, so references to shifted cells follow the shift and
+ * references to carried cells follow the carry.
+ */
+export interface MoveRangeEdit {
+  readonly kind: 'move';
+  readonly sheetId: SheetId;
+  /** The rectangle whose cells move. */
+  readonly source: GridRange;
+  /** Where the source's top-left lands. The source keeps its shape. */
+  readonly to: CellAddress;
+  /** The Insert Cells & Shift edit a Shift-drag insert opens its gap with. */
+  readonly prior?: StructuralEdit;
+}
 
 export interface StructuralEdit {
   readonly kind: StructureKind;
@@ -2002,6 +2028,19 @@ function formulaBlocksStructuralEdit(
   options: RangeTransformOptions,
   hostSheetId: SheetId | null,
 ): boolean {
+  return formulaBlocksSheetEdit(formula, edit.sheetId, options, hostSheetId);
+}
+
+/**
+ * The same gate for any edit anchored on one sheet: a move blocks exactly the
+ * constructs a row/column edit would (ticket 49 reuses this policy).
+ */
+function formulaBlocksSheetEdit(
+  formula: string,
+  sheetId: SheetId,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId | null,
+): boolean {
   if (formula.length === 0) return false;
   const preserving = hasPreservingConstruct(formula);
   // An intersection is the one untransformable construct the cheap scan does
@@ -2010,7 +2049,7 @@ function formulaBlocksStructuralEdit(
   if (!preserving && !intersection) return false;
 
   const stripped = stripDoubleQuoted(formula);
-  if (threeDimensionalSpanIncludes(stripped, edit, options)) return true;
+  if (threeDimensionalSpanIncludes(stripped, sheetId, options)) return true;
 
   // Drop external-link references and table structured references, then ask
   // which sheet the remaining A1 tokens resolve to.
@@ -2021,9 +2060,9 @@ function formulaBlocksStructuralEdit(
       reference.sheetName === null
         ? hostSheetId
         : findSheetIdByName(options.workbook, reference.sheetName);
-    if (target === edit.sheetId) return true;
+    if (target === sheetId) return true;
   }
-  if (hostSheetId !== edit.sheetId) return false;
+  if (hostSheetId !== sheetId) return false;
   // A construct with no parseable reference is relative to its host cell.
   if (/\bR\d+C\d+\b/i.test(stripped) || stripped.includes('@')) return true;
   return intersection || hasUnionComma(formula);
@@ -2036,7 +2075,7 @@ function stripDoubleQuoted(formula: string): string {
 /** A 3D span (`Sheet1:Sheet3!A1`) whose sheet range contains the edited sheet. */
 function threeDimensionalSpanIncludes(
   formula: string,
-  edit: StructuralEdit,
+  sheetId: SheetId,
   options: RangeTransformOptions,
 ): boolean {
   const pattern =
@@ -2049,7 +2088,7 @@ function threeDimensionalSpanIncludes(
     if (from < 0 || to < 0) continue;
     const start = Math.min(from, to);
     const end = Math.max(from, to);
-    const target = options.workbook.sheets.findIndex((sheet) => sheet.id === edit.sheetId);
+    const target = options.workbook.sheets.findIndex((sheet) => sheet.id === sheetId);
     if (target >= start && target <= end) return true;
   }
   return false;
@@ -2245,4 +2284,954 @@ function escapeXmlText(text: string): string {
 /** The address a plan's formula rewrite points at, for reports and tests. */
 export function formulaRewriteAddress(rewrite: FormulaRewrite): string {
   return formatCellRef(rewrite.row, rewrite.col);
+}
+
+// ---------------------------------------------------------------------------
+// Moves: drag-and-drop move and Shift-drag insert (ticket 49)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every consequence of one move, planned without mutating the workbook. The
+ * shape mirrors `RangeTransformPlan` where the same holders participate; rows,
+ * columns and the filter never move because a move shifts no row or column
+ * index (a Shift-drag insert's gap shift rides in `edit.prior`).
+ */
+export interface MoveRangePlan {
+  readonly edit: MoveRangeEdit;
+  readonly formulaRewrites: readonly FormulaRewrite[];
+  readonly nameRewrites: readonly NameRewrite[];
+  readonly mergeRewrites: readonly MergeRewrite[];
+  /** Every cell whose content or address changes, across every sheet. */
+  readonly cellMoves: readonly CellMove[];
+  readonly comments: AttachmentRenumber<CommentRecord>;
+  readonly hyperlinks: AttachmentRenumber<HyperlinkRecord>;
+  readonly crossSheetHyperlinks: readonly CrossSheetHyperlinkRenumber[];
+  readonly validation: ValidationRenumber;
+  readonly conditionalFormats: ConditionalFormatRenumber;
+  /** Every reference the edit could not keep; a move normally breaks nothing. */
+  readonly brokenReferences: readonly BrokenReference[];
+  readonly groupedFormulaCount: number;
+  readonly block: TransformBlock | null;
+  readonly changed: boolean;
+}
+
+/** A move rewrites no Tier B part, so a range the move touches blocks it. */
+export const MOVE_TIER_B_BLOCK_MESSAGE =
+  'A chart or PivotTable on this sheet would point at the wrong cells after this move, so the move was blocked.';
+
+/** The rectangle the moved cells cover once dropped. */
+export function moveDestinationRange(edit: MoveRangeEdit): GridRange {
+  return {
+    startRow: edit.to.row,
+    startCol: edit.to.col,
+    endRow: edit.to.row + (edit.source.endRow - edit.source.startRow),
+    endCol: edit.to.col + (edit.source.endCol - edit.source.startCol),
+  };
+}
+
+/** `true` when the cell rides along with the moved rectangle. */
+function moveCarries(row: number, col: number, edit: MoveRangeEdit): boolean {
+  return (
+    row >= edit.source.startRow &&
+    row <= edit.source.endRow &&
+    col >= edit.source.startCol &&
+    col <= edit.source.endCol
+  );
+}
+
+function rangeInsideRange(inner: GridRange, outer: GridRange): boolean {
+  return (
+    inner.startRow >= outer.startRow &&
+    inner.endRow <= outer.endRow &&
+    inner.startCol >= outer.startCol &&
+    inner.endCol <= outer.endCol
+  );
+}
+
+function gridRangesIntersect(left: GridRange, right: GridRange): boolean {
+  return !(
+    left.endRow < right.startRow ||
+    right.endRow < left.startRow ||
+    left.endCol < right.startCol ||
+    right.endCol < left.startCol
+  );
+}
+
+function moveShiftRange(range: GridRange, edit: MoveRangeEdit): GridRange {
+  return {
+    startRow: range.startRow + (edit.to.row - edit.source.startRow),
+    endRow: range.endRow + (edit.to.row - edit.source.startRow),
+    startCol: range.startCol + (edit.to.col - edit.source.startCol),
+    endCol: range.endCol + (edit.to.col - edit.source.startCol),
+  };
+}
+
+/**
+ * The address a cell lands at. A carried cell lands at the destination; every
+ * other cell maps through the composed insert, or stays put without one.
+ */
+export function moveTransformAddress(row: number, col: number, edit: MoveRangeEdit): CellAddress {
+  if (moveCarries(row, col, edit)) {
+    return {
+      row: row + (edit.to.row - edit.source.startRow),
+      col: col + (edit.to.col - edit.source.startCol),
+    };
+  }
+  return edit.prior === undefined
+    ? { row, col }
+    : (transformCellAddress(row, col, edit.prior) ?? { row, col });
+}
+
+/**
+ * The move's own rule for a range: a range fully inside the carried rectangle
+ * follows it, and a range that only partly covers it keeps its text (Excel
+ * leaves such a reference alone). Everything else maps through the composed
+ * insert.
+ */
+function moveTransformRange(range: GridRange, edit: MoveRangeEdit): GridRange {
+  if (rangeInsideRange(range, edit.source)) return moveShiftRange(range, edit);
+  return edit.prior === undefined ? range : (transformRange(range, edit.prior) ?? range);
+}
+
+function moveTransformArea(area: AreaReference, edit: MoveRangeEdit): AreaReference {
+  if (area.kind === 'cells' && rangeInsideRange(rangeOfArea(area), edit.source)) {
+    return {
+      ...area,
+      startRow: area.startRow + (edit.to.row - edit.source.startRow),
+      endRow: area.endRow + (edit.to.row - edit.source.startRow),
+      startCol: area.startCol + (edit.to.col - edit.source.startCol),
+      endCol: area.endCol + (edit.to.col - edit.source.startCol),
+    };
+  }
+  return edit.prior === undefined ? area : (transformArea(area, edit.prior) ?? area);
+}
+
+/**
+ * Rewrite one authored formula for a move. The rules are the move's own:
+ * a reference fully inside the carried rectangle follows it, everything else
+ * keeps its text (or follows the composed insert), and the constructs the
+ * structural edit cannot rewrite safely are left byte-for-byte here because
+ * `formulaBlocksSheetEdit` has already blocked them.
+ */
+export function transformFormulaReferencesForMove(
+  formula: string,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId | null,
+): string {
+  if (formula.length === 0 || hasPreservingConstruct(formula)) return formula;
+  const references = findAreaReferences(formula);
+  if (references.length === 0) return formula;
+  for (let index = 1; index < references.length; index += 1) {
+    const previous = references[index - 1]!;
+    const current = references[index]!;
+    if (formula.slice(previous.end, current.start).trim() === '') {
+      return formula;
+    }
+  }
+  let output = '';
+  let cursor = 0;
+  for (const reference of references) {
+    output += formula.slice(cursor, reference.start);
+    output +=
+      transformReferenceForMove(reference, edit, options, hostSheetId) ??
+      formula.slice(reference.start, reference.end);
+    cursor = reference.end;
+  }
+  return output + formula.slice(cursor);
+}
+
+function transformReferenceForMove(
+  reference: AreaReference,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId | null,
+): string | null {
+  const targetSheetId =
+    reference.sheetName === null
+      ? hostSheetId
+      : findSheetIdByName(options.workbook, reference.sheetName);
+  if (targetSheetId !== edit.sheetId) return null;
+  const transformed = moveTransformArea(reference, edit);
+  if (transformed === null || areasEqual(transformed, reference)) return null;
+  return formatAreaReference(transformed);
+}
+
+/**
+ * Rewrite a hyperlink's internal `location` for a move (file-compat §4 and
+ * §10.7 apply unchanged: transform or block, never a silently stale anchor).
+ * A move collapses nothing, so the only blocked case is a location that is
+ * neither a cell, a range nor a defined name this version understands.
+ */
+export function transformHyperlinkLocationForMove(
+  location: string,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId,
+): HyperlinkLocationTransform {
+  const parsed = parseLocationArea(location);
+  if (parsed === null) {
+    if (location.trim() === '') return { ok: true, location, changed: false };
+    if (location.trim().toUpperCase() === '#REF!') return { ok: true, location, changed: false };
+    if (findDefinedName(options.workbook, location.trim(), hostSheetId) !== null) {
+      return { ok: true, location, changed: false };
+    }
+    return {
+      ok: false,
+      block: {
+        code: 'anchor-untransformable',
+        message: `${HYPERLINK_LOCATION_BLOCK_MESSAGE} (the location "${location}" is not a cell, range or defined name this version understands.)`,
+      },
+    };
+  }
+  const { area, offset } = parsed;
+  const targetSheetId =
+    area.sheetName === null ? hostSheetId : findSheetIdByName(options.workbook, area.sheetName);
+  if (targetSheetId === null || targetSheetId !== edit.sheetId) {
+    return { ok: true, location, changed: false };
+  }
+  const transformed = moveTransformArea(area, edit);
+  const text = formatAreaReference({ ...transformed, prefix: area.prefix, single: area.single });
+  const rewritten = `${location.slice(0, offset + area.start)}${text}${location.slice(
+    offset + area.end,
+  )}`;
+  return { ok: true, location: rewritten, changed: rewritten !== location };
+}
+
+/**
+ * Rewrite the A1 ranges inside an opaque CF or validation fragment for a move:
+ * every space-separated `sqref` area and the authored text of each `<formula>`
+ * child. Attributes and children the model does not interpret stay verbatim.
+ */
+export function transformRangeBearingXmlForMove(
+  xml: string,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  sheetId: SheetId,
+): string {
+  let output = xml.replace(
+    /(\bsqref\s*=\s*)(["'])([^"']*)\2/g,
+    (_whole: string, prefix: string, quote: string, value: string) => {
+      const rewritten = transformSqrefForMove(value, edit, options, sheetId);
+      return `${prefix}${quote}${rewritten}${quote}`;
+    },
+  );
+  output = output.replace(
+    /<((?:[\w.-]+:)?)formula\d*\b([^>]*)>([\s\S]*?)<\/\1formula\d*>/g,
+    (whole: string, prefix: string, attributes: string, text: string) => {
+      if (text.trim() === '') return whole;
+      const after = transformFormulaReferencesForMove(decodeEntities(text), edit, options, sheetId);
+      if (after === decodeEntities(text)) return whole;
+      const tag = /<((?:[\w.-]+:)?formula\d*)/.exec(whole)?.[1] ?? `${prefix}formula`;
+      return `<${tag}${attributes}>${escapeXmlText(after)}</${tag}>`;
+    },
+  );
+  return output;
+}
+
+function transformSqrefForMove(
+  value: string,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  sheetId: SheetId,
+): string {
+  const areas = splitSqref(value);
+  if (areas.length === 0) return value;
+  const kept: string[] = [];
+  let changed = false;
+  for (const areaText of areas) {
+    const area = parseWholeArea(areaText);
+    if (area === null) {
+      kept.push(areaText);
+      continue;
+    }
+    const targetId =
+      area.sheetName === null ? sheetId : findSheetIdByName(options.workbook, area.sheetName);
+    if (targetId !== edit.sheetId) {
+      kept.push(areaText);
+      continue;
+    }
+    const transformed = moveTransformArea(area, edit);
+    const text = formatAreaReference({ ...transformed, prefix: area.prefix, single: area.single });
+    if (text !== areaText) changed = true;
+    kept.push(text);
+  }
+  // An unchanged area keeps the authored text byte-for-byte.
+  return changed ? kept.join(' ') : value;
+}
+
+/** Transform one conditional-format record for a move (CF §7). */
+export function transformConditionalFormatRecordForMove(
+  record: ConditionalFormatRecord,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  sheetId: SheetId,
+): ConditionalFormatRecord | null {
+  const range = transformRecordRangeForMove(record.range, edit);
+  if (range === null) return null;
+  const rawXml = transformRangeBearingXmlForMove(record.rawXml, edit, options, sheetId);
+  if (sameGridRange(range, record.range) && rawXml === record.rawXml) return record;
+  return { range, rawXml };
+}
+
+/** Transform one data-validation record for a move. */
+export function transformValidationRecordForMove(
+  record: ValidationRecord,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  sheetId: SheetId,
+): ValidationRecord | null {
+  const range = transformRecordRangeForMove(record.range, edit);
+  if (range === null) return null;
+  const rawXml = transformRangeBearingXmlForMove(record.rawXml, edit, options, sheetId);
+  if (sameGridRange(range, record.range) && rawXml === record.rawXml) return record;
+  return { range, rawXml };
+}
+
+/**
+ * A record's own range follows the move like any reference. A rule that covers
+ * only overwritten destination cells is gone with its cells; a rule that
+ * merely overlaps them keeps its text, as Excel keeps it.
+ */
+function transformRecordRangeForMove(range: GridRange, edit: MoveRangeEdit): GridRange | null {
+  if (rangeInsideRange(range, edit.source)) return moveShiftRange(range, edit);
+  if (
+    edit.prior === undefined &&
+    rangeInsideRange(range, moveDestinationRange(edit)) &&
+    !gridRangesIntersect(range, edit.source)
+  ) {
+    return null;
+  }
+  return moveTransformRange(range, edit);
+}
+
+/**
+ * Rewrite the `ref` of `<comment>` and `<threadedComment>` entries for a move.
+ * A comment on an overwritten destination cell is dropped, matching the model.
+ */
+export function transformCommentRefsXmlForMove(
+  xml: string,
+  edit: MoveRangeEdit,
+  partName = 'the comments part',
+): PartTransformResult {
+  return transformCellRefElementsForMove(xml, 'comment', edit, partName);
+}
+
+export function transformThreadedCommentRefsXmlForMove(
+  xml: string,
+  edit: MoveRangeEdit,
+  partName = 'the threaded comments part',
+): PartTransformResult {
+  return transformCellRefElementsForMove(xml, 'threadedComment', edit, partName);
+}
+
+function transformCellRefElementsForMove(
+  xml: string,
+  local: string,
+  edit: MoveRangeEdit,
+  partName: string,
+): PartTransformResult {
+  const pattern = new RegExp(
+    `<((?:[A-Za-z_][\\w.-]*):)?${local}\\b([^>]*?)(\\/>|>[\\s\\S]*?<\\/(?:\\1)?${local}\\s*>)`,
+    'g',
+  );
+  let block: TransformBlock | null = null;
+  let changed = false;
+  const output = xml.replace(
+    pattern,
+    (whole: string, prefix: string | undefined, attributes: string, tail: string) => {
+      const match = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(attributes);
+      if (match === null) return whole;
+      const range = parseRangeText(match[3] ?? '');
+      if (range === null || range.startRow !== range.endRow || range.startCol !== range.endCol) {
+        block ??= {
+          code: 'anchor-untransformable',
+          message: `${ANCHOR_BLOCK_MESSAGE} (${partName} has a comment reference that is not one cell.)`,
+        };
+        return whole;
+      }
+      const destination = moveDestinationRange(edit);
+      const overwritten =
+        edit.prior === undefined &&
+        moveCarries(range.startRow, range.startCol, edit) === false &&
+        rangeInsideRange(range, destination);
+      if (overwritten) {
+        changed = true;
+        return '';
+      }
+      const next = moveTransformAddress(range.startRow, range.startCol, edit);
+      if (next.row === range.startRow && next.col === range.startCol) return whole;
+      changed = true;
+      const target = formatCellRef(next.row, next.col);
+      const rewritten = `${attributes.slice(0, match.index)}${match[1]}${match[2]}${escapeXmlAttributeValue(
+        target,
+      )}${match[2]}${attributes.slice(match.index + match[0].length)}`;
+      return `<${prefix ?? ''}${local}${rewritten}${tail}`;
+    },
+  );
+  if (block !== null) return { ok: false, block };
+  return { ok: true, xml: output, changed };
+}
+
+/**
+ * Rewrite the legacy note anchors in a VML drawing part for a move. A note
+ * shape carries `<x:Anchor>` plus `<x:Row>`/`<x:Column>` in its client data;
+ * all three follow the cell the note sits on or the box detaches from it.
+ */
+export function transformVmlAnchorsXmlForMove(
+  xml: string,
+  edit: MoveRangeEdit,
+  partName = 'the legacy drawing',
+): PartTransformResult {
+  let failure: TransformBlock | null = null;
+  let changed = false;
+  const shapePattern = /<((?:[A-Za-z_][\w.-]*):)?shape\b[^>]*>([\s\S]*?)<\/(?:\1)?shape\s*>/g;
+  const output = xml.replace(shapePattern, (whole, _prefix, body: string) => {
+    const anchorPattern = /<((?:[A-Za-z_][\w.-]*):)?Anchor\b[^>]*>([\s\S]*?)<\/(?:\1)?Anchor\s*>/;
+    const anchor = anchorPattern.exec(body);
+    let first: { readonly row: number; readonly col: number } | null = null;
+    let nextBody = body;
+    if (anchor !== null) {
+      const parsed = parseVmlAnchor(anchor[2] ?? '');
+      if (parsed === null) {
+        failure ??= {
+          code: 'anchor-untransformable',
+          message: `${ANCHOR_BLOCK_MESSAGE} (${partName} has a note anchor that is not eight integers.)`,
+        };
+        return whole;
+      }
+      first = moveTransformAddress(parsed[2]!, parsed[0]!, edit);
+      const second = moveTransformAddress(parsed[6]!, parsed[4]!, edit);
+      const next = [
+        first.col,
+        parsed[1]!,
+        first.row,
+        parsed[3]!,
+        second.col,
+        parsed[5]!,
+        second.row,
+        parsed[7]!,
+      ];
+      if (next.some((value, index) => value !== parsed[index])) {
+        changed = true;
+        nextBody = nextBody.replace(anchor[0], anchor[0].replace(anchor[2] ?? '', next.join(', ')));
+      }
+    }
+    for (const local of ['Row', 'Column'] as const) {
+      const element = new RegExp(
+        `(<((?:[A-Za-z_][\\w.-]*):)?${local}\\b[^>]*>)\\s*(-?\\d+)\\s*(<\\/(?:\\2)?${local}\\s*>)`,
+        'g',
+      );
+      nextBody = nextBody.replace(
+        element,
+        (match: string, open: string, _elementPrefix: string, value: string, close: string) => {
+          const numeric = Number(value);
+          if (first === null) return match;
+          const transformed = local === 'Row' ? first.row : first.col;
+          if (transformed === numeric) return match;
+          changed = true;
+          return `${open}${transformed}${close}`;
+        },
+      );
+    }
+    return whole.replace(body, nextBody);
+  });
+  if (failure !== null) return { ok: false, block: failure };
+  return { ok: true, xml: output, changed };
+}
+
+/**
+ * The move's Tier B check (file-compat §4: transform or block). A move leaves
+ * chart, drawing and pivot parts untouched, so any chart series, pivot source
+ * or pivot output the move touches blocks the move rather than going stale. A
+ * chart served by a defined name or another non-range source blocks exactly as
+ * a structural edit blocks it.
+ */
+export function planMoveTierBBlock(
+  workbook: Workbook,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions = { workbook },
+): TransformBlock | null {
+  const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
+  if (sheet === undefined) return null;
+  const touched = (() => {
+    const destination = moveDestinationRange(edit);
+    return {
+      startRow: Math.min(edit.source.startRow, destination.startRow),
+      endRow: Math.max(edit.source.endRow, destination.endRow),
+      startCol: Math.min(edit.source.startCol, destination.startCol),
+      endCol: Math.max(edit.source.endCol, destination.endCol),
+    };
+  })();
+  const owners = resolvePartOwners(workbook);
+
+  for (const [path, part] of workbook.opaqueParts) {
+    if (!CHART_PATH.test(path)) continue;
+    const xml = decodePartXml(part.bytes);
+    if (xml === null) continue;
+    const owner = owners.charts.get(path) ?? null;
+    for (const match of xml.matchAll(
+      /<((?:[A-Za-z_][\w.-]*):)?(numRef|strRef|multiLvlStrRef)\b[^>]*>\s*<((?:[A-Za-z_][\w.-]*):)?f\b[^>]*>([\s\S]*?)<\/(?:\3)?f\s*>/g,
+    )) {
+      const decoded = decodeEntities(match[4] ?? '').trim();
+      if (decoded === '') continue;
+      if (decoded.includes(',')) {
+        return {
+          code: 'chart-source',
+          message: `${CHART_SOURCE_BLOCK_MESSAGE} (${path} points at "${decoded}".)`,
+        };
+      }
+      const area = parseWholeArea(decoded);
+      if (area === null) {
+        return {
+          code: 'chart-source',
+          message: `${CHART_SOURCE_BLOCK_MESSAGE} (${path} points at "${decoded}".)`,
+        };
+      }
+      if (area.sheetName === null && owner === null) {
+        return {
+          code: 'chart-source',
+          message: `${CHART_SOURCE_BLOCK_MESSAGE} (${path} points at "${decoded}".)`,
+        };
+      }
+      const targetSheetId =
+        area.sheetName === null ? owner : findSheetIdByName(options.workbook, area.sheetName);
+      if (targetSheetId === null || targetSheetId !== edit.sheetId) continue;
+      if (gridRangesIntersect(rangeOfArea(area), touched)) {
+        return {
+          code: 'chart-source',
+          message: `${MOVE_TIER_B_BLOCK_MESSAGE} (${path} series is ${decoded}.)`,
+        };
+      }
+    }
+  }
+
+  const pivotParts = new Map<string, SheetId | null>();
+  for (const [path, part] of workbook.opaqueParts) {
+    if (PIVOT_CACHE_PATH.test(path)) pivotParts.set(path, owners.pivots.get(path) ?? null);
+    else continue;
+    const xml = decodePartXml(part.bytes);
+    if (xml === null) continue;
+    for (const match of xml.matchAll(/<((?:[A-Za-z_][\w.-]*):)?worksheetSource\b([^>]*?)\/?>/g)) {
+      const attributes = parseXmlAttributes(match[2] ?? '');
+      const ref = attributes.get('ref');
+      if (ref === undefined) continue;
+      const sheetName = attributes.get('sheet');
+      const sourceSheetId =
+        sheetName === undefined
+          ? (pivotParts.get(path) ?? null)
+          : (findSheetIdByName(options.workbook, sheetName) ?? null);
+      if (sourceSheetId !== edit.sheetId) continue;
+      const range = parseRangeText(ref);
+      if (range === null) {
+        return {
+          code: 'pivot-source',
+          message: `${PIVOT_SOURCE_BLOCK_MESSAGE} (${path} has a source that is not an A1 range.)`,
+        };
+      }
+      if (gridRangesIntersect(range, touched)) {
+        return {
+          code: 'pivot-source',
+          message: `${PIVOT_SOURCE_BLOCK_MESSAGE} (${path} source is ${ref}.)`,
+        };
+      }
+    }
+  }
+  for (const [path, part] of sheet.opaqueParts) {
+    if (!PIVOT_TABLE_PATH.test(path)) continue;
+    const xml = decodePartXml(part.bytes);
+    if (xml === null) continue;
+    for (const match of xml.matchAll(/<((?:[A-Za-z_][\w.-]*):)?location\b([^>]*)>/g)) {
+      const attributeMatch = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(match[2] ?? '');
+      if (attributeMatch === null) continue;
+      const range = parseRangeText(attributeMatch[3] ?? '');
+      if (range === null) {
+        return {
+          code: 'anchor-untransformable',
+          message: `${ANCHOR_BLOCK_MESSAGE} (${path} has a location that is not an A1 range.)`,
+        };
+      }
+      if (gridRangesIntersect(range, touched)) {
+        return {
+          code: 'anchor-untransformable',
+          message: `${ANCHOR_BLOCK_MESSAGE} (${path} output would move without its source.)`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Discover and rewrite the opaque parts a move touches: the comment,
+ * threaded-comment and legacy-note anchors that follow their cells. Charts and
+ * pivots are not rewritten for a move — `planMoveTierBBlock` refuses a move
+ * that would strand one — so only the anchors ride here.
+ */
+export function planMoveOpaqueTransforms(
+  workbook: Workbook,
+  edit: MoveRangeEdit,
+): { rewrites: OpaquePartRewrite[]; block: TransformBlock | null } {
+  const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
+  if (sheet === undefined) return { rewrites: [], block: null };
+  const rewrites: OpaquePartRewrite[] = [];
+  let block: TransformBlock | null = null;
+  for (const [path, part] of sheet.opaqueParts) {
+    const xml = decodePartXml(part.bytes);
+    if (xml === null) continue;
+    let transformed: PartTransformResult | null = null;
+    if (COMMENTS_PATH.test(path)) {
+      transformed = transformCommentRefsXmlForMove(xml, edit, path);
+    } else if (THREADED_COMMENTS_PATH.test(path)) {
+      transformed = transformThreadedCommentRefsXmlForMove(xml, edit, path);
+    } else if (VML_PATH.test(path)) {
+      transformed = transformVmlAnchorsXmlForMove(xml, edit, path);
+    }
+    if (transformed === null) continue;
+    if (!transformed.ok) {
+      block ??= transformed.block;
+      continue;
+    }
+    if (!transformed.changed) continue;
+    rewrites.push({
+      path,
+      kind: opaqueKindForPath(path),
+      before: part.bytes,
+      after: encodePartXml(transformed.xml, part.bytes),
+    });
+  }
+  if (block !== null) return { rewrites: [], block };
+  return { rewrites, block: null };
+}
+
+/**
+ * Plan every consequence of one move without mutating the workbook: the moved
+ * and overwritten cells, every formula and defined name whose reference points
+ * at a carried cell, the merged ranges, comments, hyperlinks, and the CF and
+ * validation records. Transform or block, exactly like the structural edit.
+ */
+export function planMoveTransform(
+  workbook: Workbook,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions = { workbook },
+): MoveRangePlan {
+  const targetSheet = workbook.sheets.find((sheet) => sheet.id === edit.sheetId);
+  if (targetSheet === undefined) {
+    throw new Error(`Unknown sheet for move: ${edit.sheetId}`);
+  }
+  const destination = moveDestinationRange(edit);
+  const formulaRewrites: FormulaRewrite[] = [];
+  const cellMoves: CellMove[] = [];
+  const brokenReferences: BrokenReference[] = [];
+  let groupedFormulaCount = 0;
+  let block: TransformBlock | null = null;
+
+  // Final content per cell key on the target sheet. Carried cells are placed
+  // second, so a drop over existing cells overwrites them exactly once.
+  const placed = new Map<string, Cell>();
+  const carried = new Map<string, Cell>();
+
+  for (const sheet of workbook.sheets) {
+    const isTarget = sheet.id === edit.sheetId;
+    for (const [key, cell] of sheet.cells) {
+      const { row, col } = parseCellKey(key);
+      if (cell.formulaSource !== undefined) {
+        groupedFormulaCount += 1;
+        const moves =
+          isTarget &&
+          (() => {
+            const next = moveTransformAddress(row, col, edit);
+            return next.row !== row || next.col !== col;
+          })();
+        const rewrites =
+          cell.formula !== null &&
+          transformFormulaReferencesForMove(cell.formula, edit, options, sheet.id) !== cell.formula;
+        if (moves || rewrites) {
+          block ??= { code: 'grouped-formula', message: GROUPED_FORMULA_BLOCK_MESSAGE };
+        }
+        continue;
+      }
+      let afterFormula: string | undefined;
+      if (cell.formula !== null) {
+        if (
+          block === null &&
+          formulaBlocksSheetEdit(cell.formula, edit.sheetId, options, sheet.id)
+        ) {
+          block = {
+            code: 'unsupported-formula',
+            message: `The formula in ${formatCellRef(row, col)} uses a reference construct calcplus cannot transform safely, so the move was blocked.`,
+          };
+        }
+        const after = transformFormulaReferencesForMove(cell.formula, edit, options, sheet.id);
+        if (after !== cell.formula) {
+          formulaRewrites.push({ sheetId: sheet.id, row, col, before: cell.formula, after });
+          afterFormula = after;
+          if (breaksReference(cell.formula, after)) {
+            brokenReferences.push({
+              kind: 'formula',
+              label: `the formula in ${formatCellRef(row, col)} on ${sheet.name}`,
+            });
+          }
+        }
+      }
+      if (!isTarget) {
+        if (afterFormula !== undefined) {
+          cellMoves.push({
+            sheetId: sheet.id,
+            from: { row, col },
+            to: { row, col },
+            before: cell,
+            after: { ...cell, formula: afterFormula, stale: true },
+          });
+        }
+        continue;
+      }
+      const next = moveTransformAddress(row, col, edit);
+      const target = cellKey(next.row, next.col);
+      const final: Cell =
+        afterFormula === undefined ? cell : { ...cell, formula: afterFormula, stale: true };
+      if (moveCarries(row, col, edit)) carried.set(target, final);
+      else placed.set(target, final);
+    }
+  }
+  for (const [key, cell] of carried) placed.set(key, cell);
+
+  const touched = new Set<string>([...sheetKeys(targetSheet), ...placed.keys()]);
+  for (const key of touched) {
+    const address = parseCellKey(key);
+    const before = targetSheet.cells.get(key) ?? null;
+    const after = placed.get(key) ?? null;
+    if (before === after) continue;
+    cellMoves.push({
+      sheetId: edit.sheetId,
+      from: { row: address.row, col: address.col },
+      to: { row: address.row, col: address.col },
+      before,
+      after,
+    });
+  }
+
+  const mergeRewrites: MergeRewrite[] = [];
+  for (const merge of targetSheet.merges) {
+    let after: GridRange | null;
+    if (rangeInsideRange(merge.range, edit.source)) {
+      after = moveShiftRange(merge.range, edit);
+    } else if (gridRangesIntersect(merge.range, edit.source)) {
+      // Excel refuses to change part of a merged cell; the move would split it.
+      block ??= { code: 'merge-split', message: MERGED_EDIT_BLOCK_MESSAGE };
+      after = merge.range;
+    } else if (edit.prior === undefined && rangeInsideRange(merge.range, destination)) {
+      after = null;
+    } else if (edit.prior === undefined && gridRangesIntersect(merge.range, destination)) {
+      block ??= { code: 'merge-split', message: MERGED_EDIT_BLOCK_MESSAGE };
+      after = merge.range;
+    } else if (edit.prior !== undefined && mergeBlocksBandedEdit(merge.range, edit.prior)) {
+      block ??= { code: 'merge-split', message: MERGED_EDIT_BLOCK_MESSAGE };
+      after = transformMergeRange(merge.range, edit.prior);
+    } else {
+      after = moveTransformRange(merge.range, edit);
+    }
+    mergeRewrites.push({ sheetId: targetSheet.id, before: merge.range, after });
+  }
+
+  const nameRewrites: NameRewrite[] = [];
+  const nameLists: readonly {
+    readonly names: readonly DefinedName[];
+    readonly scope: 'workbook' | 'sheet';
+    readonly sheetId: SheetId | null;
+  }[] = [
+    { names: workbook.names, scope: 'workbook', sheetId: null },
+    ...workbook.sheets.map((sheet) => ({
+      names: sheet.names,
+      scope: 'sheet' as const,
+      sheetId: sheet.id,
+    })),
+  ];
+  for (const list of nameLists) {
+    for (const name of list.names) {
+      if (
+        block === null &&
+        formulaBlocksSheetEdit(name.formula, edit.sheetId, options, list.sheetId)
+      ) {
+        block = {
+          code: 'unsupported-formula',
+          message: `The defined name ${name.name} uses a reference construct calcplus cannot transform safely, so the move was blocked.`,
+        };
+      }
+      const after = transformFormulaReferencesForMove(name.formula, edit, options, list.sheetId);
+      if (after !== name.formula) {
+        nameRewrites.push({
+          scope: list.scope,
+          sheetId: list.sheetId,
+          name: name.name,
+          before: name.formula,
+          after,
+        });
+        if (breaksReference(name.formula, after)) {
+          brokenReferences.push({ kind: 'name', label: `the defined name ${name.name}` });
+        }
+      }
+    }
+  }
+
+  const comments = moveAttachmentRenumber(targetSheet.comments, edit, destination);
+  const hyperlinks = moveHyperlinkRenumber(targetSheet, edit, options, destination);
+  if (hyperlinks.block !== null) block ??= hyperlinks.block;
+  for (const label of hyperlinks.broken) {
+    brokenReferences.push({ kind: 'hyperlink', label });
+  }
+  const crossSheetHyperlinks: CrossSheetHyperlinkRenumber[] = [];
+  for (const sheet of workbook.sheets) {
+    if (sheet.id === targetSheet.id) continue;
+    const cross = moveCrossSheetHyperlinkRenumber(sheet, edit, options);
+    if (cross !== null) crossSheetHyperlinks.push(cross);
+  }
+
+  const validationAfter = transformRecords(targetSheet.validation, (record) =>
+    transformValidationRecordForMove(record, edit, options, targetSheet.id),
+  );
+  const conditionalFormatsAfter = transformRecords(targetSheet.conditionalFormats, (record) =>
+    transformConditionalFormatRecordForMove(record, edit, options, targetSheet.id),
+  );
+
+  if (block === null) block = planMoveTierBBlock(workbook, edit, options);
+
+  const changed =
+    cellMoves.length > 0 ||
+    formulaRewrites.length > 0 ||
+    nameRewrites.length > 0 ||
+    mergeRewrites.some((rewrite) => rewrite.after !== rewrite.before) ||
+    attachmentChanged(comments) ||
+    hyperlinks.changed ||
+    crossSheetHyperlinks.length > 0 ||
+    validationAfter.changed ||
+    conditionalFormatsAfter.changed;
+
+  return {
+    edit,
+    formulaRewrites,
+    nameRewrites,
+    mergeRewrites,
+    cellMoves,
+    comments,
+    hyperlinks: { before: hyperlinks.before, after: hyperlinks.after },
+    crossSheetHyperlinks,
+    validation: { before: targetSheet.validation, after: validationAfter.records },
+    conditionalFormats: {
+      before: targetSheet.conditionalFormats,
+      after: conditionalFormatsAfter.records,
+    },
+    brokenReferences,
+    groupedFormulaCount,
+    block,
+    changed,
+  };
+}
+
+function sheetKeys(sheet: Sheet): Iterable<string> {
+  return sheet.cells.keys();
+}
+
+interface MoveHyperlinkRenumber extends AttachmentRenumber<HyperlinkRecord> {
+  readonly changed: boolean;
+  readonly block: TransformBlock | null;
+  readonly broken: readonly string[];
+}
+
+/**
+ * Move a sheet's hyperlinks: the cell keys ride with their cells, a key on an
+ * overwritten destination cell is dropped, and each internal `location` is
+ * rewritten like a formula reference.
+ */
+function moveHyperlinkRenumber(
+  sheet: Sheet,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  destination: GridRange,
+): MoveHyperlinkRenumber {
+  const before: (readonly [string, HyperlinkRecord])[] = [];
+  const after: (readonly [string, HyperlinkRecord])[] = [];
+  const broken: string[] = [];
+  let changed = false;
+  let block: TransformBlock | null = null;
+  for (const [key, record] of sheet.hyperlinks) {
+    before.push([key, record]);
+    const address = parseCellKey(key);
+    const overwritten =
+      edit.prior === undefined &&
+      !moveCarries(address.row, address.col, edit) &&
+      rangeInsideRange(
+        { startRow: address.row, endRow: address.row, startCol: address.col, endCol: address.col },
+        destination,
+      );
+    if (overwritten) {
+      changed = true;
+      continue;
+    }
+    const next = moveTransformAddress(address.row, address.col, edit);
+    let value = record;
+    if (record.location !== undefined) {
+      const outcome = transformHyperlinkLocationForMove(record.location, edit, options, sheet.id);
+      if (!outcome.ok) block ??= outcome.block;
+      else if (outcome.changed) {
+        value = { ...record, location: outcome.location };
+        changed = true;
+        if (breaksReference(record.location, outcome.location)) {
+          broken.push(`a hyperlink on ${sheet.name}`);
+        }
+      }
+    }
+    if (next.row !== address.row || next.col !== address.col) changed = true;
+    after.push([cellKey(next.row, next.col), value]);
+  }
+  return { before, after, changed, block, broken };
+}
+
+function moveCrossSheetHyperlinkRenumber(
+  sheet: Sheet,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+): CrossSheetHyperlinkRenumber | null {
+  const before: (readonly [string, HyperlinkRecord])[] = [];
+  const after: (readonly [string, HyperlinkRecord])[] = [];
+  let changed = false;
+  for (const [key, record] of sheet.hyperlinks) {
+    before.push([key, record]);
+    let value = record;
+    if (record.location !== undefined) {
+      const outcome = transformHyperlinkLocationForMove(record.location, edit, options, sheet.id);
+      if (outcome.ok && outcome.changed) {
+        value = { ...record, location: outcome.location };
+        changed = true;
+      }
+    }
+    after.push([key, value]);
+  }
+  if (!changed) return null;
+  return { sheetId: sheet.id, before, after, changed: true };
+}
+
+/** Move a sheet's comment keys with their cells; overwritten keys are dropped. */
+function moveAttachmentRenumber<T>(
+  map: ReadonlyMap<string, T>,
+  edit: MoveRangeEdit,
+  destination: GridRange,
+): AttachmentRenumber<T> {
+  const before: (readonly [string, T])[] = [];
+  const after: (readonly [string, T])[] = [];
+  for (const [key, value] of map) {
+    before.push([key, value]);
+    const address = parseCellKey(key);
+    const overwritten =
+      edit.prior === undefined &&
+      !moveCarries(address.row, address.col, edit) &&
+      rangeInsideRange(
+        { startRow: address.row, endRow: address.row, startCol: address.col, endCol: address.col },
+        destination,
+      );
+    if (overwritten) continue;
+    const next = moveTransformAddress(address.row, address.col, edit);
+    after.push([cellKey(next.row, next.col), value]);
+  }
+  return { before, after };
 }

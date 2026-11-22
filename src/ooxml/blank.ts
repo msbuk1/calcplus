@@ -14,11 +14,21 @@ const XML_TYPE = 'application/xml';
  * construction path to drift.
  */
 export function createBlankWorkbookBytes(): Uint8Array {
+  return createWorkbookBytesFromSheetData('Sheet1', '<sheetData/>');
+}
+
+/**
+ * The same template with one sheet whose name and `sheetData` are supplied
+ * (the CSV open path fills them in; ticket 49). Everything else stays the
+ * blank workbook's, so a generated workbook still opens through the one
+ * `openWorkbook` path.
+ */
+export function createWorkbookBytesFromSheetData(sheetName: string, sheetData: string): Uint8Array {
   const workbook = `${XML_DECLARATION_UTF8}
 <workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
   <workbookPr date1904="0"/>
   <bookViews><workbookView activeTab="0"/></bookViews>
-  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="${escapeXmlAttributeValue(sheetName)}" sheetId="1" r:id="rId1"/></sheets>
   <calcPr calcId="191029" fullCalcOnLoad="0"/>
 </workbook>`;
   const sheet = `${XML_DECLARATION_UTF8}
@@ -26,7 +36,7 @@ export function createBlankWorkbookBytes(): Uint8Array {
   <dimension ref="A1"/>
   <sheetViews><sheetView tabSelected="1" workbookViewId="0"/></sheetViews>
   <sheetFormatPr defaultRowHeight="15"/>
-  <sheetData/>
+  ${sheetData}
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
 </worksheet>`;
   const styles = `${XML_DECLARATION_UTF8}
@@ -76,4 +86,12 @@ export function openBlankWorkbook(): OpenedWorkbook {
 
 function encode(xml: string): Uint8Array {
   return new TextEncoder().encode(xml);
+}
+
+function escapeXmlAttributeValue(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }

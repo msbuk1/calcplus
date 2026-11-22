@@ -1,7 +1,7 @@
 import type { ClipboardSnapshot } from '@model/clipboard';
 import type { FillBlockCode, FillStopReason } from '@model/fill';
 import type { FindMatch } from '@model/find';
-import type { StructuralEdit } from '@model/range-transform';
+import type { MoveRangeEdit, StructuralEdit } from '@model/range-transform';
 import type { StructuralPartPatch } from '@ooxml/structure-patch';
 import type { SortBlockCode, SortStopReason, SortWarning } from '@model/sort';
 import type {
@@ -121,12 +121,13 @@ export interface SortPayload {
  * What a `structure.*` command reports back to its surface (feature matrix
  * "Insert/delete rows, columns and cells"). A blocked edit creates no
  * transaction; an applied edit is one transaction whose shape is
- * `StructureApplyChange`.
+ * `StructureApplyChange`. The move gestures (feature matrix §1) report through
+ * the same payload with a `MoveRangeEdit`.
  */
 export interface StructurePayload {
   readonly state: 'applied' | 'blocked' | 'none';
   readonly sheetId: SheetId;
-  readonly edit: StructuralEdit | null;
+  readonly edit: StructuralEdit | MoveRangeEdit | null;
   readonly message?: string;
   /** Cells moved, removed or with a rewritten formula. */
   readonly cellCount: number;
@@ -440,7 +441,8 @@ export interface StructureApplyChange {
   readonly type: 'structure.apply';
   readonly sheetId: SheetId;
   readonly partPath: string;
-  readonly edit: StructuralEdit;
+  /** The structural edit, or the move edit for the drag gestures (ticket 49). */
+  readonly edit: StructuralEdit | MoveRangeEdit;
   /**
    * Byte rewrites for the opaque parts the edit anchors (chart series, drawing
    * anchors, comment refs, pivot locations). Stored in the same transaction so

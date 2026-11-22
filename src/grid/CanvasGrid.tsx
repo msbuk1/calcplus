@@ -55,6 +55,7 @@ import {
   activeCell,
   collapseSelection,
   extendSelection,
+  isSingleCell,
   selectionContains,
   selectionForRange,
   selectionRange,
@@ -132,6 +133,19 @@ export interface CanvasGridProps {
    */
   readonly onFill?: (source: GridRange, destination: GridRange) => void;
   /**
+   * A drag-and-drop move (ticket 49). A press inside the selection and a drag
+   * show a destination outline that follows the pointer; the release drops the
+   * selection at the outline's top-left. The grid owns the gesture and the
+   * outline; the application dispatches one `edit.dragMove` command.
+   */
+  readonly onMoveRange?: (source: GridRange, to: GridCellAddress) => void;
+  /**
+   * A Shift-drag insert (ticket 49). Shift-dragging from the selection's edge
+   * shows the gap the drop opens and whether its cells shift down or right;
+   * the application dispatches one `edit.dragInsert` command.
+   */
+  readonly onMoveInsert?: (source: GridRange, to: GridCellAddress, shift: 'down' | 'right') => void;
+  /**
    * Ctrl+click on a cell that carries a hyperlink (file-compat §9 F13). The
    * grid owns the gesture only: the application decides whether an external
    * address may be opened, navigates an internal location and reports the
@@ -195,6 +209,8 @@ export function CanvasGrid({
   painterActive,
   onPainterApply,
   onFill,
+  onMoveRange,
+  onMoveInsert,
   onFollowHyperlink,
   onFilterHeader,
   marquee,
@@ -238,6 +254,20 @@ export function CanvasGrid({
     readonly source: GridRange;
     focus: GridCellAddress;
   } | null>(null);
+  /**
+   * One drag-and-drop move or Shift-drag insert gesture (ticket 49). The
+   * destination follows the pointer once the press has moved; a release
+   * without movement is a plain click.
+   */
+  const rangeDragRef = useRef<{
+    readonly pointerId: number;
+    readonly mode: 'move' | 'insert';
+    readonly source: GridRange;
+    readonly origin: GridCellAddress;
+    focus: GridCellAddress;
+    moved: boolean;
+    shift: 'down' | 'right';
+  } | null>(null);
   const fillCleanupRef = useRef<(() => void) | null>(null);
   /** Time of the last fill-handle press, for Excel's double-click fill. */
   const fillPressRef = useRef(0);
@@ -270,12 +300,24 @@ export function CanvasGrid({
   });
   /** The live destination outline while the fill handle is dragged. */
   const [fillPreview, setFillPreview] = useState<GridRange | null>(null);
+  /**
+   * The live outline of a drag-and-drop move or Shift-drag insert (ticket 49):
+   * the rectangle the moved cells will cover, or the gap the drop opens. It is
+   * view state and never enters the model or the undo log.
+   */
+  const [rangeDragPreview, setRangeDragPreview] = useState<{
+    readonly range: GridRange;
+    readonly insert: boolean;
+  } | null>(null);
   /** The copy marquee's overlay, kept over its range while the sheet scrolls. */
   const marqueeRef = useRef<HTMLDivElement | null>(null);
   const marqueeRangeRef = useRef<GridRange | null>(null);
   /** The fill outline's overlay, kept over its destination while the sheet scrolls. */
   const fillPreviewRef = useRef<HTMLDivElement | null>(null);
   const fillPreviewRangeRef = useRef<GridRange | null>(null);
+  /** The move/insert outline's overlay, kept over its target while the sheet scrolls. */
+  const rangeDragPreviewRef = useRef<HTMLDivElement | null>(null);
+  const rangeDragPreviewRangeRef = useRef<GridRange | null>(null);
   /**
    * The visible filter-header columns. The canvas paints the arrow and funnel;
    * transparent DOM buttons over the same rectangles carry the accessible name
@@ -422,6 +464,13 @@ export function CanvasGrid({
       layout,
       scroll,
       fillPreviewRangeRef.current,
+    );
+    positionRangeOverlay(
+      rangeDragPreviewRef.current,
+      current.projection,
+      layout,
+      scroll,
+      rangeDragPreviewRangeRef.current,
     );
     // The hover overlays are DOM elements too: the paint places them so they
     // keep tracking the cell while the sheet scrolls.
@@ -584,6 +633,7 @@ export function CanvasGrid({
   const marqueeEndCol = marqueeRange?.endCol ?? null;
   marqueeRangeRef.current = marqueeRange;
   fillPreviewRangeRef.current = fillPreview;
+  rangeDragPreviewRangeRef.current = rangeDragPreview?.range ?? null;
   useEffect(() => {
     if (marqueeEndRow === null || marqueeEndCol === null) return;
     const layout = computePaneLayout(projection, viewport.width, viewport.height);
@@ -1142,6 +1192,134 @@ export function CanvasGrid({
     window.addEventListener('blur', onWindowBlur);
   };
 
+  /**
+   * A press inside the selection starts one drag-and-drop move, and a
+   * Shift-press on the selection's edge one Shift-drag insert (ticket 49).
+   * The destination outline follows the pointer once the press has moved past
+   * the click threshold, with the same edge auto-scroll the other drags use,
+   * and the release submits one command for the whole gesture. A press and
+   * release without movement is a plain click and keeps the press behaviour it
+   * always had. Esc — or a pointer cancel — abandons the gesture.
+   */
+  const beginRangeDrag = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    mode: 'move' | 'insert',
+    source: GridRange,
+    pressed: GridCellAddress,
+    clickFallback: () => void,
+  ): void => {
+    if (event.button !== 0) return;
+    const projection = stateRef.current.projection;
+    const drag = {
+      pointerId: event.pointerId,
+      mode,
+      source,
+      origin: pressed,
+      focus: pressed,
+      moved: false,
+      shift: 'down' as 'down' | 'right',
+    };
+    rangeDragRef.current = drag;
+
+    /** The clamped destination the drop would use, or `null` with no target. */
+    const destinationFor = (focus: GridCellAddress): GridRange | null => {
+      const height = source.endRow - source.startRow + 1;
+      const width = source.endCol - source.startCol + 1;
+      const row = Math.min(
+        Math.max(0, source.startRow + (focus.row - drag.origin.row)),
+        projection.rowCount - height,
+      );
+      const col = Math.min(
+        Math.max(0, source.startCol + (focus.col - drag.origin.col)),
+        projection.columnCount - width,
+      );
+      return { startRow: row, startCol: col, endRow: row + height - 1, endCol: col + width - 1 };
+    };
+
+    const applyFocus = (clientX: number, clientY: number): void => {
+      const address = dragCellAtClientPoint(clientX, clientY);
+      if (address === null) return;
+      const focus = mergeAnchor(stateRef.current.projection, address);
+      if (
+        !drag.moved &&
+        Math.abs(clientX - event.clientX) < MOVE_DRAG_THRESHOLD_PIXELS &&
+        Math.abs(clientY - event.clientY) < MOVE_DRAG_THRESHOLD_PIXELS
+      ) {
+        return;
+      }
+      if (drag.moved && focus.row === drag.focus.row && focus.col === drag.focus.col) {
+        return;
+      }
+      drag.focus = focus;
+      drag.moved = true;
+      const destination = destinationFor(focus);
+      if (destination === null) return;
+      if (mode === 'insert') {
+        const shift = insertShiftFor(source, destination);
+        if (shift === null) {
+          setRangeDragPreview(null);
+          return;
+        }
+        drag.shift = shift;
+      }
+      setRangeDragPreview({ range: destination, insert: mode === 'insert' });
+    };
+
+    const autoScroll = beginDragAutoScroll(event.clientX, event.clientY, applyFocus);
+
+    const move = (moveEvent: PointerEvent): void => {
+      if (moveEvent.pointerId !== drag.pointerId) return;
+      autoScroll.move(moveEvent.clientX, moveEvent.clientY);
+    };
+    const end = (upEvent: PointerEvent): void => {
+      if (upEvent.pointerId !== drag.pointerId) return;
+      const wasMoved = drag.moved;
+      const focus = drag.focus;
+      abandon();
+      if (!wasMoved) {
+        // A press and release without movement is a click: the press keeps the
+        // selection behaviour it had before the gesture existed (ticket 49).
+        clickFallback();
+        return;
+      }
+      const destination = destinationFor(focus);
+      if (destination === null) return;
+      const to = { row: destination.startRow, col: destination.startCol };
+      if (mode === 'insert') onMoveInsert?.(source, to, drag.shift);
+      else onMoveRange?.(source, to);
+    };
+    const cancel = (cancelEvent: PointerEvent): void => {
+      if (cancelEvent.pointerId !== drag.pointerId) return;
+      abandon();
+    };
+    const onKeyDown = (keyEvent: KeyboardEvent): void => {
+      if (keyEvent.key !== 'Escape') return;
+      keyEvent.preventDefault();
+      abandon();
+    };
+    function abandon(): void {
+      stopTracking();
+      rangeDragRef.current = null;
+      setRangeDragPreview(null);
+    }
+    function onWindowBlur(): void {
+      abandon();
+    }
+    function stopTracking(): void {
+      autoScroll.stop();
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('blur', onWindowBlur);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('blur', onWindowBlur);
+  };
+
   /** Extend the ordinary selection from the press cell as the pointer moves. */
   const beginSelectionDrag = (
     event: ReactPointerEvent<HTMLCanvasElement>,
@@ -1471,6 +1649,7 @@ export function CanvasGrid({
     const dragging =
       selectionDragRef.current !== null ||
       fillDragRef.current !== null ||
+      rangeDragRef.current !== null ||
       formulaDragRef.current !== null ||
       painterDragRef.current !== null;
     const overLink = dragging ? false : hoverAtClientPoint(event.clientX, event.clientY);
@@ -1785,8 +1964,31 @@ export function CanvasGrid({
     endCopyMode();
     if (event.shiftKey) {
       const base = stateRef.current.selection;
+      // A Shift-drag from the selection's edge opens an insert gap (ticket 49);
+      // the release without movement still extends the selection.
+      if (
+        onMoveInsert !== undefined &&
+        !isSingleCell(base) &&
+        onSelectionEdge(selectionRange(base), target)
+      ) {
+        beginRangeDrag(event, 'insert', selectionRange(base), address, () => {
+          onSelectionChange(extendSelection(base, target));
+        });
+        return;
+      }
       onSelectionChange(extendSelection(base, target));
       beginSelectionDrag(event, base.anchor, target);
+      return;
+    }
+    // A press inside a selected range and a drag moves the range (ticket 49).
+    if (
+      onMoveRange !== undefined &&
+      !isSingleCell(stateRef.current.selection) &&
+      selectionContains(stateRef.current.selection, target.row, target.col)
+    ) {
+      beginRangeDrag(event, 'move', selectionRange(stateRef.current.selection), address, () => {
+        onSelectionChange(selectionForCell(current, address));
+      });
       return;
     }
     onSelectionChange(selectionForCell(current, address));
@@ -2219,6 +2421,27 @@ export function CanvasGrid({
           paneClipRect(projection, layout, fillPreview, fillPreviewRect),
         );
 
+  // The drag-and-drop move and Shift-drag insert outline (ticket 49), kept
+  // over its target while the sheet scrolls exactly like the fill outline.
+  const rangeDragPreviewRange = rangeDragPreview?.range ?? null;
+  const rangeDragPreviewRect =
+    rangeDragPreviewRange === null
+      ? null
+      : rangeOverlayRect(
+          projection,
+          layout,
+          scrollRef.current.x,
+          scrollRef.current.y,
+          rangeDragPreviewRange,
+        );
+  const rangeDragPreviewClipPath =
+    rangeDragPreviewRect === null || rangeDragPreviewRange === null
+      ? null
+      : paneClipPath(
+          rangeDragPreviewRect,
+          paneClipRect(projection, layout, rangeDragPreviewRange, rangeDragPreviewRect),
+        );
+
   // The copy marquee is the paste destination; like the fill preview it is
   // view state and never enters the model or the undo log (ticket 31 B). Its
   // border is clipped to the pane the range belongs to (ticket 46).
@@ -2389,6 +2612,26 @@ export function CanvasGrid({
           }}
         />
       ) : null}
+      {rangeDragPreviewRect !== null && rangeDragPreview !== null ? (
+        <div
+          ref={rangeDragPreviewRef}
+          data-testid={rangeDragPreview.insert ? 'insert-preview' : 'move-preview'}
+          style={{
+            position: 'absolute',
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+            border: rangeDragPreview.insert
+              ? '2px dashed var(--accent)'
+              : '1px dashed var(--accent)',
+            background: 'rgba(26, 115, 232, 0.08)',
+            left: `${rangeDragPreviewRect.x}px`,
+            top: `${rangeDragPreviewRect.y}px`,
+            width: `${rangeDragPreviewRect.width}px`,
+            height: `${rangeDragPreviewRect.height}px`,
+            clipPath: rangeDragPreviewClipPath ?? undefined,
+          }}
+        />
+      ) : null}
       {marqueeRect !== null ? (
         <div
           ref={marqueeRef}
@@ -2491,6 +2734,38 @@ export function CanvasGrid({
 
 /** Movement below this is a click, so a header double-click can autofit. */
 const RESIZE_DRAG_THRESHOLD_PIXELS = 3;
+
+/** Movement below this is a click, so a press inside the selection can still click. */
+const MOVE_DRAG_THRESHOLD_PIXELS = 3;
+
+/**
+ * `true` when the pressed cell sits on the selection's outer ring, where Excel
+ * offers the Shift-drag insert (ticket 49).
+ */
+function onSelectionEdge(range: GridRange, cell: GridCellAddress): boolean {
+  return (
+    cell.row === range.startRow ||
+    cell.row === range.endRow ||
+    cell.col === range.startCol ||
+    cell.col === range.endCol
+  );
+}
+
+/**
+ * Which way a Shift-drag insert shifts the cells at its gap (ticket 49: down
+ * or right). A drop whose rectangle still covers the dragged range has no gap
+ * at all and no insertion happens.
+ */
+function insertShiftFor(source: GridRange, destination: GridRange): 'down' | 'right' | null {
+  const rowOutside = destination.endRow < source.startRow || destination.startRow > source.endRow;
+  const colOutside = destination.endCol < source.startCol || destination.startCol > source.endCol;
+  if (!rowOutside && !colOutside) return null;
+  if (rowOutside && !colOutside) return 'down';
+  if (colOutside && !rowOutside) return 'right';
+  const rowDelta = Math.abs(destination.startRow - source.startRow);
+  const colDelta = Math.abs(destination.startCol - source.startCol);
+  return rowDelta >= colDelta ? 'down' : 'right';
+}
 
 /**
  * Edge auto-scroll speed in CSS pixels per second. A drag at the edge starts at

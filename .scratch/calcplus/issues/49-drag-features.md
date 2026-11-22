@@ -65,3 +65,78 @@ Split from ticket 36 item 4 on 2026-11-22, per that ticket's placement
 rule ("item 4 is feature work and should be split out before it starts").
 This is v1 scope: the M8 release gate requires every feature-matrix IN
 item to be present and meet its acceptance criterion.
+
+## Progress note — 2026-11-22
+
+All three features are implemented and tested. The work is in the working
+tree, uncommitted.
+
+**What was built**
+
+- `edit.dragMove` and `edit.dragInsert` (`src/commands/move.ts`): each drop is
+  one `structure.apply` transaction carrying the moved cells, the rewritten
+  formulas and the moved merges, comments and hyperlinks, plus one `name.set`
+  per rewritten defined name. Undo restores everything in one step.
+- The move's reference rules live in the range-transform module
+  (`src/model/range-transform.ts`, `planMoveTransform` and friends), next to
+  the structural-edit transform it reuses: the same formula scanner, the same
+  name and hyperlink handling, the same record shapes and the same block
+  messages. Shift-drag insert composes a banded Insert Cells & Shift edit into
+  the move (`MoveRangeEdit.prior`), so references to shifted cells follow the
+  shift and references to carried cells follow the carry.
+- `file.openDropped` (`src/commands/chrome.ts`, the App drop handler): a drop
+  runs the File → Open path (`loadPickedFile`), prompts and all. `.csv` opens
+  as a one-sheet workbook through the same `openWorkbook` path
+  (`src/ooxml/csv-open.ts`); `.xlsx` and `.xlsm` open as before. Any other
+  extension shows the refusal message and opens nothing.
+- The gestures live in `src/grid/CanvasGrid.tsx`: a press inside a multi-cell
+  selection and a drag shows a destination outline that follows the pointer
+  (with edge auto-scroll) and drops on release; Esc or a pointer cancel
+  abandons the gesture; a press and release without movement keeps the click
+  behaviour that existed before. Shift-drag from the selection's outer ring
+  shows the gap and the shift direction instead.
+
+**Reference rules (recorded because the contracts do not spell them out)**
+
+- Every reference keeps pointing at the same content. A reference whose whole
+  area lies inside the carried rectangle is rewritten to the cells' new
+  address; a reference that only partly covers the rectangle keeps its
+  authored text, which is what Excel keeps there too (the "sometimes NOT
+  update" behaviour people report when dragging columns).
+- A moved formula keeps its text when its targets did not move (Microsoft's
+  "when you move a formula the references stay the same") and follows its
+  targets when they moved with it. Both rules are one rule: the text changes
+  exactly when the referenced cells moved.
+- Transform or block: a merge the move would split is blocked with Excel's
+  "Cannot change part of a merged cell."; a shared or array formula that would
+  move or change is blocked; a formula or name with a construct the transform
+  cannot rewrite safely blocks when it can reference the moved sheet. A move
+  that would strand a chart series, pivot source or pivot output blocks with
+  an explanation instead of leaving it stale (v1 does not rewrite Tier B parts
+  for moves; insert and delete still do). Comments, threaded comments and
+  legacy note anchors follow their cells.
+- Overwritten destination cells are replaced; references to them keep their
+  text, as any cell edit leaves them. A merge wholly inside the overwritten
+  rectangle is dropped (the cells are gone); one that only partly overlaps it
+  blocks.
+- CSV is a value channel (file-compat §11): fields come in as numbers or text,
+  never as formulas. The sheet takes the file's stem.
+
+**Checks run (all on this PC)**
+
+- `npm.cmd run test`: 98 files, 1506 passed (14 new in
+  `tests/ticket49-drag-commands.test.ts`, covering both commands: moves,
+  reference rewriting, name rewrites, the blocks, comment and hyperlink moves,
+  one-step undo and the no-op drops).
+- `npm.cmd run typecheck`, `npm.cmd run check`, `npm.cmd run build`: green.
+- Playwright: `tests/e2e/drag-move.spec.ts` (9 tests: both gestures, the
+  outline, Esc, the source drop, one-step undo, the three drop kinds and the
+  unsaved-changes prompt) plus grid, grid-interaction, selection-autoscroll,
+  fill-handle, feature-gaps, freeze-scroll, format-dialog, copy-marquee,
+  hyperlink-comments and smoke — all green.
+- `npm.cmd run inventory` is green and `docs/command-inventory.md` is
+  regenerated; the three entries read "Implemented".
+- ESLint and `prettier --check` pass on every changed file. The repo-wide
+  `npm run format:check` fails on 180 files on this PC, including files this
+  work never touched: the working tree has CRLF endings and prettier's default
+  expects LF. That predates this work and is left alone.

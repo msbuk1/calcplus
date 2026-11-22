@@ -2,14 +2,22 @@ import type { GridRange, HyperlinkRecord, OpaquePart, SheetId, Workbook } from '
 import { formatCellRef } from '@model/types';
 import {
   planOpaquePartTransforms,
+  planMoveOpaqueTransforms,
+  moveDestinationRange,
+  moveTransformAddress,
   transformCellAddress,
   transformHyperlinkLocation,
+  transformHyperlinkLocationForMove,
   transformMergeRange,
   transformRange,
   transformRangeBearingXml,
+  transformRangeBearingXmlForMove,
   type CrossSheetHyperlinkRenumber,
+  type MoveRangeEdit,
+  type MoveRangePlan,
   type OpaquePartKind,
   type OpaquePartRewrite,
+  type RangeTransformOptions,
   type RangeTransformPlan,
   type StructuralEdit,
   type TransformBlock,
@@ -252,6 +260,169 @@ export function planCrossSheetHyperlinkPatches(
 
 function hyperlinkChange(entry: CrossSheetHyperlinkRenumber): StructuralHyperlinkChange {
   return { sheetId: entry.sheetId, before: entry.before, after: entry.after };
+}
+
+/**
+ * Plan every byte rewrite one move needs outside the dirty-cell patching
+ * (ticket 49). The moved cells themselves ride the transaction's cell records
+ * and the save's normal cell patch; what cannot ride there is rewritten here:
+ * the worksheet's hyperlink anchors and locations, the `sqref` and rule-formula
+ * text of conditional formats, data validations and ignored errors, and the
+ * comment, threaded-comment and legacy-note anchors in their own parts. Undo
+ * writes `before` back without recomputing anything.
+ */
+export function planMovePartPatches(
+  workbook: Workbook,
+  edit: MoveRangeEdit,
+  plan: MoveRangePlan,
+): StructuralPartPlan {
+  const sheet = workbook.sheets.find((candidate) => candidate.id === edit.sheetId);
+  if (sheet === undefined) return { patches: [], block: null };
+  const patches: StructuralPartPatch[] = [];
+  const options = { workbook };
+
+  const sourceBefore = workbook.sourceParts.get(sheet.partPath);
+  if (sourceBefore !== undefined) {
+    const parsed = parseWorksheetForMove(sourceBefore, sheet.partPath, sheet.name);
+    const xml = parsed.xml;
+    let next = transformRangeBearingXmlForMove(xml, edit, options, sheet.id);
+    next = relocateHyperlinkElements(next, parsed, edit, options, sheet.id);
+    if (next !== xml) {
+      patches.push({
+        path: sheet.partPath,
+        kind: 'worksheet',
+        before: sourceBefore,
+        after: new TextEncoder().encode(next),
+      });
+    }
+  }
+
+  for (const entry of plan.crossSheetHyperlinks) {
+    const owner = workbook.sheets.find((candidate) => candidate.id === entry.sheetId);
+    if (owner === undefined) continue;
+    const before = workbook.sourceParts.get(owner.partPath);
+    if (before === undefined) continue;
+    const parsed = parseWorksheetForMove(before, owner.partPath, owner.name);
+    const next = relocateHyperlinkElements(parsed.xml, parsed, edit, options, owner.id);
+    if (next === parsed.xml) continue;
+    patches.push({
+      path: owner.partPath,
+      kind: 'worksheet',
+      before,
+      after: new TextEncoder().encode(next),
+      hyperlinks: hyperlinkChange(entry),
+    });
+  }
+
+  const opaque = planMoveOpaqueTransforms(workbook, edit);
+  patches.push(...opaque.rewrites.map(partPatch));
+  return { patches, block: opaque.block };
+}
+
+function parseWorksheetForMove(
+  bytes: Uint8Array,
+  partName: string,
+  sheetName: string,
+): ParsedWorksheet {
+  try {
+    return parseWorksheetXml(bytes, {
+      sharedStrings: null,
+      partPath: partName,
+      name: sheetName,
+    });
+  } catch (error) {
+    throw new WorkbookSaveError(
+      'unsafe-part',
+      `The worksheet ${partName} could not be read for a move: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+/** The whole `<hyperlinks>` container with every anchor and location moved. */
+function relocateHyperlinkElements(
+  xml: string,
+  parsed: ParsedWorksheet,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId,
+): string {
+  const container = parsed.rootChildren.find((child) => child.local === 'hyperlinks');
+  if (container === undefined) return xml;
+  const slice = xml.slice(container.start, container.end);
+  const patched = patchElements(slice, scanElements(slice, 'hyperlink'), (text) =>
+    relocateHyperlinkElementText(text, edit, options, hostSheetId),
+  );
+  if (patched === slice) return xml;
+  return `${xml.slice(0, container.start)}${patched}${xml.slice(container.end)}`;
+}
+
+function relocateHyperlinkElementText(
+  text: string,
+  edit: MoveRangeEdit,
+  options: RangeTransformOptions,
+  hostSheetId: SheetId,
+): string {
+  let next = text;
+  const ref = /(\bref\s*=\s*)(["'])([^"']*)\2/.exec(next);
+  if (ref !== null) {
+    const range = parseRangeText(ref[3] ?? '');
+    if (range !== null && range.startRow === range.endRow && range.startCol === range.endCol) {
+      const destination = moveDestinationRange(edit);
+      const overwritten =
+        edit.prior === undefined &&
+        !moveCarries(range.startRow, range.startCol, edit) &&
+        rangeInsideRange(
+          {
+            startRow: range.startRow,
+            endRow: range.startRow,
+            startCol: range.startCol,
+            endCol: range.startCol,
+          },
+          destination,
+        );
+      if (overwritten) return '';
+      const address = moveTransformAddress(range.startRow, range.startCol, edit);
+      if (address.row !== range.startRow || address.col !== range.startCol) {
+        next = replaceAttribute(
+          next,
+          ref,
+          escapeXmlAttributeValue(formatCellRef(address.row, address.col)),
+        );
+      }
+    }
+  }
+  const location = /(\blocation\s*=\s*)(["'])([^"']*)\2/.exec(next);
+  if (location !== null) {
+    const outcome = transformHyperlinkLocationForMove(
+      decodeXmlAttributeValue(location[3] ?? ''),
+      edit,
+      options,
+      hostSheetId,
+    );
+    if (outcome.ok && outcome.changed) next = replaceAttribute(next, location, outcome.location);
+  }
+  return next;
+}
+
+/** `true` when a cell rides along with the moved rectangle (the model's rule). */
+function moveCarries(row: number, col: number, edit: MoveRangeEdit): boolean {
+  return (
+    row >= edit.source.startRow &&
+    row <= edit.source.endRow &&
+    col >= edit.source.startCol &&
+    col <= edit.source.endCol
+  );
+}
+
+function rangeInsideRange(inner: GridRange, outer: GridRange): boolean {
+  return (
+    inner.startRow >= outer.startRow &&
+    inner.endRow <= outer.endRow &&
+    inner.startCol >= outer.startCol &&
+    inner.endCol <= outer.endCol
+  );
 }
 
 /**

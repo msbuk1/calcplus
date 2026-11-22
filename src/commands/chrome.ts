@@ -262,6 +262,44 @@ const formulaAutocompleteCommand: CommandDefinition<void> = {
 };
 
 /**
+ * File drop (feature matrix §7; ticket 49). The drop handler reads the file
+ * and dispatches this ID through the command host, exactly as File → Open
+ * dispatches `file.open`; the shell owns the prompts and the open path. The
+ * supported extensions and the refusal message live here so the rule has one
+ * source.
+ */
+const fileOpenDroppedCommand: CommandDefinition<void> = {
+  id: 'file.openDropped',
+  label: 'Open dropped file',
+  category: 'file',
+  keybindings: [],
+  isEnabled(context) {
+    return context.busy !== true;
+  },
+  run() {
+    return { changes: [] };
+  },
+};
+
+/** The v1 dropped-file types: `.xlsx`, `.xlsm` and `.csv` (ticket 49). */
+const DROPPED_FILE_EXTENSIONS = ['.xlsx', '.xlsm', '.csv'] as const;
+
+export const UNSUPPORTED_DROP_MESSAGE =
+  'calcplus opens dropped files that are Excel workbooks (`.xlsx`, `.xlsm`) or CSV (`.csv`). Nothing was opened.';
+
+/**
+ * The refusal message for a dropped file calcplus cannot open, or `null` when
+ * the file is supported. An extension-less or oddly named file is refused too:
+ * v1 does not sniff contents.
+ */
+export function droppedFileProblem(name: string): string | null {
+  const lower = name.toLowerCase();
+  return DROPPED_FILE_EXTENSIONS.some((extension) => lower.endsWith(extension))
+    ? null
+    : UNSUPPORTED_DROP_MESSAGE;
+}
+
+/**
  * The result File → Export PDF reports to the status bar.
  *
  * `fallbackPages` names the pages that were rasterised at 300 DPI because
@@ -334,6 +372,7 @@ export function chromeCommands(): readonly CommandDefinition<never>[] {
     fileExportReportCommand,
     fileRecentCommand,
     fileRecoverCommand,
+    fileOpenDroppedCommand,
     formulaAutocompleteCommand,
     helpAboutCommand,
   ] as unknown as readonly CommandDefinition<never>[];

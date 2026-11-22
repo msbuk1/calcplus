@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import type { ContextMenuRegion, RibbonTabId } from '@commands/inventory';
-import { exportPdfPlan } from '@commands/chrome';
+import { droppedFileProblem, exportPdfPlan } from '@commands/chrome';
 import {
   EMPTY_PRINT_SETUP,
   buildPageSetup,
@@ -45,6 +45,7 @@ import type { CellValue } from '@model/value';
 import { openBlankWorkbook } from '@ooxml/blank';
 import type { CompatibilityInfo } from '@ooxml/open';
 import { openWorkbook } from '@ooxml/open';
+import { openCsvWorkbook } from '@ooxml/csv-open';
 import type { WorkbookPackage } from '@ooxml/types';
 import { WorkbookSaveError } from '@ooxml/errors';
 import { applyRangeTransformPrototype } from '@ooxml/range-transform';
@@ -153,6 +154,7 @@ import {
   stampChanged,
   type FileHandleLike,
   type FileStamp,
+  type PickedFile,
 } from '@io/file-system';
 import {
   RECOVERY_DEBOUNCE_MS,
@@ -735,15 +737,7 @@ export function App(): JSX.Element {
     calculation.start();
   };
 
-  const loadPickedFile = (
-    picked: {
-      name: string;
-      bytes: Uint8Array;
-      handle: FileHandleLike | null;
-      stamp: FileStamp | null;
-    },
-    replaceConfirmed = false,
-  ): boolean => {
+  const loadPickedFile = (picked: PickedFile, replaceConfirmed = false): boolean => {
     if (
       !replaceConfirmed &&
       !confirmReplaceDocument(
@@ -754,7 +748,12 @@ export function App(): JSX.Element {
       return false;
     }
     try {
-      loadOpened(openWorkbook(picked.bytes, picked.name), picked.name, picked.handle, picked.stamp);
+      // A dropped or picked `.csv` opens as a one-sheet workbook through the
+      // same open path as any other file (ticket 49).
+      const opened = picked.name.toLowerCase().endsWith('.csv')
+        ? openCsvWorkbook(picked.bytes, picked.name)
+        : openWorkbook(picked.bytes, picked.name);
+      loadOpened(opened, picked.name, picked.handle, picked.stamp);
       rememberRecent(picked);
       return true;
     } catch (error) {
@@ -2029,6 +2028,43 @@ export function App(): JSX.Element {
   };
 
   /**
+   * A completed drag-and-drop move is one `edit.dragMove` command, so the
+   * whole gesture is one undo transaction (ticket 49). The grid owns the
+   * destination outline; the command owns the move and the reference
+   * rewriting.
+   */
+  const handleMoveRange = (source: GridRange, to: GridCellAddress): void => {
+    const result = dispatchSheetCommand('edit.dragMove', { source, to });
+    if (result === null) return;
+    if (result.ui?.message !== undefined) {
+      setStatus(result.ui.message);
+    } else if (result.changes.length === 0) {
+      setStatus('The move made no change.');
+    } else {
+      setStatus(`Moved ${formatRangeAddress(source, false, false)}.`);
+    }
+    if (result.ui?.type !== 'dialog') focusGrid();
+  };
+
+  /** A completed Shift-drag insert is one `edit.dragInsert` command (ticket 49). */
+  const handleMoveInsert = (
+    source: GridRange,
+    to: GridCellAddress,
+    shift: 'down' | 'right',
+  ): void => {
+    const result = dispatchSheetCommand('edit.dragInsert', { source, to, shift });
+    if (result === null) return;
+    if (result.ui?.message !== undefined) {
+      setStatus(result.ui.message);
+    } else if (result.changes.length === 0) {
+      setStatus('The insert made no change.');
+    } else {
+      setStatus(`Inserted ${formatRangeAddress(source, false, false)}.`);
+    }
+    if (result.ui?.type !== 'dialog') focusGrid();
+  };
+
+  /**
    * Submit one find/replace command through the session. The dialog owns the
    * form and the view list; the command owns matching and the cell changes.
    * Find Next advances the view selection from the returned match list without
@@ -3126,6 +3162,18 @@ export function App(): JSX.Element {
       case 'file.close':
         closeWorkbook();
         return null;
+      case 'file.openDropped': {
+        // A dropped file opens through the File → Open path, prompts and all
+        // (ticket 49). An unsupported type shows the refusal and opens nothing.
+        const picked = args as PickedFile;
+        const problem = droppedFileProblem(picked.name);
+        if (problem !== null) {
+          setStatus(problem);
+          return null;
+        }
+        loadPickedFile(picked);
+        return null;
+      }
       case 'edit.undo':
         undo();
         focusGrid();
@@ -3370,7 +3418,20 @@ export function App(): JSX.Element {
   runCommandRef.current = runCommand;
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={(event) => {
+        // Dropping a file opens it (ticket 49), so the browser must not
+        // navigate away to display the file itself.
+        if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        const file = event.dataTransfer.files?.[0];
+        if (file === undefined) return;
+        event.preventDefault();
+        void readBrowserFile(file).then((picked) => runCommand('file.openDropped', picked));
+      }}
+    >
       <AppHeader
         fileName={document?.fileName ?? null}
         dirty={dirty}
@@ -3532,6 +3593,8 @@ export function App(): JSX.Element {
             painterActive={painter !== null}
             onPainterApply={applyPainter}
             onFill={handleFill}
+            onMoveRange={handleMoveRange}
+            onMoveInsert={handleMoveInsert}
             onFollowHyperlink={followHyperlink}
             onFilterHeader={openFilterDropdown}
             marquee={

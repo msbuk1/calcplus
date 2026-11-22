@@ -167,7 +167,7 @@
     "label": "Drag and drop move",
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {
@@ -177,7 +177,7 @@
     "label": "Shift-drag insert",
     "category": "edit",
     "enablement": "A sheet is active and a range is selected",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {
@@ -2117,7 +2117,7 @@
     "label": "Open dropped file",
     "category": "file",
     "enablement": "A supported file is dropped on the app",
-    "implemented": false,
+    "implemented": true,
     "shortcut": []
   },
   {
