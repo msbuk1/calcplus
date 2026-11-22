@@ -28,6 +28,12 @@ export function AboutDialog({ onClose }: AboutDialogProps): JSX.Element {
             Calcplus is free software under GPL-3.0-only. Copyright © calcplus contributors. This
             program comes with absolutely no warranty; see the licence for details.
           </p>
+          <p className="about-smartscreen">
+            The Windows download is unsigned, so SmartScreen may warn "Windows protected your PC"
+            until the download builds reputation. Choose <strong>More info</strong>, check the name,
+            then <strong>Run anyway</strong>. You can verify the download against the SHA256SUMS
+            file on the release page.
+          </p>
           <p>
             <a
               href="https://github.com/msbuk1/calcplus/blob/main/LICENSE"

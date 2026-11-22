@@ -2143,7 +2143,7 @@
   {
     "id": "file.print",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Print",
     "category": "file",
     "enablement": "A workbook is open",
@@ -2156,7 +2156,7 @@
   {
     "id": "print.pageSetup",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Page Setup",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2178,7 +2178,7 @@
   {
     "id": "print.applySetup",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Apply page setup",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2188,7 +2188,7 @@
   {
     "id": "print.setArea",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Set Print Area",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2216,7 +2216,7 @@
   {
     "id": "print.addArea",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Add to Print Area",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2226,7 +2226,7 @@
   {
     "id": "print.clearArea",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Clear Print Area",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2282,7 +2282,7 @@
   {
     "id": "print.setup",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Paper size",
     "category": "view",
     "enablement": "A sheet is active",
@@ -2292,7 +2292,7 @@
   {
     "id": "file.exportPdf",
     "matrixSection": "7. File I/O and printing",
-    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-width, margins",
+    "matrixFeature": "Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins",
     "label": "Export PDF",
     "category": "file",
     "enablement": "A workbook is open",

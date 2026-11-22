@@ -131,14 +131,14 @@ command will ever carry. The map records the reason per entry (`unimplementedRea
 | `file.rejectEncrypted` | 7. File I/O and printing — Encrypted / password-protected workbooks | Reject encrypted workbook | — | — | — | — | — | The file is encrypted; it is not modified | Not a command (by design) |
 | `fidelity.externalLinks` | 7. File I/O and printing — External links | Preserve external links | — | — | — | — | — | Imported links are preserved and not refreshed | Not a command (by design) |
 | `file.openDropped` | 7. File I/O and printing — Drag-and-drop a supported file onto the app to open it | Open dropped file | — | — | — | — | — | A supported file is dropped on the app | Implemented |
-| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
-| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
-| `print.addArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Add to Print Area | — | — | — | — | — | A sheet is active | Implemented |
-| `print.applySetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Apply page setup | — | — | — | — | — | A sheet is active | Implemented |
-| `print.clearArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Clear Print Area | — | — | — | — | — | A sheet is active | Implemented |
-| `print.pageSetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Page Setup | `page-setup` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
-| `print.setArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Set Print Area | `print-area` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
-| `print.setup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-width, margins | Paper size | — | — | — | — | — | A sheet is active | Implemented |
+| `file.exportPdf` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Export PDF | — | — | — | File | — | A workbook is open | Implemented |
+| `file.print` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Print | `print` | Yes (order 20) | — | File | Ctrl+P | A workbook is open | Implemented |
+| `print.addArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Add to Print Area | — | — | — | — | — | A sheet is active | Implemented |
+| `print.applySetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Apply page setup | — | — | — | — | — | A sheet is active | Implemented |
+| `print.clearArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Clear Print Area | — | — | — | — | — | A sheet is active | Implemented |
+| `print.pageSetup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Page Setup | `page-setup` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
+| `print.setArea` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Set Print Area | `print-area` | — | Page Layout → Page Setup | — | — | A sheet is active | Implemented |
+| `print.setup` | 7. File I/O and printing — Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | Paper size | — | — | — | — | — | A sheet is active | Implemented |
 | `file.recent` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recent files | — | — | — | File | — | The recent list has entries | Implemented |
 | `file.recover` | 7. File I/O and printing — Recent files, autosave, crash recovery | Recover unsaved work | — | — | — | — | — | A recovery copy exists | Implemented |
 | `review.showComments` | 8. Read-only fidelity (render/preserve, no authoring) — Legacy notes and threaded comments | Show comments | `show-comments` | — | Review → Comments | — | — | The sheet has imported comments | Not a command (by design) |
@@ -186,4 +186,4 @@ These rows stay hidden in v1. The generator rejects an inventory entry that name
 | 6. View and navigation | Custom views / sheet views | V2 | Hidden; no control rendered |
 | 6. View and navigation | Assistive-technology support (screen readers, WCAG 2.2 AA) | V2 | Hidden; no control rendered |
 | 7. File I/O and printing | Charts, images, shapes, sparklines | V2 | Hidden; no control rendered |
-| 7. File I/O and printing | Headers/footers, manual page breaks, print titles, multi-page scaling, page order | V2 | Hidden; no control rendered |
+| 7. File I/O and printing | Headers/footers, manual page breaks, print titles, page order, independent X/Y scale | V2 | Hidden; no control rendered |

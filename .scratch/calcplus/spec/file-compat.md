@@ -46,7 +46,7 @@ Two consequences:
 | Conditional formatting | Read; evaluate the supported rule types | Read-only in v1 | Rule XML preserved; ranges transformed |
 | AutoFilter state | Read | Apply and clear | Written |
 | Sheet and workbook protection | Read | Not enforced (deliberate) | Preserved unchanged |
-| Print area, orientation, fit-to-width, margins | Read | Editable | Written |
+| Print area, orientation, fit-to-pages, uniform scale, margins | Read | Editable | Written |
 | Theme colours and named styles | Resolve for display | Read-only in v1 | Preserved |
 | Rich text | Plain text plus opaque runs | Editing warns and flattens | Untouched runs preserved |
 

@@ -132,7 +132,7 @@ Supporting modules: clipboard, print/PDF, licensing notices and the launcher. Th
 
 - Pure `PrintPlanner` → `PrintPlan` (page boxes, bands, scale, vector display list).
 - Inline SVG for preview and `window.print()`; PDFKit for vector PDF; 300 DPI canvas fallback.
-- Print area, orientation, fit-to-width and margins are in v1.
+- Print area, orientation, fit-to-pages, uniform scale and margins are in v1.
 - Contract: [print and PDF](print-pdf.md).
 
 ### 3.11 Distribution

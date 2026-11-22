@@ -4,7 +4,7 @@ Resolved by [21 — Print and PDF pipeline](../issues/21-print-pdf.md) on 2026-1
 
 ## 1. Promise
 
-v1 prints and exports the **print area**, with **orientation**, **fit-to-width** and **margins**, and the PDF matches the print preview. Headers/footers, print titles, manual page breaks, multi-page scaling and page order are v2.
+v1 prints and exports the **print area**, with **orientation**, **fit-to-pages**, **uniform scale** and **margins**, and the PDF matches the print preview. Headers/footers, print titles, manual page breaks, page order and independent X/Y scale are v2.
 
 ## 2. Pipeline
 
@@ -44,9 +44,9 @@ window.print()
 
 - **Print area:** the authored `_xlnm.Print_Area` range; if none, the used range. It is a system name, so setting or clearing a print area is not defined-name authoring and does not contradict the v1 "names are read-only" cut.
 - **Orientation:** portrait or landscape.
-- **Fit-to-width:** scale all columns to one page width; the row count follows.
+- **Fit-to-pages:** scale content to the authored page counts (`fitToWidth` by `fitToHeight`; 0 = automatic), as Excel's Fit to does. Fitting all columns to one page width is the common case.
 - **Margins:** top, bottom, left, right in points.
-- **Scaling:** uniform; no independent X/Y scale in v1.
+- **Scaling:** uniform, clamped to Excel's 10%-400%; no independent X/Y scale in v1.
 - **Page count:** computed from the plan, not by the browser.
 - **Gridlines and headings:** follow the sheet’s **print** settings (`printOptions.gridLines` / `gridLinesSet` / `headings`); the view-gridlines state never drives print output (research/21).
 - **Multiple print areas:** each defined print area prints as its own page set, matching Excel (research/21).
@@ -74,7 +74,7 @@ window.print()
 ## 7. Acceptance criteria
 
 1. Print preview and PDF use the same `PrintPlan` and match each other.
-2. Print area, orientation, fit-to-width and margins are honoured.
+2. Print area, orientation, fit-to-pages, uniform scale and margins are honoured.
 3. Page count and page boxes match the plan.
 4. PDF text is selectable and fonts are embedded or subsetted.
 5. Conditional formatting, merges, borders, fills and number formats render as on screen.
@@ -86,4 +86,4 @@ window.print()
 
 ## 8. V2 extensions
 
-Headers and footers, print titles, manual page breaks, page order, multi-page scaling, images and charts, tagged PDF. These are additions to the plan, not a new pipeline.
+Headers and footers, print titles, manual page breaks, page order, independent X/Y scale, images and charts, tagged PDF. These are additions to the plan, not a new pipeline.

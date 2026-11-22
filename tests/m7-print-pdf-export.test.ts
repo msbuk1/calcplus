@@ -66,7 +66,7 @@ describe('file.exportPdf', () => {
     expect(entry?.implemented).toBe(true);
     expect(entry?.category).toBe('file');
     expect(entry?.matrixFeature).toBe(
-      'Print and PDF export: print area, orientation, fit-to-width, margins',
+      'Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins',
     );
 
     const registry = createCommandRegistry();

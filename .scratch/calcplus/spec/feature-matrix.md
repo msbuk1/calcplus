@@ -81,7 +81,7 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 |---|---|---|
 | New blank workbook | IN | Creates a one-sheet workbook with Excel's default grid and sheet settings. |
 | Open, save, save as, close | IN | Mechanism owned by [08 — File handling and persistence](../issues/08-file-persistence.md); fidelity owned by tickets 04 and 12. |
-| Multi-sheet: insert, delete, rename | IN | All three work; deleting a sheet with content prompts; undo restores. |
+| Multi-sheet: insert, delete, rename | IN | All three work; deleting a sheet prompts first and is terminal — it clears the undo and redo stacks (ADR 0008); insert and rename undo as normal. |
 | Reorder, move/copy, hide/unhide sheets, tab colours | V2 | Imported order, hidden state and tab colours render and preserve. |
 | Grouping/outline | V2 | Imported outline parts are preserved. |
 | Shell protection / workbook protection | IN (preserve) | XML round-trips untouched; cells remain editable in calcplus (deliberate deviation, see below). |
@@ -112,8 +112,8 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 | External links | IN (preserve) | Links are preserved; values are not refreshed; link editing is V2. |
 | Charts, images, shapes, sparklines | V2 | Parts are preserved on save but not rendered or authored. |
 | Drag-and-drop a supported file onto the app to open it | IN | Dropping `.xlsx`, `.xlsm` or `.csv` opens the file; unsupported types show an error. |
-| Print and PDF export: print area, orientation, fit-to-width, margins | IN | Printed/PDF output paginates and honours those settings; PDF matches the print preview. |
-| Headers/footers, manual page breaks, print titles, multi-page scaling, page order | V2 | — |
+| Print and PDF export: print area, orientation, fit-to-pages, uniform scale, margins | IN | Printed/PDF output paginates and honours those settings; PDF matches the print preview. |
+| Headers/footers, manual page breaks, print titles, page order, independent X/Y scale | V2 | — |
 | Recent files, autosave, crash recovery | IN | Behaviour owned by [08 — File handling and persistence](../issues/08-file-persistence.md). |
 
 ## 8. Read-only fidelity (render/preserve, no authoring)

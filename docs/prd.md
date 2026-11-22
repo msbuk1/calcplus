@@ -82,7 +82,7 @@ The authoritative list is the
 | Workbook and sheets | New/open/save/save as/close, insert/delete/rename sheets, freeze panes, zoom, gridline/heading toggles, status-bar statistics |
 | File I/O | `.xlsx` and `.xlsm` round-trip, CSV, encrypted rejection, external-link and macro preservation, drag-and-drop open, print/PDF |
 | Read-only fidelity | Comments, hyperlinks, validation, tables, pivots, protection, hidden rows/columns/sheets, themes and named styles, defined names |
-| Print and PDF | Print area, orientation, fit-to-width, margins, SVG preview, vector PDF, 300 DPI fallback ([print and PDF](../.scratch/calcplus/spec/print-pdf.md)) |
+| Print and PDF | Print area, orientation, fit-to-pages, uniform scale, margins, SVG preview, vector PDF, 300 DPI fallback ([print and PDF](../.scratch/calcplus/spec/print-pdf.md)) |
 | Persistence | Autosave recovery copy, recent list, external-edit conflict, close prompt, one workbook per tab ([persistence](../.scratch/calcplus/spec/persistence.md)) |
 | Platform | Desktop Chromium on Windows and Linux; Firefox best-effort; no macOS support; static host plus a Go launcher for Windows and Linux; no backend |
 
