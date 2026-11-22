@@ -1210,6 +1210,7 @@ export function CanvasGrid({
   ): void => {
     if (event.button !== 0) return;
     const projection = stateRef.current.projection;
+    const canvas = event.currentTarget;
     const drag = {
       pointerId: event.pointerId,
       mode,
@@ -1220,6 +1221,11 @@ export function CanvasGrid({
       shift: 'down' as 'down' | 'right',
     };
     rangeDragRef.current = drag;
+    // The grab cursor belongs to the DOM canvas, not to a repaint, exactly
+    // like the resize cursor. The press says "you have hold of the range"
+    // before the destination outline appears, so the gesture is visible from
+    // the start (ticket 49 review note).
+    canvas.style.cursor = 'move';
 
     /** The clamped destination the drop would use, or `null` with no target. */
     const destinationFor = (focus: GridCellAddress): GridRange | null => {
@@ -1301,6 +1307,7 @@ export function CanvasGrid({
       stopTracking();
       rangeDragRef.current = null;
       setRangeDragPreview(null);
+      canvas.style.cursor = '';
     }
     function onWindowBlur(): void {
       abandon();
@@ -1642,7 +1649,9 @@ export function CanvasGrid({
       schedulePaint();
       return;
     }
-    if (resizeDragRef.current !== null) return;
+    // A live gesture owns the pointer and its cursor: no hover cursor replaces
+    // the grab cursor mid-drag.
+    if (resizeDragRef.current !== null || rangeDragRef.current !== null) return;
     const layout = layoutRef.current;
     if (layout === null) return;
     // A drag owns the pointer: no hover overlay appears mid-gesture.
@@ -1676,7 +1685,7 @@ export function CanvasGrid({
       schedulePaint();
       return;
     }
-    if (resizeDragRef.current === null) setCanvasCursor(null);
+    if (resizeDragRef.current === null && rangeDragRef.current === null) setCanvasCursor(null);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>): void => {

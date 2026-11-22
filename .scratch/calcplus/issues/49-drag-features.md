@@ -140,3 +140,13 @@ tree, uncommitted.
   `npm run format:check` fails on 180 files on this PC, including files this
   work never touched: the working tree has CRLF endings and prettier's default
   expects LF. That predates this work and is left alone.
+
+## Maintainer review note (2026-11-22)
+
+The maintainer ran all three features and passed them, with one gap: the
+cursor does not change during the gestures, so it is hard to see that the
+drag has hold of the range. Fixed the same day: the press now sets a `move`
+grab cursor on the canvas (both gestures, before the outline appears), the
+hover handler no longer replaces it mid-drag, and every exit — drop, Esc,
+cancel, blur — clears it. Covered by the "grab cursor" test in
+`tests/e2e/drag-move.spec.ts`.

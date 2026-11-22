@@ -231,6 +231,44 @@ test('a Shift-drag from the right edge inserts and shifts cells right', async ({
 });
 
 // ---------------------------------------------------------------------------
+// Grab cursor
+// ---------------------------------------------------------------------------
+
+test('the cursor shows the grab while a drag holds the range and clears on release', async ({
+  page,
+}) => {
+  await openDragSheet(page);
+  const canvas = page.getByTestId('grid-canvas');
+
+  // Drag-move: the cursor changes at the press, before the outline appears,
+  // so it is visible that the gesture has hold of the range (ticket 49 review).
+  await selectRange(page, 'A1:B1');
+  const from = await canvasPoint(page, 0, 0);
+  const to = await canvasPoint(page, 3, 0);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await expect(canvas).toHaveCSS('cursor', 'move');
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await expect(canvas).toHaveCSS('cursor', 'move');
+  await page.mouse.up();
+  expect(await canvas.evaluate((element) => (element as HTMLElement).style.cursor)).toBe('');
+
+  // Shift-drag insert says the same from its press.
+  await selectRange(page, 'A1:A2');
+  const edge = await canvasPoint(page, 1, 0);
+  const gap = await canvasPoint(page, 3, 0);
+  await page.keyboard.down('Shift');
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.down();
+  await expect(canvas).toHaveCSS('cursor', 'move');
+  await page.mouse.move(gap.x, gap.y, { steps: 6 });
+  await expect(canvas).toHaveCSS('cursor', 'move');
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  expect(await canvas.evaluate((element) => (element as HTMLElement).style.cursor)).toBe('');
+});
+
+// ---------------------------------------------------------------------------
 // File drop
 // ---------------------------------------------------------------------------
 
