@@ -7,6 +7,7 @@
     "category": "edit",
     "enablement": "A sheet is active and the grid owns the keyboard",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": [
       "Arrows",
       "Ctrl+Arrows",
@@ -32,6 +33,7 @@
     "category": "edit",
     "enablement": "A sheet is active and a cell is selected",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": ["F2", "Double-click", "Enter", "Tab", "Esc"]
   },
   {
@@ -52,6 +54,7 @@
     "category": "edit",
     "enablement": "The formula bar owns focus",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": ["Esc"]
   },
   {
@@ -1295,6 +1298,7 @@
     "category": "format",
     "enablement": "Imported values render and round-trip; authoring arrives in v2",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -1503,6 +1507,7 @@
     "category": "format",
     "enablement": "Always disabled in v1: imported rules render, authoring arrives in v2 (ticket 27)",
     "implemented": false,
+    "unimplementedReason": "v2-cut",
     "shortcut": [],
     "ribbon": [
       {
@@ -1526,6 +1531,7 @@
     "category": "formula",
     "enablement": "A sheet is active",
     "implemented": false,
+    "unimplementedReason": "v2-cut",
     "shortcut": ["F9"]
   },
   {
@@ -1587,6 +1593,7 @@
     "category": "formula",
     "enablement": "A sheet is active and a defined name exists",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -1700,6 +1707,7 @@
     "category": "formula",
     "enablement": "A sheet is active",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -1850,6 +1858,7 @@
     "category": "file",
     "enablement": "Imported protection XML is preserved and not enforced",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -1882,6 +1891,7 @@
     "category": "view",
     "enablement": "A sheet is active",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": [],
     "ribbon": [
       {
@@ -1996,6 +2006,7 @@
     "category": "view",
     "enablement": "A sheet is active",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": ["F2"]
   },
   {
@@ -2006,6 +2017,7 @@
     "category": "view",
     "enablement": "A sheet is active",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2016,6 +2028,7 @@
     "category": "file",
     "enablement": "The file layer can read the package",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2026,6 +2039,7 @@
     "category": "file",
     "enablement": "The file layer can write the package",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2058,6 +2072,7 @@
     "category": "file",
     "enablement": "The file layer can read the package",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2068,6 +2083,7 @@
     "category": "file",
     "enablement": "The file layer can write the package",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2078,6 +2094,7 @@
     "category": "file",
     "enablement": "A CSV parser is available",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2088,6 +2105,7 @@
     "category": "file",
     "enablement": "A workbook is open",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2098,6 +2116,7 @@
     "category": "file",
     "enablement": "The file is encrypted; it is not modified",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2108,6 +2127,7 @@
     "category": "file",
     "enablement": "Imported links are preserved and not refreshed",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2309,6 +2329,7 @@
     "category": "view",
     "enablement": "The sheet has imported comments",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": [],
     "ribbon": [
       {
@@ -2330,6 +2351,7 @@
     "category": "view",
     "enablement": "The active cell has a hyperlink",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": ["Ctrl+Click"]
   },
   {
@@ -2340,6 +2362,7 @@
     "category": "file",
     "enablement": "Imported protection is preserved and not enforced",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2350,6 +2373,7 @@
     "category": "view",
     "enablement": "Imported hidden state is respected and preserved",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2360,6 +2384,7 @@
     "category": "format",
     "enablement": "Imported rules render and are preserved",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2370,6 +2395,7 @@
     "category": "format",
     "enablement": "Imported theme colours and named styles resolve and are preserved",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2380,6 +2406,7 @@
     "category": "formula",
     "enablement": "Imported names evaluate and round-trip",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2390,6 +2417,7 @@
     "category": "data",
     "enablement": "Imported validation is preserved; enforcement arrives in v2",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2400,6 +2428,7 @@
     "category": "data",
     "enablement": "Imported table parts are preserved",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {
@@ -2410,6 +2439,7 @@
     "category": "data",
     "enablement": "Imported pivot parts are preserved and not displayed",
     "implemented": false,
+    "unimplementedReason": "not-a-command",
     "shortcut": []
   },
   {

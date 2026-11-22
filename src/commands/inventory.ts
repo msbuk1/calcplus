@@ -7,10 +7,20 @@ import rawInventory from './command-inventory.json';
  *
  * A command appears once. `implemented` says whether the runtime registry has
  * it in this build; planned entries keep their target placement in the map so
- * later slices fill them in without moving the ribbon around.
+ * later slices fill them in without moving the ribbon around. Every entry with
+ * `implemented: false` also carries `unimplementedReason`, the reconciliation
+ * classification the generator checks and renders (ticket 36 item 3).
  */
 export type RibbonTabId =
   'Home' | 'Insert' | 'Page Layout' | 'Formulas' | 'Data' | 'Review' | 'View';
+
+/**
+ * Why an entry has no command. `not-a-command` means the capability is engine,
+ * file or view behaviour and no command will ever carry the id (for example
+ * `fidelity.*` and `name.resolve`). `v2-cut` means the command is a deliberate
+ * v2 cut (`formula.recalculate`, `format.conditionalRender`).
+ */
+export type UnimplementedReason = 'not-a-command' | 'v2-cut';
 
 export type RibbonControlKind = 'button' | 'toggle' | 'select' | 'split' | 'menu' | 'launcher';
 
@@ -169,6 +179,8 @@ export interface CommandInventoryEntry {
   readonly category: string;
   readonly enablement: string;
   readonly implemented: boolean;
+  /** Required on every unimplemented entry; the generator checks and renders it. */
+  readonly unimplementedReason?: UnimplementedReason;
   readonly shortcut: readonly string[];
   /** The command's canonical icon; the generated docs carry this reference. */
   readonly icon?: string;

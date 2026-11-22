@@ -45,6 +45,12 @@ const QUICK_ACCESS_COMMANDS = new Set(['file.save', 'file.print', 'edit.undo', '
  */
 const QUICK_ACCESS_MENU_COMMANDS = new Set(['file.saveAs']);
 const COLOUR_PICKERS = new Set(['font', 'fill']);
+/**
+ * The reconciliation classification (ticket 36 item 3) every unimplemented
+ * entry must carry: `not-a-command` for engine, file or view behaviour that no
+ * command will ever hold, `v2-cut` for a command deferred on purpose.
+ */
+const UNIMPLEMENTED_REASONS = new Set(['not-a-command', 'v2-cut']);
 const ERROR_LIMIT = 40;
 
 const errors = [];
@@ -196,6 +202,17 @@ async function main() {
       }
     }
     if (typeof entry.implemented !== 'boolean') fail(`${label}: "implemented" must be boolean.`);
+    if (entry.implemented === true) {
+      if (entry.unimplementedReason !== undefined) {
+        fail(`${label}: an implemented command must not carry "unimplementedReason".`);
+      }
+    } else if (entry.unimplementedReason === undefined) {
+      fail(
+        `${label}: an unimplemented entry must classify itself with "unimplementedReason" (${[...UNIMPLEMENTED_REASONS].join(' or ')}).`,
+      );
+    } else if (!UNIMPLEMENTED_REASONS.has(entry.unimplementedReason)) {
+      fail(`${label}: unknown "unimplementedReason": ${entry.unimplementedReason}.`);
+    }
     if (!Array.isArray(entry.shortcut)) fail(`${label}: "shortcut" must be an array.`);
     if (typeof entry.id === 'string') {
       if (seenIds.has(entry.id)) fail(`${entry.id}: duplicate command id.`);
@@ -499,6 +516,7 @@ async function main() {
   });
 
   const implemented = sorted.filter((entry) => entry.implemented).length;
+  const cut = sorted.filter((entry) => entry.unimplementedReason === 'v2-cut').length;
   const matrixIn = matrix.filter((row) => row.status === 'IN').length;
   const outRows = matrix.filter((row) => row.status !== 'IN');
 
@@ -525,7 +543,10 @@ async function main() {
   lines.push(`- Feature-matrix IN rows: ${matrixIn}`);
   lines.push(`- Inventory commands: ${sorted.length}`);
   lines.push(`- Implemented in this build: ${implemented}`);
-  lines.push(`- Planned for a later slice: ${sorted.length - implemented}`);
+  lines.push(`- Planned for a later slice: ${cut} (deliberate v2 cuts)`);
+  lines.push(
+    `- No command by design: ${sorted.length - implemented - cut} (engine, file or view behaviour)`,
+  );
   lines.push(`- Out-of-scope rows (V2 or NEVER): ${outRows.length}`);
   lines.push('');
   lines.push(
@@ -561,6 +582,15 @@ async function main() {
     'A ribbon control whose label changes with the command’s checked state (ticket 43, Freeze',
   );
   lines.push('Panes → Unfreeze Panes) lists the checked label in the Ribbon column.');
+  lines.push(
+    'The Status column explains every unimplemented entry: **Planned (v2 cut)** is a command',
+  );
+  lines.push(
+    'deferred on purpose; **Not a command (by design)** is engine, file or view behaviour that no',
+  );
+  lines.push(
+    'command will ever carry. The map records the reason per entry (`unimplementedReason`).',
+  );
   lines.push('');
   lines.push(
     '| Command ID | Matrix row | Label | Icon | Quick access | Ribbon tab → group | Menu | Shortcut | Enablement | Status |',
@@ -627,8 +657,13 @@ async function main() {
         : `Yes${entry.quickAccess.order === undefined ? '' : ` (order ${entry.quickAccess.order})`}${
             quickAccessMenu.length === 0 ? '' : `; menu: ${quickAccessMenu.join(', ')}`
           }`;
+    const status = entry.implemented
+      ? 'Implemented'
+      : entry.unimplementedReason === 'v2-cut'
+        ? 'Planned (v2 cut)'
+        : 'Not a command (by design)';
     lines.push(
-      `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(icon)} | ${escapeCell(quickAccess)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${entry.implemented ? 'Implemented' : 'Planned'} |`,
+      `| \`${entry.id}\` | ${escapeCell(`${entry.matrixSection} — ${entry.matrixFeature}`)} | ${escapeCell(entry.label)} | ${escapeCell(icon)} | ${escapeCell(quickAccess)} | ${escapeCell(ribbon)} | ${escapeCell(menu)} | ${escapeCell(shortcut)} | ${escapeCell(entry.enablement)} | ${status} |`,
     );
   }
   lines.push('');
