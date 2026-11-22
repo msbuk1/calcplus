@@ -56,6 +56,29 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 4. An edited save of a workbook carrying a chart, a `<legacyDrawing>` and an unknown `<extLst>` keeps those elements and their order in the dirty worksheet part; a part inventory proves it, not inspection.
 5. The app opens in Chromium and saves through the file API or a download.
 6. Unit and smoke tests pass on the maintainer's PC; no GitHub test execution is required.
+**Exit note (added 2026-11-22, as the M8 acceptance record).** The exit gate
+passes. This note was written late: the milestone shipped without one. The
+criteria were proven as follows. Criterion 1: the model opens a minimal `.xlsx`
+and renders it — `tests/ooxml-open.test.ts` maps the workbook, sparse cells,
+styles, merges and view state from a minimal file, `tests/fixtures-m1.test.ts`
+checks every hand-authored value (including the cached formula result) in
+`fixtures/expected/m1-values.json`, and `tests/e2e/smoke.spec.ts` opens
+`m1-chart-unknown.xlsx` in the app and reads `42.5` back from the grid.
+Criterion 2: `tests/ooxml-save.test.ts` ("identity save") returns the original
+bytes byte-for-byte when nothing changed, and the smoke spec's no-op-save test
+proves the same path through the app. Criterion 3: `tests/commands.test.ts`
+records one undoable transaction per `cell.set` and asserts undo restores the
+prior cell exactly, with redo restoring the edit. Criterion 4: the dirty-patch
+test in `tests/ooxml-save.test.ts` asserts the child order (`sheetPr` …
+`drawing`, `legacyDrawing`, `extLst`), keeps `<legacyDrawing r:id="r2"/>` and
+the unknown extension bytes verbatim, and proves it with a part inventory —
+`createPartInventory` before and after, with equal sha256 for every untouched
+part and a change only in the dirty worksheet and `workbook.xml`. Criterion 5:
+the smoke suite runs in Chromium and saves through the download path
+(`/?fsa=0` in `tests/e2e/grid-helpers.ts`), with the no-op and edited-save
+download tests as evidence. Criterion 6 is the standing process rule: checks
+run on the maintainer's PC only (`CONTRIBUTING.md`), and every milestone note
+since M5 records local runs on that machine. M1 is closed.
 
 ### M2 — Grid foundation (8-12 pw)
 
@@ -75,6 +98,21 @@ Resolved by [14 — Milestones and phasing](../issues/14-milestones.md) on 2026-
 1. Selection, editing, formula bar, freeze panes and keyboard navigation work.
 2. Scroll holds the ticket 11 frame budget on a 250k-cell sheet.
 3. The focus model, Esc/F6 paths and the shortcut subset pass the keyboard suite.
+
+**Exit note (added 2026-11-22, as the M8 acceptance record).** The exit gate
+passes. This note was written late: the milestone shipped without one. The
+criteria were proven as follows. Criterion 1: the grid projection and freeze
+state (`tests/m2-grid.test.ts`), the in-cell editor (`tests/grid-editor.test.ts`),
+the formula bar (`tests/formula-edit.test.ts`) and the keyboard navigation
+subset (`tests/grid-navigation.test.ts`), with the freeze and keyboard paths
+covered in `tests/e2e/freeze-scroll.spec.ts` and `tests/e2e/grid.spec.ts`.
+Criterion 2: the ticket 11 frame budget holds on the reference machine — the
+250k-cell scroll bench passed 3/3 on 2026-11-21 at a frame p95 of 16.7-16.8 ms
+against the 16.7 ms budget (evidence recorded under M7; the enforced gate is
+`tests/m7-reference-machine.test.ts`). Criterion 3: `tests/grid-focus.test.ts`
+closes the F6 zone cycling and Esc paths, and `tests/grid-navigation.test.ts`
+covers the shortcut subset, with the F6/Esc path in `tests/e2e/grid.spec.ts`.
+M2 is closed.
 
 ### M3 — Formula engine and model depth (8-12 pw)
 
@@ -125,6 +163,37 @@ M3 runs as three sub-slices: engine wiring, function coverage and model depth. T
 
 5. Undo/redo restores the exact prior state for cell and formatting commands.
 6. The range-transform prototype rewrites formulas, merges and names correctly and meets the structural-edit rebuild budget on the 250k shape ([performance §3.2](performance.md)).
+**Exit note (added 2026-11-22, as the M8 acceptance record).** The exit gate
+passes. This note was written late: the milestone shipped with slice gates but
+no milestone note. M3A's gate (recalculation after edits, volatile updates,
+circular warning) is proven by "M3A incremental, volatile and circular
+behaviour" in `tests/engine-m3b.test.ts`, which edits `A1`, sees the dependant
+recalculate to 10, and sees `NOW()` re-evaluated in the same batch. The six
+exit criteria were proven as follows. Criterion 1: "M3B 52-function golden
+subset" in `tests/engine-m3b.test.ts` checks all 52 cases in
+`fixtures/expected/m3b-formulas.json` with zero skipped. Criterion 2: "M3B
+error, coercion and operator table" passes the whole error fixture and asserts
+no engine result ever produces `#ERROR!`, `#SPILL!`, `#CALC!` or `#LIC!`.
+Criterion 3: "M3B date, reference, lookup and circular-reference suites" passes
+the date, reference and lookup fixtures and maps the statically dead
+self-reference to `#CIRC!` with the cycle reported. Criterion 4: "M3B shim
+cases" passes every shim golden (including the fractional-`CHOOSE` truncation
+and the numeric/numeric-text `COUNTIF`/`SUMIF` criteria), and "M3B
+authored-formula pre-screen" proves the shim boundary — malformed and V2
+constructs take the unparseable path while `_xlfn.*` and out-of-registry
+functions take the unsupported-function path. Criterion 5:
+`tests/commands.test.ts` restores the exact prior cell on undo with redo
+support, and `tests/m3c-format-commands.test.ts` does the same for formatting
+commands, with `tests/m4c-format-dialog.test.ts` pinning the dialog undo
+boundary. Criterion 6: `tests/m3c-range-transform.test.ts` rewrites formula
+references, merges and names across structural edits, and
+`tests/m3c-structural-rebuild.test.ts` rebuilds the 250k-cell, 50k-formula
+graph inside the 1500 ms budget — enforced on the declared reference machine,
+where the M7 record shows 1225.6 ms after `9792fca`. Supporting depth (1904
+system with serial 60 in `tests/m3c-date-system.test.ts`, whole-column/row
+parsing in `tests/m3c-references.test.ts`, defined names in formulas in
+`tests/m3c-defined-names.test.ts`, style-table append-only behaviour in
+`tests/m3c-style-table.test.ts`) is green alongside. M3 is closed.
 
 ### M4 — Formatting and workbook (8-12 pw)
 
@@ -157,7 +226,7 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 
 **Gate:** M4 exit criterion 3 passes.
 
-3. Multi-sheet insert/delete/rename and undo work.
+3. Multi-sheet insert/delete/rename work: insert and rename undo, and a delete prompts first and is terminal (ADR 0008).
 
 #### M4C — Chrome and find
 
@@ -172,6 +241,41 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 
 4. Find/Replace, Go To and the Format Cells dialog pass the interaction suite.
 5. The ribbon and compact bar meet the UI chrome contract.
+**Exit note (added 2026-11-22, as the M8 acceptance record).** The exit gate
+passes. This note was written late: the milestone shipped with slice gates but
+no milestone note. The criteria were proven as follows, with one re-reading
+recorded against criterion 3. Criterion 1: `tests/m4a-formatting.test.ts`
+reads every imported formatting feature (underline variants, pattern fills,
+border weights, shrink-to-fit, merges, dimensions, hidden state), applies
+formatting commands per cell, and round-trips `styles.xml` append-only without
+renumbering; `tests/m4a-grid-render.test.ts` proves the projection, geometry
+and text layout the renderer paints from. Criterion 2:
+`tests/m4a-number-formats.test.ts` pins the exact display text for every
+built-in id against the committed corpus in
+`fixtures/expected/m4a-number-formats.json` (hand-authored, `numfmt` 4.1.3
+engine). Criterion 3: `tests/m4b-sheets.test.ts` proves insert (undo/redo with
+the same id), rename (formula references rewritten, undo restores exact text,
+save patches verified) and delete — **as re-read by ADR 0008**: sheet delete
+is confirmed-and-terminal with the undo/redo stacks cleared, not undoable as
+the criterion's original wording said. The ADR is the decision of record; this
+pass updated the criterion and the spec rows the ADR names to match. The
+terminal-delete, guard and save-semantics tests in
+`m4b-sheets.test.ts` are the evidence for the behaviour as built. Criterion 4:
+`tests/m4c-find.test.ts` (search, replace, read-only-cell refusals, Go To
+including defined names) plus `tests/m4c-format-dialog.test.ts` (font, fill,
+border, alignment, number-format, painter, one-transaction Apply) cover the
+commands, and the interaction suite `tests/e2e/find-goto.spec.ts` and
+`tests/e2e/format-dialog.spec.ts` drive the real dialogs end to end. Criterion
+5: `tests/ribbon-model.test.ts` proves the ribbon is a view of the
+authoritative command map in Excel 365's tab/group order,
+`tests/ribbon-icons.test.ts` pins an icon on every compact control, and
+`tests/e2e/ribbon-layout.spec.ts` plus the Find-reachability test in
+`tests/e2e/find-goto.spec.ts` prove the full band and the below-900 px compact
+bar. Criterion 6: `tests/e2e/formatted-visual.spec.ts` compares the formatted
+sheet against the pinned baseline on the maintainer's Chromium runner; the
+baseline was refreshed after the merged-label renderer fix and again in
+`e25fea0` when the paint was proven right and the snapshot stale (ticket 36
+item 1). M4 is closed.
 
 ### M5 — Data tools (8-12 pw)
 
@@ -339,6 +443,18 @@ green.
 2. The performance budgets hold on the reference machine.
 3. Recovery, conflict and close prompts work.
 4. Launcher artifacts build and run on Windows and Linux; unsigned builds carry the documented SmartScreen note.
+
+**Exit note (added 2026-11-22).** The exit gate passed, and the testing-status
+notes above record every criterion. Criterion 1 was verified by hand on
+2026-11-20 against Excel 365: the print preview, print output and PDF match and
+honour the page setup. Criterion 2 was met on 2026-11-21 on the declared
+reference machine — 6/6 enforced budget tests green after `9792fca`, and the
+browser bench 3/3. Criterion 3 was verified by hand on 2026-11-21: the recovery
+copy, the external-edit conflict and the close prompt all behave as the
+contract says. Criterion 4 was verified on 2026-11-20 and 2026-11-21: the Linux
+tarball and the Windows portable `.exe` both build and run, and the
+unsigned-build warning is documented as known limitation L-1. Nothing is
+recorded as not tested. M7 is closed.
 
 ### M8 — Conformance and release (6-8 pw + reserve)
 

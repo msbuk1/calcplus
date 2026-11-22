@@ -45,8 +45,10 @@ Changes reference stable sheet IDs and row/column coordinates. Recalculated resu
 - A new edit clears redo.
 - Undo is global per document. Switching sheets to reveal a change is view state and is not logged.
 - Undo history is not saved in the recovery copy; closing the tab or reloading a file discards it.
-- Structural edits and sheet deletes are single transactions with full reference rewrites.
-- Undo of a sheet delete restores the sheet and its stable ID.
+- Structural edits are single transactions with full reference rewrites.
+- A sheet delete is terminal (ADR 0008): its change set applies the sheet
+  removal plus the reference rewrites, no inverse transaction is recorded, and
+  both stacks clear.
 
 ## 4. Transaction boundaries
 
@@ -157,6 +159,6 @@ Each entry:
 5. A large paste is one transaction and stays within the memory budget.
 6. The shortcut map matches the registry; platform mapping works; browser conflicts are documented with alternatives.
 7. Focus moves predictably between zones; Esc returns to the grid.
-8. Undo of a sheet delete restores its content; undo of a structural edit restores references.
+8. Undo of a structural edit restores references; a sheet delete prompts first, then runs terminal and clears the history.
 9. The log is replayable with stable IDs; view changes are absent.
 10. The memory bound is enforced.
