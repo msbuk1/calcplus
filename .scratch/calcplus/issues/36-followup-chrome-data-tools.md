@@ -1,6 +1,6 @@
 # 36 — Follow-up: open items after the chrome and data-tools sweep
 
-Status: open
+Status: resolved
 Type: follow-up (tracking; each item is small and self-contained)
 Blocked by: nothing
 
@@ -228,4 +228,43 @@ and should be split out before it starts.
 
 ## Answer
 
-Pending.
+Resolved 2026-11-22. All six acceptance items pass; see below.
+
+## Resolution (2026-11-22)
+
+**Item 1** closed 2026-11-22: the paint was right and the baseline was stale;
+commit `e25fea0` refreshed it. **Item 2** closed 2026-11-21: commit `9792fca`
+met the budget on the reference machine ruled in `performance.md` §1.
+
+**Item 3 — the reconciliation pass.** All 30 `implemented: false` entries are
+now classified: 28 are not commands by design (engine, file and view
+behaviour such as `fidelity.*`, `name.resolve`, `view.zoom`), 2 are
+deliberate v2 cuts (`formula.recalculate`, `format.conditionalRender`), and
+**none is a missing v1 feature**. The classification is a new
+`unimplementedReason` field in `src/commands/command-inventory.json`;
+`scripts/generate-command-inventory.mjs` fails unless every unimplemented
+entry carries a known reason and renders it in the Status column ("Planned
+(v2 cut)" / "Not a command (by design)"). `npm run inventory` is green and
+stable across runs. Two judgement calls are recorded there:
+`format.importedTextLayout` names the imported render/round-trip half (its
+authoring half is the v2 cut and would get new command ids), and `view.zoom`
+is view behaviour — the three matrix affordances (status-bar menu, slider,
+Ctrl+wheel) all exist.
+
+**The two unverified entries are settled.** Show Comments
+(`review.showComments`) never toggled anything and cannot: the ribbon hides
+unimplemented placements, so the button is never rendered. v1's promise
+(feature matrix §8) is met unconditionally — comment indicators and popups
+always render, covered by `tests/e2e/hyperlink-comments.spec.ts` and
+`tests/hyperlink-interaction.test.ts`. Defined names in formulas work;
+`tests/m3c-defined-names.test.ts` proves it.
+
+**Item 4** moved to [ticket 49](49-drag-features.md) and landed there:
+drag-move, Shift-drag insert and file drop, all `implemented: true`.
+
+**Item 5 — Select All placement.** The maintainer ruled 2026-11-22: match
+Excel. Select All is the first row of the scrolling value list and scrolls
+with the values, pinned by `tests/e2e/filter-dropdown.spec.ts`.
+
+**Item 6.** The spec README no longer lists selection scrolling as outside
+v1; the autoscroll work is recorded as the version one bug fix it was.

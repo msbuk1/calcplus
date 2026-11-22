@@ -47,7 +47,10 @@ All decision and task tickets are resolved. The remaining open items are deliber
 
 - Localization of the UI and function names.
 - Formula-bar and name-box edge behaviours.
-- Fill-handle options, merged-range selection, IME/bidi text and selection scrolling edge cases.
+- Fill-handle options, merged-range selection and IME/bidi text. (Selection
+  scrolling left this list on 2026-11-22: the range-autoscroll work in the
+  chrome and data-tools sweep landed as a version one bug fix, ticket 36
+  item 6.)
 
 ## How to use this package
 
