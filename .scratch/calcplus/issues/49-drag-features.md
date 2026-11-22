@@ -1,6 +1,6 @@
 # 49 — Drag features: move, Shift-drag insert and file drop
 
-Status: open
+Status: resolved
 Type: feature (three v1 IN features; split from ticket 36 item 4)
 Blocked by: none
 
@@ -150,3 +150,8 @@ grab cursor on the canvas (both gestures, before the outline appears), the
 hover handler no longer replaces it mid-drag, and every exit — drop, Esc,
 cancel, blur — clears it. Covered by the "grab cursor" test in
 `tests/e2e/drag-move.spec.ts`.
+
+## Answer
+
+Resolved 2026-11-22. All five acceptance items pass: the three drags work and are covered by unit and e2e tests, the inventory entries read implemented, and the suites stay green. The maintainer ran all three features and passed them; the cursor gap from that review was fixed the same day (grab-cursor commit) and is covered by its e2e test. Closed during the M8 release-gate sweep.
+
