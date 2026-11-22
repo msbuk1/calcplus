@@ -29,6 +29,18 @@ section 5.2 and the merged-label renderer work in M5 both bear on it.
 **Needs:** the maintainer to look at the diff and say which is correct. Only
 then can the snapshot be refreshed or the renderer corrected.
 
+**Closed (2026-11-22).** The paint was right and the baseline was stale. The
+merged-label renderer draws the label across the merged range, clipped at
+its edge, and commit `e25fea0` refreshed `m4a-formatted-sheet.png` after
+those renderer changes: 17,810 pixels of real drift (3 per cent against a
+0.1 per cent budget), all of it the merged title in row 11.
+`tests/e2e/formatted-visual.spec.ts` passes. One caveat is recorded in that
+commit: the fixture text ("Merged title clipped at the merged range edge
+with extra text") reads as though the row should truncate at the edge, but
+the refreshed paint shows it ending at the boundary and reading complete.
+If a later change makes merged labels overflow their range, this baseline
+will accept it.
+
 ### 2. Two performance budgets are missed on this machine
 
 Both fail consistently on a quiet machine now, not just under load, and both
@@ -163,6 +175,13 @@ IN in `.scratch/calcplus/spec/feature-matrix.md`.
 
 **Needs:** build all three. The autoscroll work in `src/grid/CanvasGrid.tsx`
 and the shared pointer-drag pattern are the place to start.
+
+**Split (2026-11-22).** Per the placement rule below, the three drag
+features move to [ticket 49](49-drag-features.md), which owns building
+them with tests. Nothing here is lost: `edit.dragMove`, `edit.dragInsert`
+and `file.openDropped` are still `implemented: false` in
+`src/commands/command-inventory.json` and are promised IN in the feature
+matrix.
 
 ## The two decisions
 

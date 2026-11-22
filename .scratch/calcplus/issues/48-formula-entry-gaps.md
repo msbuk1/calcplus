@@ -1,6 +1,6 @@
 # 48 — Follow-up: two formula gaps left after the arity work
 
-Status: open
+Status: resolved
 Type: follow-up (tracking; two small self-contained items)
 Blocked by: nothing
 
@@ -69,3 +69,33 @@ likely to type that fall outside the 52.
   same harness the arity table was verified with.
 - The write-side guard (a formula Excel refuses is never serialised) is being
   handled separately; this ticket is only about the entry screen.
+
+## Resolution (2026-11-22)
+
+**Item 1.** The scanner now tracks content per parenthesised group. A group
+that is not a call's argument list and holds nothing is an empty operand,
+and the formula is refused at entry with a new `empty-group` skip: "A pair
+of parentheses cannot be empty. The cell was not changed." The cell keeps
+its previous value and the editor keeps the typed text, exactly like the
+arity refusal. `SUM()` stays an empty call's argument list and is still
+refused by arity; `SUM(1,2)` and `1+(2)` still commit; `SUM((1))` passes.
+Covered in `tests/formula-arity.test.ts` ("an empty parenthesised group is
+refused like a wrong argument count" and "entry refuses an empty
+parenthesised group and keeps the cell").
+
+**Item 2 (ruled: known deviation).** The maintainer ruled on 2026-11-22:
+record it, do not import signatures. `docs/known-deviations.md` **D-13**
+now records that a call outside the 52 carries no arity check, says plainly
+that Excel can strip such a formula on open (data loss in the file you
+made), and cites the pinning test in `tests/formula-arity.test.ts` ("pins
+known deviation D-13: no arity check outside the registry").
+
+**Items 3 and 4.** `formulaRefusedByExcel` now covers `empty-group` alongside
+`invalid-arity`, so the write-boundary guard drops an empty-group formula
+arriving inside a file, keeps its cached value and names the cell in both
+reports — pinned in `tests/m6-refused-formula.test.ts` ("drops an
+empty-group formula the same way"). The round-trip property in
+`tests/formula-arity.test.ts` covers the two forms.
+
+Checks on the maintainer's PC: typecheck, lint, Prettier, the full unit
+suite (97 files, 1493 tests) and the e2e freeze suite (8/8) all pass.
