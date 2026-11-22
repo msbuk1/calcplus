@@ -606,7 +606,11 @@ export function App(): JSX.Element {
             },
         true,
       );
-      setStatus('Restored unsaved changes.');
+      setStatus(
+        restored.filterCriteriaDropped
+          ? 'Restored unsaved changes. The copy was saved by an older calcplus and its filter criteria could not be restored.'
+          : 'Restored unsaved changes.',
+      );
     } catch (error) {
       setStatus(
         `The recovery copy could not be restored: ${

@@ -420,3 +420,77 @@ describe('origin-scoped persistence', () => {
     expect(await second.list()).toEqual([]);
   });
 });
+
+describe('the AutoFilter state survives the JSON sheet records', () => {
+  function filteredSession(workbook: OpenedWorkbook): DocumentSession {
+    const session = new DocumentSession(workbook.workbook);
+    const sheet = workbook.workbook.sheets[0]!;
+    session.dispatch(
+      'data.filter',
+      { range: { startRow: 0, startCol: 0, endRow: 2, endCol: 1 } },
+      { activeSheetId: sheet.id },
+    );
+    session.dispatch(
+      'data.filterColumn',
+      {
+        column: 0,
+        criterion: { kind: 'values', selected: [numberValue(2)], includeBlanks: false },
+      },
+      { activeSheetId: sheet.id },
+    );
+    return session;
+  }
+
+  it('round-trips the filter range and criteria through a recovery copy', async () => {
+    // The sheet records are stored as JSON. `columns` is a Map in the model;
+    // written as one it came back as `{}` and the restore then threw
+    // "filter.columns is not iterable", losing the whole copy.
+    const storage = new MemoryOriginStorage(ORIGIN);
+    const repository = new RecoveryRepository(storage, () => 2_000);
+    const workbook = opened();
+    await repository.save(input('doc-filter', workbook, filteredSession(workbook)));
+
+    const restarted = new RecoveryRepository(storage, () => 9_000);
+    const restored = await restarted.restore('doc-filter');
+    expect(restored).not.toBeNull();
+    expect(restored!.filterCriteriaDropped).toBe(false);
+    const filter = restored!.workbook.sheets[0]!.autoFilter;
+    expect(filter?.range).toEqual({ startRow: 0, startCol: 0, endRow: 2, endCol: 1 });
+    expect(filter?.columns.get(0)).toEqual({
+      kind: 'values',
+      selected: [{ type: 'number', value: 2 }],
+      includeBlanks: false,
+    });
+    expect(filter?.columns.size).toBe(1);
+  });
+
+  it('restores a copy written by an older build, losing only the criteria', async () => {
+    // An older build stored `columns` as a Map, so its records carry `"columns": {}`
+    // and the criteria died at write time. The copy must still restore — with
+    // the filter kept, every row shown and the loss reported.
+    const storage = new MemoryOriginStorage(ORIGIN);
+    const repository = new RecoveryRepository(storage, () => 2_000);
+    const workbook = opened();
+    await repository.save(input('doc-old', workbook, filteredSession(workbook)));
+
+    const manifestKey = `${originPrefix(ORIGIN)}doc/doc-old/manifest`;
+    const manifest = JSON.parse((await storage.get(manifestKey)) as string) as {
+      sheets: { recordKey: string }[];
+    };
+    const sheetKey = manifest.sheets[0]!.recordKey;
+    const record = JSON.parse((await storage.get(sheetKey)) as string) as {
+      autoFilter: { columns: unknown };
+    };
+    record.autoFilter.columns = {};
+    await storage.setMany([{ key: sheetKey, value: JSON.stringify(record) }]);
+
+    const restarted = new RecoveryRepository(storage, () => 9_000);
+    const restored = await restarted.restore('doc-old');
+    expect(restored).not.toBeNull();
+    expect(restored!.filterCriteriaDropped).toBe(true);
+    const sheet = restored!.workbook.sheets[0]!;
+    expect(sheet.autoFilter?.range).toEqual({ startRow: 0, startCol: 0, endRow: 2, endCol: 1 });
+    expect(sheet.autoFilter?.columns.size).toBe(0);
+    expect(sheet.cells.size).toBeGreaterThan(0);
+  });
+});

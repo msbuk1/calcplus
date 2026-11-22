@@ -3,6 +3,8 @@ import type {
   BorderStyle,
   Cell,
   ColumnDimension,
+  ColumnFilter,
+  ColumnOffset,
   CommentRecord,
   ConditionalFormatRecord,
   DefinedName,
@@ -36,6 +38,16 @@ export interface SnapshotCellEntry {
   readonly cell: Cell;
 }
 
+/**
+ * An AutoFilter as a snapshot record stores it. `columns` is an entry array,
+ * not a Map: snapshot records are kept as JSON, and a Map serialises to `{}`
+ * and silently loses every criterion. The restore accepts both this shape and
+ * the plain object older builds left behind.
+ */
+export type SnapshotAutoFilter = Omit<AutoFilter, 'columns'> & {
+  readonly columns: [ColumnOffset, ColumnFilter][];
+};
+
 export interface SnapshotSheet {
   readonly id: SheetId;
   readonly name: string;
@@ -49,7 +61,7 @@ export interface SnapshotSheet {
   readonly hyperlinks: [string, HyperlinkRecord][];
   readonly validation: ValidationRecord[];
   readonly conditionalFormats: ConditionalFormatRecord[];
-  readonly autoFilter: AutoFilter | null;
+  readonly autoFilter: SnapshotAutoFilter | null;
   readonly protection: { readonly rawXml: string } | null;
   readonly view: Sheet['view'];
   readonly defaultRowHeight?: number | null;
@@ -246,7 +258,7 @@ function snapshotSheet(sheet: Sheet): SnapshotSheet {
       range: { ...record.range },
       rawXml: record.rawXml,
     })),
-    autoFilter: sheet.autoFilter === null ? null : cloneAutoFilter(sheet.autoFilter),
+    autoFilter: sheet.autoFilter === null ? null : snapshotAutoFilter(sheet.autoFilter),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight,
@@ -277,7 +289,7 @@ function restoreSheet(sheet: SnapshotSheet, parts: ReadonlyMap<string, Uint8Arra
       range: { ...record.range },
       rawXml: record.rawXml,
     })),
-    autoFilter: sheet.autoFilter === null ? null : cloneAutoFilter(sheet.autoFilter),
+    autoFilter: restoreAutoFilter(sheet.autoFilter),
     protection: sheet.protection === null ? null : { ...sheet.protection },
     view: { ...sheet.view },
     defaultRowHeight: sheet.defaultRowHeight ?? null,
@@ -293,6 +305,26 @@ function restoreSheet(sheet: SnapshotSheet, parts: ReadonlyMap<string, Uint8Arra
 
 function cloneDefinedName(name: DefinedName): DefinedName {
   return { ...name };
+}
+
+function snapshotAutoFilter(filter: AutoFilter): SnapshotAutoFilter {
+  const cloned = cloneAutoFilter(filter);
+  return { ...cloned, columns: [...cloned.columns.entries()] };
+}
+
+/**
+ * Accepts both record shapes: the entry array the snapshots write, and the
+ * plain object older builds left behind — a Map that `JSON.stringify` turned
+ * into `{}`, which lost the criteria at write time. An old copy restores with
+ * an empty criterion set instead of throwing `filter.columns is not iterable`
+ * and losing the whole copy.
+ */
+function restoreAutoFilter(record: SnapshotAutoFilter | null): AutoFilter | null {
+  if (record === null) return null;
+  const columns: [ColumnOffset, ColumnFilter][] = Array.isArray(record.columns)
+    ? record.columns
+    : [];
+  return cloneAutoFilter({ ...record, columns: new Map(columns) });
 }
 
 /**

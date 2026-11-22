@@ -298,17 +298,28 @@ export class RecoveryRepository {
     readonly activeSheetId: SheetId | null;
     readonly handle: unknown | null;
     readonly manifest: RecoveryManifest;
+    /**
+     * A sheet record from an older build stored its AutoFilter criteria in a
+     * shape that kept none of them. The copy still restores; the caller says
+     * what was lost instead of leaving the filter gap unexplained.
+     */
+    readonly filterCriteriaDropped: boolean;
   } | null> {
     const manifest = await this.readManifest(docId);
     if (manifest === null) return null;
 
     const sheets: SnapshotSheet[] = [];
+    let filterCriteriaDropped = false;
     for (const ref of manifest.sheets) {
       const json = await this.storage.get(ref.recordKey);
       if (typeof json !== 'string') {
         throw new RecoveryCorruptError(docId, `sheet record ${ref.recordKey} is missing`);
       }
-      sheets.push(JSON.parse(json) as SnapshotSheet);
+      const sheet = JSON.parse(json) as SnapshotSheet;
+      if (sheet.autoFilter !== null && !Array.isArray(sheet.autoFilter.columns)) {
+        filterCriteriaDropped = true;
+      }
+      sheets.push(sheet);
     }
 
     const parts: SnapshotPart[] = [];
@@ -339,6 +350,7 @@ export class RecoveryRepository {
       activeSheetId: manifest.activeSheetId ?? null,
       handle,
       manifest,
+      filterCriteriaDropped,
     };
   }
 
