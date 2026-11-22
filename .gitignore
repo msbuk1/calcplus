@@ -3,6 +3,7 @@ dist/
 test-results/
 playwright-report/
 bench/results/
+fixtures/repair-check/
 .playwright-mcp/
 .opencode/
 .DS_Store

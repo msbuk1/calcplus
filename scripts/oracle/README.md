@@ -65,6 +65,15 @@ The script targets `fixtures/oracle/m1-values-errors.xlsx`, an Excel-openable
 fixture exercising the M1 value and error surface. The M1 chart fixture is a
 preservation fixture whose minimal chart package Excel 365 refuses to open.
 
+## Repair detector
+
+`detect-repair.ps1` automates the release-gate item 6 check on the maintainer's
+machine: it opens each workbook through Excel COM, where a clean file opens
+and a file Excel would repair cannot open (the repair dialog cannot be
+answered in automation). `OPEN-OK` therefore means "Excel opens it without a
+repair prompt". The verdicts have matched the maintainer's interactive checks
+on every file compared. Run it on the output of `npm run repair-outputs`.
+
 ## Broken internal hyperlink capture
 
 `capture-broken-hyperlink.ps1` settles ticket 32's open question 3 (known
