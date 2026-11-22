@@ -90,6 +90,37 @@ describe('a formula Excel refuses is kept in the model but never written', () =>
     expect(writtenFormulas(saved.bytes)).toEqual(['1+1', '_xlfn.FOO(1)']);
   });
 
+  it('drops an empty-group formula the same way (ticket 48)', () => {
+    // `SUM(())` and `1+()` arrive inside the file untouched; the write
+    // boundary drops them exactly like `SUM()` and both reports name them.
+    const opened = openWorkbook(
+      buildXlsx(
+        ws(
+          '<row r="1">' +
+            '<c r="A1"><f>SUM(())</f><v>4</v></c>' +
+            '<c r="B1"><f>1+()</f><v>5</v></c>' +
+            '</row>',
+        ),
+      ),
+    );
+    const sheet = opened.workbook.sheets[0]!;
+    expect(sheet.cells.get('0:0')?.formula).toBe('SUM(())');
+
+    const result = save(opened);
+    expect(result.noOp).toBe(false);
+    expect(writtenFormulas(result.bytes)).toEqual([]);
+    const xml = worksheetText(result.bytes);
+    expect(xml).toContain('<c r="A1"><v>4</v></c>');
+    expect(xml).toContain('<c r="B1"><v>5</v></c>');
+
+    const report = buildCompatibilityReport({
+      workbook: opened.workbook,
+      compatibility: opened.compatibility,
+    });
+    const items = report.items.filter((item) => item.kind === 'refusedFormula');
+    expect(items.map((item) => item.anchor)).toEqual(['A1', 'B1']);
+  });
+
   it('writes a valid and an unsupported-function formula verbatim', () => {
     const opened = openWorkbook(buildXlsx(CONTAMINATED));
     const xml = worksheetText(save(opened).bytes);

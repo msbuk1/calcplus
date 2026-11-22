@@ -10,7 +10,8 @@ import { functionArity, isAllowedEngineFunction, SHIM_FUNCTION_IDS } from './fun
  * the model and never written to a file.
  */
 
-export type FormulaSkipReason = 'unsupported-function' | 'unparseable' | 'invalid-arity';
+export type FormulaSkipReason =
+  'unsupported-function' | 'unparseable' | 'invalid-arity' | 'empty-group';
 
 /** One call whose argument count falls outside its function's accepted range. */
 export interface ArityError {
@@ -44,8 +45,6 @@ interface FormulaCall {
   readonly openParen: number;
   /** Top-level commas seen so far between the call's parentheses. */
   commas: number;
-  /** True when anything other than whitespace sits between the call's parentheses. */
-  hasContent: boolean;
   /** Argument count: 0 for `FN()`, otherwise top-level commas plus one. */
   argCount: number;
 }
@@ -54,6 +53,8 @@ interface FormulaScan {
   readonly tokens: readonly FormulaToken[];
   readonly calls: readonly FormulaCall[];
   readonly issues: readonly string[];
+  /** True when a parenthesised group that is not a call's argument list is empty. */
+  readonly emptyGroup: boolean;
 }
 
 const UNSUPPORTED_PREFIXES = ['_xlfn.', '_xlws.'] as const;
@@ -96,12 +97,12 @@ export function isEngineFormulaEligible(formula: string): boolean {
 
 /**
  * Screen the authored text against the 52-function registry and build the
- * engine form. Unsupported functions, unparseable constructs and calls with a
- * wrong argument count return `text: null`. The first two merely cannot be
- * evaluated, so the caller keeps the authored text and cached result.
- * `invalid-arity` is different: the formula is invalid (Excel refuses it at
- * entry), and a wrong argument count must never reach a saved file, so entry
- * points refuse the edit instead of storing the text.
+ * engine form. Unsupported functions and unparseable constructs return
+ * `text: null`; they merely cannot be evaluated, so the caller keeps the
+ * authored text and cached result. `invalid-arity` and `empty-group` are
+ * different: the formula is invalid (Excel refuses it at entry), and such a
+ * formula must never reach a saved file, so entry points refuse the edit
+ * instead of storing the text.
  */
 export function prepareFormula(formula: string): PreparedFormula {
   const cached = preparedCache.get(formula);
@@ -128,6 +129,11 @@ function prepareFormulaUncached(formula: string): PreparedFormula {
   // the whole formula invalid at entry, whatever else it contains.
   if (arityErrors.length > 0) {
     return { text: null, skip: 'invalid-arity', unsupportedFunctions, arityErrors };
+  }
+  // An empty parenthesised group is an operand with no value. Excel refuses
+  // it at entry exactly as it refuses a wrong argument count (ticket 48).
+  if (scan.emptyGroup) {
+    return { text: null, skip: 'empty-group', unsupportedFunctions, arityErrors: [] };
   }
   if (unsupportedFunctions.length > 0) {
     return { text: null, skip: 'unsupported-function', unsupportedFunctions, arityErrors: [] };
@@ -158,16 +164,18 @@ function arityErrorsFor(calls: readonly FormulaCall[]): ArityError[] {
 }
 
 /**
- * A formula Excel refuses at entry because a call is outside its function's
- * argument range (formula semantics §2 and §9). Excel shows "There's a problem
- * with this formula" and keeps the cell's previous value.
+ * A formula Excel refuses at entry (formula semantics §2 and §9): a call
+ * outside its function's argument range, or an empty parenthesised group
+ * (ticket 48). Excel shows "There's a problem with this formula" and keeps
+ * the cell's previous value.
  *
  * This is the single screen for that rule. `cell-set.ts` refuses it when the
  * user types it, and the save path refuses to write it when it arrived inside
  * a file instead — see `writtenCell` in the OOXML writer.
  */
 export function formulaRefusedByExcel(formula: string): boolean {
-  return prepareFormula(formula).skip === 'invalid-arity';
+  const skip = prepareFormula(formula).skip;
+  return skip === 'invalid-arity' || skip === 'empty-group';
 }
 
 /**
@@ -268,18 +276,23 @@ function scanFormula(formula: string): FormulaScan {
   const issues: string[] = [];
   if (hasThreeDimensionalRange(formula)) issues.push('unsupported-construct');
   const functionCalls = new Map<number, FormulaCall>();
-  const parenStack: { readonly isFunction: boolean; readonly call: FormulaCall | null }[] = [];
+  const parenStack: {
+    readonly isFunction: boolean;
+    readonly call: FormulaCall | null;
+    hasContent: boolean;
+  }[] = [];
   let index = 0;
   let depth = 0;
   let braceDepth = 0;
+  let emptyGroup = false;
 
-  // Anything other than whitespace between a call's parentheses is its
-  // content; only `FN( )` is a zero-argument call. The stack top is the
-  // innermost parenthesised group, so a nested call's tokens never mark the
-  // outer call.
+  // Anything other than whitespace between a group's parentheses is its
+  // content; only `FN( )` is a zero-argument call, and only `()` is an empty
+  // group. The stack top is the innermost parenthesised group, so a nested
+  // call's tokens never mark the outer call.
   const pushToken = (token: FormulaToken): void => {
     const context = parenStack[parenStack.length - 1];
-    if (context !== undefined && context.call !== null) context.call.hasContent = true;
+    if (context !== undefined) context.hasContent = true;
     tokens.push(token);
   };
 
@@ -359,6 +372,7 @@ function scanFormula(formula: string): FormulaScan {
       parenStack.push({
         isFunction: functionCalls.has(openIndex),
         call: functionCalls.get(openIndex) ?? null,
+        hasContent: false,
       });
       depth += 1;
       index += 1;
@@ -369,9 +383,16 @@ function scanFormula(formula: string): FormulaScan {
       depth -= 1;
       if (depth < 0) issues.push('unbalanced');
       const closed = parenStack.pop();
-      // `FN()` is zero arguments; `FN(,)` is two empty ones.
-      if (closed !== undefined && closed.call !== null) {
-        closed.call.argCount = closed.call.hasContent ? closed.call.commas + 1 : 0;
+      if (closed !== undefined) {
+        if (closed.call !== null) {
+          // `FN()` is zero arguments; `FN(,)` is two empty ones.
+          closed.call.argCount = closed.hasContent ? closed.call.commas + 1 : 0;
+        } else if (!closed.hasContent) {
+          // A parenthesised group that is not a call's argument list must
+          // hold an operand. `=1+()`, `=SUM(())` and `=()` carry an empty
+          // group, which Excel refuses at entry (ticket 48).
+          emptyGroup = true;
+        }
       }
       pushToken({
         kind: 'paren',
@@ -448,7 +469,6 @@ function scanFormula(formula: string): FormulaScan {
             nameStart: start,
             openParen,
             commas: 0,
-            hasContent: false,
             argCount: 0,
           };
           calls.push(call);
@@ -528,7 +548,7 @@ function scanFormula(formula: string): FormulaScan {
     }
   }
   checkOperatorStructure(tokens, issues);
-  return { tokens, calls, issues };
+  return { tokens, calls, issues, emptyGroup };
 }
 
 /**

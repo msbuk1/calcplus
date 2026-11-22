@@ -5,7 +5,7 @@ import {
   PUBLISHED_FUNCTIONS,
   type PublishedFunction,
 } from '@engine/function-registry';
-import { prepareFormula } from '@engine/formula-text';
+import { prepareFormula, formulaRefusedByExcel } from '@engine/formula-text';
 import { openWorkbook } from '@ooxml/open';
 import { saveWorkbook } from '@ooxml/save';
 import { BLANK } from '@model/value';
@@ -94,6 +94,29 @@ describe('zero and empty arguments are counted as Excel counts them', () => {
   });
 });
 
+describe('an empty parenthesised group is refused like a wrong argument count', () => {
+  it('refuses an empty group wherever it appears', () => {
+    // Excel refuses these at entry (COM-verified): the parentheses hold no
+    // operand (ticket 48). The cell keeps its previous value.
+    expect(prepareFormula('SUM(())').skip).toBe('empty-group');
+    expect(prepareFormula('1+()').skip).toBe('empty-group');
+    expect(prepareFormula('()').skip).toBe('empty-group');
+    expect(prepareFormula('1+( )').skip).toBe('empty-group');
+    expect(prepareFormula('SUM((),1)').skip).toBe('empty-group');
+    expect(prepareFormula('SUM(())').text).toBeNull();
+    expect(formulaRefusedByExcel('SUM(())')).toBe(true);
+  });
+
+  it('narrows only the empty group: the neighbouring forms still pass', () => {
+    // `SUM()` is a call's empty argument list, refused by arity, not by this
+    // rule; a group with content is an ordinary operand.
+    expect(prepareFormula('SUM()').skip).toBe('invalid-arity');
+    expect(prepareFormula('SUM(1,2)').skip).toBeNull();
+    expect(prepareFormula('1+(2)').skip).toBeNull();
+    expect(prepareFormula('SUM((1))').skip).toBeNull();
+  });
+});
+
 describe('only top-level commas count toward a call argument count', () => {
   it('ignores commas inside nested calls', () => {
     expect(prepareFormula('IF(A1>0, SUM(B1:B2), MAX(C1, C2))').skip).toBeNull();
@@ -130,6 +153,16 @@ describe('names outside the published set carry no arity', () => {
     const prepared = prepareFormula('_xlfn.XLOOKUP()');
     expect(prepared.skip).toBe('unsupported-function');
     expect(prepared.arityErrors).toEqual([]);
+  });
+
+  it('pins known deviation D-13: no arity check outside the registry', () => {
+    // docs/known-deviations.md D-13. Excel refuses a wrong argument count for
+    // these functions too, but calcplus cannot know their signatures, so the
+    // screen stops at "unsupported" and the call is preserved verbatim.
+    const prepared = prepareFormula('_xlfn.XLOOKUP(1)');
+    expect(prepared.skip).toBe('unsupported-function');
+    expect(prepared.arityErrors).toEqual([]);
+    expect(formulaRefusedByExcel('_xlfn.XLOOKUP(1)')).toBe(false);
   });
 
   it('does not arity-check TRUE() and FALSE() calls', () => {
@@ -219,6 +252,50 @@ describe('entry refuses a wrong argument count and keeps the cell', () => {
   });
 });
 
+describe('entry refuses an empty parenthesised group and keeps the cell', () => {
+  const sheet = ws('<row r="1"><c r="A1"><v>2</v></c><c r="B1"><f>A1*2</f><v>4</v></c></row>');
+
+  it('refuses SUM(()) and 1+() with a plain message', () => {
+    const opened = openWorkbook(buildXlsx(sheet));
+    const session = new DocumentSession(opened.workbook);
+    const model = opened.workbook.sheets[0]!;
+    for (const formula of ['SUM(())', '1+()']) {
+      const result = session.dispatch('cell.set', {
+        sheetId: model.id,
+        row: 0,
+        col: 1,
+        value: BLANK,
+        formula,
+      });
+      expect(result.changes, formula).toEqual([]);
+      expect(result.ui?.message, formula).toContain('parentheses cannot be empty');
+      expect(result.ui?.message, formula).toContain('The cell was not changed.');
+    }
+
+    const cell = cellFor(model, '0:1');
+    expect(cell.formula).toBe('A1*2');
+    expect(cell.savedResult).toEqual({ type: 'number', value: 4 });
+    expect(session.hasUnsavedChanges).toBe(false);
+  });
+
+  it('still commits the neighbouring valid forms', () => {
+    const opened = openWorkbook(buildXlsx(sheet));
+    const session = new DocumentSession(opened.workbook);
+    const model = opened.workbook.sheets[0]!;
+    for (const formula of ['SUM(1,2)', '1+(2)']) {
+      const result = session.dispatch('cell.set', {
+        sheetId: model.id,
+        row: 0,
+        col: 0,
+        value: BLANK,
+        formula,
+      });
+      expect(result.changes, formula).toHaveLength(1);
+    }
+    expect(cellFor(model, '0:0').formula).toBe('1+(2)');
+  });
+});
+
 describe('a saved workbook holds no formula outside the accepted arities', () => {
   it('writes every accepted formula and none of the refused ones', () => {
     const opened = openWorkbook(buildXlsx(ws('<row r="1"><c r="A1"><v>2</v></c></row>')));
@@ -242,6 +319,8 @@ describe('a saved workbook holds no formula outside the accepted arities', () =>
     const refused = [
       'SUM()',
       'SUM( )',
+      'SUM(())',
+      '1+()',
       'IF(A1)',
       'IF(1,2,3,4)',
       'TODAY(1)',

@@ -9,8 +9,9 @@ import type { SharedStringsAppender } from './shared-strings-patch';
 
 /**
  * A formula Excel refuses at entry: a call outside its function's argument
- * range (formula semantics §2 and §9). `cell-set.ts` refuses it when the user
- * types it; this is the same screen at the write boundary, because a formula
+ * range (formula semantics §2 and §9), or an empty parenthesised group
+ * (ticket 48). `cell-set.ts` refuses it when the user types it; this is the
+ * same screen at the write boundary, because a formula
  * that arrives *inside* a file is loaded into the model untouched and would
  * otherwise be written straight back out. Excel then repairs the file and
  * strips the formula, which is the data loss file-compat §1 forbids and the

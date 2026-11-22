@@ -77,9 +77,10 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
       }
     }
     // Formula semantics §2 and §9: a call outside its function's argument
-    // range is invalid, not merely unevaluable — Excel refuses such a formula
-    // at entry and keeps the cell's previous value. Complying here is what
-    // keeps Excel from stripping the formula out of the saved file.
+    // range, or an empty parenthesised group, is invalid, not merely
+    // unevaluable — Excel refuses such a formula at entry and keeps the cell's
+    // previous value. Complying here is what keeps Excel from stripping the
+    // formula out of the saved file.
     const authoredFormula = args.formula ?? null;
     if (authoredFormula !== null) {
       const prepared = prepareFormula(authoredFormula);
@@ -90,6 +91,15 @@ export const cellSetCommand: CommandDefinition<CellSetArgs> = {
           ui: {
             type: 'toast',
             message: `${arityMessage(problem)} The cell was not changed.`,
+          },
+        };
+      }
+      if (prepared.skip === 'empty-group') {
+        return {
+          changes: [],
+          ui: {
+            type: 'toast',
+            message: 'A pair of parentheses cannot be empty. The cell was not changed.',
           },
         };
       }
