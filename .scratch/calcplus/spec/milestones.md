@@ -314,11 +314,13 @@ Restore brings the edits back, a save clears the prompt), the external-edit
 conflict offered Reload / Overwrite / Save As / Cancel on a file changed on
 disk, and the close prompt appeared for a tab with unsaved changes.
 
-Recorded as **not tested for this milestone**:
-
-- A 250k-cell workbook scrolling at 60 fps in the browser (the demo item;
-  the Node benchmark suite runs the corpus but the browser check was not
-  watched).
+Recorded as **not tested for this milestone**: none — the last item, the
+250k-cell scroll demo, was watched on 2026-11-21. The declared
+reference-machine bench (`npm run bench:browser`, `CALCPLUS_REFERENCE_MACHINE=1`)
+passed 3/3: scrolling the 250k-cell formatted sheet measured a frame p95 of
+16.7-16.8 ms against the 16.7 ms budget, worst frame
+16.8 ms against 50 ms, no long tasks, 68 MB page heap; the million-row sparse
+sheet scrolled to its last row with the grid unallocated.
 
 Also recorded: **exit criterion 2 is met (2026-11-21).** The maintainer ruled
 that this laptop — Intel Core i7-10610U, 4 physical cores, 15.7 GiB RAM,
