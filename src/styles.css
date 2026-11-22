@@ -2783,11 +2783,11 @@ a:focus-visible,
   white-space: nowrap;
 }
 
+/* Select All is the list's first row: only the separator distinguishes it,
+   and every override here must keep the row exactly FILTER_ROW_HEIGHT tall or
+   the virtual window drifts (ticket 36 item 5). */
 .filter-select-all {
-  height: 23px;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 4px;
-  margin: 0 4px 2px;
 }
 
 .filter-spacer {

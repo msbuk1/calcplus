@@ -387,16 +387,21 @@ test('a column with many distinct values keeps the dropdown usable and Select Al
   await dropdown.getByLabel('Search values').fill('');
   await expect(dropdown.getByRole('checkbox', { name: 'Value 0001' })).toBeVisible();
 
+  // Select All is the list's first row and scrolls with the values, exactly
+  // as Excel shows it (ticket 36 item 5). It ticks the full model list while
+  // most values are outside the DOM.
+  await dropdown.getByTestId('filter-select-all').uncheck();
+  await dropdown.getByTestId('filter-select-all').check();
+
   // The last value is reachable, so no value was silently capped away.
   await dropdown.getByTestId('filter-checklist').evaluate((list) => {
     list.scrollTop = list.scrollHeight;
   });
   await expect(dropdown.getByRole('checkbox', { name: 'Value 0600' })).toBeVisible();
+  // Scrolled away, Select All has left the list with the values.
+  await expect(dropdown.getByTestId('filter-select-all')).toHaveCount(0);
 
-  // Select All ticks the full model list while most values are outside the
-  // DOM. Unchecking one row then leaves every other row visible.
-  await dropdown.getByTestId('filter-select-all').uncheck();
-  await dropdown.getByTestId('filter-select-all').check();
+  // Unchecking one row then leaves every other row visible.
   await dropdown.getByRole('checkbox', { name: 'Value 0600' }).uncheck();
   await dropdown.getByRole('button', { name: 'Apply' }).click();
   await expect(dropdown).toBeHidden();

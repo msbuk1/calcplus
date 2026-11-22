@@ -70,7 +70,9 @@ const FOCUSABLE =
  * The entries follow the capture's ruled deltas (ticket 28): Sort A to Z, Sort
  * Z to A, Customised Sort, then Clear Filter from '<column>', the
  * type-dependent filter menu, the search box, Select All, the values and
- * (Blanks), and the green Apply button. Out-of-scope entries Excel greys
+ * (Blanks), and the green Apply button. Select All is the first row of the
+ * value list and scrolls with the values, exactly as Excel shows it (ticket
+ * 36 item 5). Out-of-scope entries Excel greys
  * (Sort By Colour, Filter By Colour, Sheet View) are not rendered at all.
  *
  * Apply dispatches one `data.filterColumn` (or the clear command when every
@@ -119,7 +121,9 @@ export function FilterDropdown({
     checklist.entries.forEach((entry, position) => index.set(entry, position));
     return index;
   }, [checklist.entries]);
-  const rowCount = visibleEntries.length + (checklist.hasBlanks ? 1 : 0);
+  // Select All is the first slot of the list, so it counts as a row and
+  // scrolls with the values (ticket 36 item 5).
+  const rowCount = 1 + visibleEntries.length + (checklist.hasBlanks ? 1 : 0);
   const listWindow = filterListWindow(rowCount, scrollTop);
 
   // Measure before the first paint so an anchored panel near the bottom edge
@@ -263,12 +267,33 @@ export function FilterDropdown({
     items[next]?.focus();
   };
 
-  // Only the rows inside the virtual window exist in the DOM. `(Blanks)` is
-  // the last slot, so it appears when the list is scrolled to the bottom.
+  // Only the rows inside the virtual window exist in the DOM. Select All is
+  // the first slot and `(Blanks)` the last, so `(Blanks)` appears when the
+  // list is scrolled to the bottom and Select All leaves with the values when
+  // it scrolls away (ticket 36 item 5).
   const renderedRows: JSX.Element[] = [];
   for (let row = listWindow.start; row < listWindow.end; row += 1) {
-    if (row < visibleEntries.length) {
-      const entry = visibleEntries[row]!;
+    if (row === 0) {
+      renderedRows.push(
+        <label
+          key="select-all"
+          className="filter-check filter-select-all"
+          style={{ height: FILTER_ROW_HEIGHT }}
+        >
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={selectAll.all}
+            data-testid="filter-select-all"
+            onChange={() => setState(toggleSelectAll(state, checklist.entries))}
+          />
+          <span className="filter-check-text">Select All</span>
+        </label>,
+      );
+      continue;
+    }
+    if (row - 1 < visibleEntries.length) {
+      const entry = visibleEntries[row - 1]!;
       const index = entryIndex.get(entry) ?? 0;
       renderedRows.push(
         <label
@@ -433,17 +458,6 @@ export function FilterDropdown({
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-
-          <label className="filter-check filter-select-all">
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={selectAll.all}
-              data-testid="filter-select-all"
-              onChange={() => setState(toggleSelectAll(state, checklist.entries))}
-            />
-            <span className="filter-check-text">Select All</span>
-          </label>
 
           {visibleEntries.length === 0 ? <p className="filter-empty">No matching values.</p> : null}
 
