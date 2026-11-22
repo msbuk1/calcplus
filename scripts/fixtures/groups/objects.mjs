@@ -1,5 +1,6 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { unzipSync, zipSync } from 'fflate';
 import {
   PACKAGE_REL_NS,
@@ -163,9 +164,9 @@ const f9Drawing = `${XML_HEADER}
     <xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>12</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
     <xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>20</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:pic>
-      <xdr:nvPicPr><xdr:cNvPr id="3" name="Image 1"/><xdr:cNvPicPr/></xdr:nvPicPr>
+      <xdr:nvPicPr><xdr:cNvPr id="3" name="Image 1" descr=""/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>
       <xdr:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
-      <xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>
+      <xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1080000" cy="864000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>
     </xdr:pic>
     <xdr:clientData/>
   </xdr:twoCellAnchor>
@@ -173,9 +174,9 @@ const f9Drawing = `${XML_HEADER}
     <xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>22</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
     <xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>26</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
     <xdr:sp macro="" textlink="">
-      <xdr:nvSpPr><xdr:cNvPr id="4" name="Shape 1"/><xdr:cNvSpPr/></xdr:nvSpPr>
-      <xdr:spPr><a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom></xdr:spPr>
-      <xdr:txBody><a:bodyPr/><a:p><a:r><a:rPr lang="en-US"/><a:t>Shape</a:t></a:r></a:p></xdr:txBody>
+      <xdr:nvSpPr><xdr:cNvPr id="4" name="Shape 1" descr=""/><xdr:cNvSpPr><a:spLocks noChangeArrowheads="1"/></xdr:cNvSpPr></xdr:nvSpPr>
+      <xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1080000" cy="864000"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom></xdr:spPr>
+      <xdr:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>Shape</a:t></a:r></a:p></xdr:txBody>
     </xdr:sp>
     <xdr:clientData/>
   </xdr:twoCellAnchor>
@@ -193,18 +194,23 @@ const f9Chart = `${XML_HEADER}
       <c:layout/>
       <c:barChart>
         <c:barDir val="col"/>
+        <c:grouping val="clustered"/>
+        <c:varyColors val="0"/>
         <c:ser>
-          <c:idx val="0"/><c:order val="0"/>
+          <c:idx val="0"/><c:order val="0"/><c:invertIfNegative val="0"/>
           <c:cat><c:strRef><c:f>Sheet1!$A$2:$A$4</c:f><c:strCache><c:ptCount val="3"/><c:pt idx="0"><c:v>Jan</c:v></c:pt><c:pt idx="1"><c:v>Feb</c:v></c:pt><c:pt idx="2"><c:v>Mar</c:v></c:pt></c:strCache></c:strRef></c:cat>
           <c:val><c:numRef><c:f>Sheet1!$B$2:$B$4</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="3"/><c:pt idx="0"><c:v>10</c:v></c:pt><c:pt idx="1"><c:v>20</c:v></c:pt><c:pt idx="2"><c:v>30</c:v></c:pt></c:numCache></c:numRef></c:val>
         </c:ser>
+        <c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>
+        <c:gapWidth val="150"/>
         <c:axId val="1"/><c:axId val="2"/>
       </c:barChart>
-      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/></c:catAx>
-      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/></c:valAx>
+      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="2"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="1"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>
     </c:plotArea>
-    <c:legend/>
+    <c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>
     <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
   </c:chart>
 </c:chartSpace>`;
 
@@ -271,14 +277,15 @@ const f10PivotTable = `${XML_HEADER}
 <pivotTableDefinition xmlns="${SPREADSHEET_NS}" xmlns:mc="${MC_NS}" xmlns:x14="${X14_NS}" mc:Ignorable="x14" name="PivotTable1" cacheId="1" dataCaption="Values" updatedVersion="6" minRefreshableVersion="3" createdVersion="6" indent="0" outline="1" outlineData="1" multipleFieldFilters="0">
   <location ref="G2:H4" firstHeaderRow="1" firstDataRow="1" firstDataCol="1"/>
   <pivotFields count="3">
-    <pivotField axis="axisRow" showAll="0"><items count="2"><item x="0"/><item x="1"/></items></pivotField>
-    <pivotField dataField="1" showAll="0"/>
+    <pivotField axis="axisRow" showAll="0"><items count="3"><item x="0"/><item x="1"/><item t="default"/></items></pivotField>
+    <pivotField showAll="0"/>
     <pivotField dataField="1" showAll="0"/>
   </pivotFields>
   <rowFields count="1"><field x="0"/></rowFields>
-  <rowItems count="2"><i><x/></i><i><x v="1"/></i></rowItems>
+  <rowItems count="3"><i><x/></i><i><x v="1"/></i><i t="grand"><x/></i></rowItems>
   <colItems count="1"><i/></colItems>
   <dataFields count="1"><dataField name="Sum of Amount" fld="2" baseField="0" baseItem="0"/></dataFields>
+  <pivotTableStyleInfo name="PivotStyleLight16" showRowHeaders="1" showColHeaders="1" showRowStripes="0" showColStripes="0" showLastColumn="1"/>
 </pivotTableDefinition>`;
 
 const f10PivotTableRels = relationships([
@@ -312,7 +319,7 @@ const f10ExternalLink = `${XML_HEADER}
   <externalBook r:id="rId1">
     <sheetNames><sheetName val="Linked"/></sheetNames>
     <sheetDataSet>
-      <sheetData sheetId="0"><row r="1"><cell r="1" t="n"><v>99</v></cell></row></sheetData>
+      <sheetData sheetId="0"><row r="1"><cell r="A1" t="n"><v>99</v></cell></row></sheetData>
     </sheetDataSet>
   </externalBook>
 </externalLink>`;
@@ -327,7 +334,7 @@ function f10Package() {
     workbook: simpleWorkbook({
       sheetName: 'Sales',
       calcPr:
-        '<calcPr calcId="191029" fullCalcOnLoad="0"/>\n  <pivotCaches><pivotCache cacheId="1" r:id="rId2"/></pivotCaches>',
+        '<externalReferences><externalReference r:id="rId3"/></externalReferences>\n  <calcPr calcId="191029" fullCalcOnLoad="0"/>\n  <pivotCaches><pivotCache cacheId="1" r:id="rId2"/></pivotCaches>',
     }),
     workbookRels: relationships([
       ['rId1', `${REL_NS}/worksheet`, 'worksheets/sheet1.xml'],
@@ -368,6 +375,23 @@ const f11Sheet = `${XML_HEADER}
   </sheetData>
 </worksheet>`;
 
+// F11's vbaProject.bin is the real one from the maintainer's Excel 365 capture
+// (fixtures/compat/producers/excel-365.xlsm). Excel 365 refuses a synthetic
+// binary here — it validates the OLE container and rejects the file — and the
+// captured project proves real-world VBA bytes survive the round trip. The
+// macro is inert in every test (AutomationSecurity is forced off) and is the
+// maintainer's own capture, already shipped in the repo.
+function capturedVbaProject() {
+  const producer = unzipSync(
+    new Uint8Array(
+      readFileSync(
+        fileURLToPath(new URL('../../../fixtures/compat/producers/excel-365.xlsm', import.meta.url)),
+      ),
+    ),
+  );
+  return producer['xl/vbaProject.bin'];
+}
+
 function f11Package() {
   return buildPackage({
     workbook: simpleWorkbook({ calcPr: '<calcPr calcId="191029" fullCalcOnLoad="0"/>' }),
@@ -380,7 +404,7 @@ function f11Package() {
       ],
     ]),
     sheets: [['xl/worksheets/sheet1.xml', f11Sheet]],
-    binary: { 'xl/vbaProject.bin': binaryPayload('vbaProject', 1024) },
+    binary: { 'xl/vbaProject.bin': capturedVbaProject() },
     overrides: [
       ['xl/workbook.xml', CONTENT_TYPE.macroWorkbook],
       ['xl/vbaProject.bin', CONTENT_TYPE.vbaProject],

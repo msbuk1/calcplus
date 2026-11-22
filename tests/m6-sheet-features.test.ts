@@ -751,7 +751,7 @@ describe('F23 names-defined.xlsx — workbook and sheet names, quoted references
     ]);
     expect(workbook.sheets[0]!.names).toEqual([
       { name: 'TaxRate', formula: '0.2', sheetId: workbook.sheets[0]!.id },
-      { name: 'LocalFigure', formula: '$B$2', sheetId: workbook.sheets[0]!.id },
+      { name: 'LocalFigure', formula: "'Sales Data'!$B$2", sheetId: workbook.sheets[0]!.id },
     ]);
     expect(workbook.sheets[1]!.names).toEqual([
       { name: 'BoldTitle', formula: "'Summary'!$A$1", sheetId: workbook.sheets[1]!.id },
@@ -778,7 +778,9 @@ describe('F23 names-defined.xlsx — workbook and sheet names, quoted references
     expect(workbook.names.find((name) => name.name === 'TotalSales')?.formula).toBe(
       "'Sales Data'!$B$3:$B$6",
     );
-    expect(sales.names.find((name) => name.name === 'LocalFigure')?.formula).toBe('$B$3');
+    expect(sales.names.find((name) => name.name === 'LocalFigure')?.formula).toBe(
+      "'Sales Data'!$B$3",
+    );
     // A constant name and a name on another sheet do not move.
     expect(sales.names.find((name) => name.name === 'TaxRate')?.formula).toBe('0.2');
     expect(workbook.sheets[1]!.names[0]?.formula).toBe("'Summary'!$A$1");
@@ -800,7 +802,7 @@ describe('F23 names-defined.xlsx — workbook and sheet names, quoted references
       `<definedName name="TotalSales">'Sales Data'!$B$3:$B$6</definedName>`,
     );
     expect(workbookXml).toContain(
-      `<definedName name="LocalFigure" localSheetId="0">$B$3</definedName>`,
+      `<definedName name="LocalFigure" localSheetId="0">'Sales Data'!$B$3</definedName>`,
     );
     expect(workbookXml).toContain(
       `<definedName name="TaxRate" localSheetId="0" hidden="1">0.2</definedName>`,

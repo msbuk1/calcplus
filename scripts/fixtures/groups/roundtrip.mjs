@@ -103,6 +103,20 @@ const vmlDrawing = `${XML_HEADER}
 <xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
   <o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout>
   <v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>
+  <v:shape id="_x0000_s1026" type="#_x0000_t202" style="position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden" fillcolor="#ffffe1" o:insetmode="auto">
+    <v:fill color2="#ffffe1"/>
+    <v:shadow on="t" color="black" obscured="t"/>
+    <v:path o:connecttype="none"/>
+    <v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox>
+    <x:ClientData ObjectType="Note">
+      <x:MoveWithCells/>
+      <x:SizeWithCells/>
+      <x:Anchor>1, 15, 0, 2, 3, 15, 4, 4</x:Anchor>
+      <x:AutoFill>False</x:AutoFill>
+      <x:Row>1</x:Row>
+      <x:Column>1</x:Column>
+    </x:ClientData>
+  </v:shape>
 </xml>`;
 
 // ---------------------------------------------------------------------------
@@ -121,6 +135,7 @@ const f2Workbook = `${XML_HEADER}
     <sheet name="Data" sheetId="2" state="hidden" r:id="rId2"/>
     <sheet name="Scratch" sheetId="3" state="veryHidden" r:id="rId3"/>
   </sheets>
+  <externalReferences><externalReference r:id="rId8"/></externalReferences>
   <definedNames>
     <definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'Overview'!$A$10:$D$13</definedName>
     <definedName name="ReportTitle">Overview!$A$1</definedName>
@@ -349,7 +364,7 @@ const f2ExternalLink = `${XML_HEADER}
   <externalBook r:id="rId1">
     <sheetNames><sheetName val="Linked"/></sheetNames>
     <sheetDataSet>
-      <sheetData sheetId="0"><row r="1"><cell r="1" t="n"><v>99</v></cell></row></sheetData>
+      <sheetData sheetId="0"><row r="1"><cell r="A1" t="n"><v>99</v></cell></row></sheetData>
     </sheetDataSet>
   </externalBook>
 </externalLink>`;

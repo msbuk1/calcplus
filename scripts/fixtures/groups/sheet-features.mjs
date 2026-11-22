@@ -479,7 +479,7 @@ const f23Workbook = workbookXml({
     <definedName name="TotalSales">'Sales Data'!$B$2:$B$5</definedName>
     <definedName name="TaxRate" localSheetId="0" hidden="1">0.2</definedName>
     <definedName name="BoldTitle" localSheetId="1">'Summary'!$A$1</definedName>
-    <definedName name="LocalFigure" localSheetId="0">$B$2</definedName>
+    <definedName name="LocalFigure" localSheetId="0">'Sales Data'!$B$2</definedName>
     <definedName name="QuotedApostrophe">'O''Brien''s Log'!$A$1:$A$2</definedName>
   </definedNames>`,
 });

@@ -37,14 +37,19 @@ const chartXml = `${XML_HEADER}
       <c:layout/>
       <c:barChart>
         <c:barDir val="col"/>
-        <c:ser><c:idx val="0"/><c:order val="0"/><c:val><c:numRef><c:f>Sheet1!$B$2:$B$3</c:f></c:numRef></c:val></c:ser>
+        <c:grouping val="clustered"/>
+        <c:varyColors val="0"/>
+        <c:ser><c:idx val="0"/><c:order val="0"/><c:invertIfNegative val="0"/><c:val><c:numRef><c:f>Sheet1!$B$2:$B$3</c:f></c:numRef></c:val></c:ser>
+        <c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>
+        <c:gapWidth val="150"/>
         <c:axId val="1"/><c:axId val="2"/>
       </c:barChart>
-      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/></c:catAx>
-      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/></c:valAx>
+      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="2"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="1"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>
     </c:plotArea>
-    <c:legend/>
+    <c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>
     <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
   </c:chart>
 </c:chartSpace>`;
 
@@ -307,17 +312,22 @@ const crossSheetChartXml = `${XML_HEADER}
       <c:layout/>
       <c:barChart>
         <c:barDir val="col"/>
-        <c:ser><c:idx val="0"/><c:order val="0"/>
+        <c:grouping val="clustered"/>
+        <c:varyColors val="0"/>
+        <c:ser><c:idx val="0"/><c:order val="0"/><c:invertIfNegative val="0"/>
           <c:cat><c:strRef><c:f>Sheet1!$A$3</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Two</c:v></c:pt></c:strCache></c:strRef></c:cat>
           <c:val><c:numRef><c:f>Sheet1!$B$3</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="1"/><c:pt idx="0"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val>
         </c:ser>
+        <c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/></c:dLbls>
+        <c:gapWidth val="150"/>
         <c:axId val="1"/><c:axId val="2"/>
       </c:barChart>
-      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/></c:catAx>
-      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/></c:valAx>
+      <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="2"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+      <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="General" sourceLinked="1"/><c:majorTickMark val="out"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:crossAx val="1"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>
     </c:plotArea>
-    <c:legend/>
+    <c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>
     <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
   </c:chart>
 </c:chartSpace>`;
 

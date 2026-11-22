@@ -48,7 +48,7 @@ export const themeXml = `${XML_HEADER}
       <a:majorFont><a:latin typeface="Calibri Light"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>
       <a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont>
     </a:fontScheme>
-    <a:fmtScheme name="calcplus"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
+    <a:fmtScheme name="calcplus"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
   </a:themeElements>
 </a:theme>`;
 
@@ -76,7 +76,7 @@ export const sharedStringsXml = `${XML_HEADER}
 
 export const workbookXml = `${XML_HEADER}
 <workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
-  <workbookPr date1904="0"/>
+  <workbookPr date1904="0" defaultThemeVersion="166925"/>
   <bookViews><workbookView activeTab="0"/></bookViews>
   <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
   <definedNames><definedName name="FixtureRange">Sheet1!$A$1:$B$2</definedName></definedNames>
