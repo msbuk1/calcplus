@@ -196,23 +196,6 @@ M4 runs as three sub-slices: cell formatting and number formats, workbook struct
 4. Fill and insert/delete are one undo transaction each.
 5. 100k-row sort and filter meet the performance budgets.
 
-**Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 5, 6
-and 7 are proven by the local suites: the 24 fixtures, the identity harness
-(no-op byte identity, dirty-part preservation, semantic equality), the
-transform-or-block work including internal hyperlink locations, the macro
-preservation and confirmation flow, and the hostile-input caps with XXE-safe
-parsing. Criterion 3 was verified by the maintainer's demo run: a workbook
-with a chart, macro, hyperlinks and formulas round-tripped through calcplus
-and reopened intact in Excel 365, and the same output opens in Google Sheets
-and LibreOffice. Criterion 4: the producer matrix is green — openpyxl,
-LibreOffice, SheetJS and xlsx-populate generated; Google Sheets and Excel
-365 maintainer-captured on 2026-11-19; Excel 2019 recorded as not available
-(maintainer ruling). Two asterisks are recorded in
-[docs/m6-kickoff.md](../../../docs/m6-kickoff.md): the demo workbook carried
-no real PivotTable or external formula link (fixture F10 covers those), and
-ticket 32 replaces the cross-sheet-link refusal with the break-and-mark
-policy the research note recommends.
-
 **Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 4 and 5
 were proven by the local conformance and performance suites; criterion 3 was
 verified by the maintainer on Windows against Excel 365 with the clipboard
@@ -254,6 +237,44 @@ rules. The risk-register row that owns this milestone — structural transforms
 corrupting references or anchors — is governed by one rule: transform or block,
 never leave a silently stale anchor.
 
+**Exit note (added 2026-11-19).** The exit gate passed. Criteria 1, 2, 5, 6
+and 7 are proven by the local suites: the 24 fixtures, the identity harness
+(no-op byte identity, dirty-part preservation, semantic equality), the
+transform-or-block work including internal hyperlink locations, the macro
+preservation and confirmation flow, and the hostile-input caps with XXE-safe
+parsing. Criterion 3 was verified by the maintainer's demo run: a workbook
+with a chart, macro, hyperlinks and formulas round-tripped through calcplus
+and reopened intact in Excel 365, and the same output opens in Google Sheets
+and LibreOffice. Criterion 4: the producer matrix is green — openpyxl,
+LibreOffice, SheetJS and xlsx-populate generated; Google Sheets and Excel
+365 maintainer-captured on 2026-11-19; Excel 2019 recorded as not available
+(maintainer ruling). Two asterisks are recorded in
+[docs/m6-kickoff.md](../../../docs/m6-kickoff.md): the demo workbook carried
+no real PivotTable or external formula link (fixture F10 covers those), and
+ticket 32 replaces the cross-sheet-link refusal with the break-and-mark
+policy the research note recommends.
+
+**Criterion 3 reopened, then met (2026-11-21).** The 2026-11-19 demo run
+stood for the workbook it tested, but the criterion was **not met**: a workbook
+saved by calcplus carried `<f>SUM()</f>` in its sheet part, Excel 365 showed a
+repair prompt and stripped every Formula record from that part, which is data
+loss in a file we produced. Two causes were found. The entry screen refused
+only typed edits, so a formula Excel refuses could still arrive through a load
+and be written straight back; and `dimension ref` under-declared the written
+range in two fixtures.
+
+The fix keeps such a formula visible in the model so it can be corrected and
+never serialises it: the cell is written with its cached value alone, which is
+what Excel's own repair leaves behind, and both reports name the cell instead of
+the change passing silently. A file carrying one is no longer byte-identical on
+a no-op save; every other file still is. The entry screen's remaining gaps are
+ticket 48.
+
+Verified on 2026-11-21: the maintainer's own workbook round-tripped through
+calcplus — 29 formulas before, 28 after, `SUM()` gone and the other 28 intact —
+and **Excel 365 opened it with no repair prompt**, which is also what the COM
+check on the same output shows. **Exit criterion 3 is met.**
+
 ### M7 — Output and hardening (8-12 pw)
 
 **Build**
@@ -284,15 +305,31 @@ unsigned-build warning is documented as [known deviations](../../docs/known-devi
 L-1, so **exit criterion 4 is met**. Recorded as **not tested for
 this milestone**:
 
+Verified by hand on 2026-11-21 (maintainer): the Windows portable `.exe`
+started with `--port 45678` printed the separate-origin warning naming both
+the chosen port and the default `47823`, then opened the app in Chrome at
+that address. Also on 2026-11-21 (maintainer): **exit criterion 3 is met** —
+the recovery copy was exercised by hand (edit, close the tab, restart,
+Restore brings the edits back, a save clears the prompt), the external-edit
+conflict offered Reload / Overwrite / Save As / Cancel on a file changed on
+disk, and the close prompt appeared for a tab with unsaved changes.
+
+Recorded as **not tested for this milestone**:
+
 - A 250k-cell workbook scrolling at 60 fps in the browser (the demo item;
   the Node benchmark suite runs the corpus but the browser check was not
   watched).
-- The recovery, external-edit conflict and close prompts exercised by hand
-  (exit criterion 3; the flows are unit and e2e tested).
 
-Also recorded: the performance budgets ran **advisory** throughout because
-no machine met the strict reference class (exit criterion 2's enforcement
-needs the reference-machine ruling).
+Also recorded: **exit criterion 2 is met (2026-11-21).** The maintainer ruled
+that this laptop — Intel Core i7-10610U, 4 physical cores, 15.7 GiB RAM,
+Windows 11 — is the reference machine for v1, which settled the
+reference-machine question (performance §1, ticket 36 item 2, research note 30
+open decision 2). The budgets were then run in enforced mode, not advisory:
+`sort-100k` and the conditional-formatting budgets pass, and the structural
+rebuild of a 250k-cell, 50k-formula graph measured **1225.6 ms against the
+1500 ms budget** after the optimisation in `9792fca` (down from the 1550-1671 ms
+miss ticket 36 recorded, and from 3740 ms before lane 4). 6/6 enforced tests
+green.
 
 **Exit criteria**
 

@@ -77,10 +77,12 @@ the call: find roughly 7 per cent more in the rebuild path, or set the budget
 at the measured 1.7 s and record why. Note the rebuild already improved a long
 way under lane 4: it measured 3740 ms before that work.
 
-M7 exit criterion 2 is "the performance budgets hold on the reference machine".
-On this evidence it does **not** hold today, and the milestone record's note
-that the budgets "ran advisory" is now out of date — the class exists, this
-machine is in it, and enforcement is real.
+**Closed (2026-11-21).** The optimisation was found: commit `9792fca` made the
+rebuild 39 per cent faster. The maintainer ruled this laptop the reference
+machine for v1 (recorded in `performance.md` §1), and an enforced run on it
+measured **1225.6 ms against the 1500 ms budget** — `structural-rebuild-250k`
+and `sort-100k` both hold, 6/6 enforced tests green. The budget was not
+changed; the code met it. M7 exit criterion 2 is met.
 
 ### 3. Reconciliation pass over the command inventory
 

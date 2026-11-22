@@ -1,6 +1,7 @@
 import type { GridRange, Workbook } from '@model/types';
 import { columnToLetters, formatCellRef, parseCellKey } from '@model/types';
 import type { UnsupportedConditionalFormat } from './conditional-format-xml';
+import { findRefusedFormulaCells } from './patch/cell-xml';
 import type { CompatibilityInfo } from './open';
 import type { PackagePatchReport, WorkbookPackage } from './types';
 
@@ -47,7 +48,11 @@ export type PreservedPartKind =
 
 /** Everything a report item can describe: a part, a setting, or a cell. */
 export type ReportItemKind =
-  PreservedPartKind | 'protection' | 'unsupportedFunction' | 'unsupportedConditionalFormat';
+  | PreservedPartKind
+  | 'protection'
+  | 'unsupportedFunction'
+  | 'unsupportedConditionalFormat'
+  | 'refusedFormula';
 
 const PRESERVED_LABELS: Readonly<Record<PreservedPartKind, string>> = {
   chart: 'Chart',
@@ -365,6 +370,10 @@ export function buildCompatibilityReport(input: CompatibilityReportInput): Compa
     items.push(stale);
   }
 
+  for (const refused of refusedFormulaItems(input.workbook)) {
+    items.push(refused);
+  }
+
   const counts: Partial<Record<ReportItemKind, number>> = {};
   for (const item of items) counts[item.kind] = (counts[item.kind] ?? 0) + 1;
 
@@ -418,6 +427,23 @@ function findPart(workbook: Workbook, suffix: string): string | null {
     if (path.toLowerCase().endsWith(suffix)) return path;
   }
   return null;
+}
+
+/**
+ * Cells whose formula Excel refuses (a wrong argument count). Excel strips such
+ * a formula when it opens the file, so calcplus keeps it visible in the model
+ * but never writes it: the open report names it, and the save writes the
+ * cached value alone (file-compat §1, §7).
+ */
+function refusedFormulaItems(workbook: Workbook): ReportItem[] {
+  return findRefusedFormulaCells(workbook).map((found) => ({
+    kind: 'refusedFormula',
+    title: `Formula ${found.ref}`,
+    part: null,
+    sheetName: found.sheetName,
+    anchor: found.ref,
+    detail: `Excel will not accept \`${found.formula}\` — it has the wrong number of arguments — so calcplus does not write it to the file. The formula stays visible here so it can be corrected.`,
+  }));
 }
 
 export function compatibilityReportSummary(report: CompatibilityReport): string {
@@ -640,6 +666,21 @@ export function buildExportReport(input: ExportReportInput): ExportReport {
     });
   }
 
+  // File-compat §1: dropping a formula is a change to the user's data, so it is
+  // reported rather than silent. The cell is written with its cached value; the
+  // formula text stays visible in the app, where it can be corrected.
+  for (const found of findRefusedFormulaCells(input.workbook)) {
+    entries.push({
+      kind: 'refusedFormula',
+      title: `Formula ${found.ref} not written`,
+      part: null,
+      sheetName: found.sheetName,
+      anchor: found.ref,
+      detail: `\`${found.formula}\` has the wrong number of arguments, so Excel would remove it when it opened the file. It was not written; the saved cell holds its value only.`,
+      category: 'warning',
+    });
+  }
+
   const ordered = EXPORT_REPORT_CATEGORIES.flatMap((category) =>
     entries.filter((entry) => entry.category === category),
   );
@@ -745,6 +786,8 @@ function kindLabel(kind: ReportItemKind): string {
       return 'Not recalculated';
     case 'unsupportedConditionalFormat':
       return 'Unsupported rule';
+    case 'refusedFormula':
+      return 'Refused formula';
     default:
       return PRESERVED_LABELS[kind];
   }

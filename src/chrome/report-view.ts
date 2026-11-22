@@ -43,6 +43,7 @@ const KIND_ORDER: readonly ReportItemKind[] = [
   'signature',
   'protection',
   'unsupportedFunction',
+  'refusedFormula',
   'unsupportedConditionalFormat',
   'customXml',
   'customProperty',

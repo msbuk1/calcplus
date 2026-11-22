@@ -11,6 +11,14 @@ Performance numbers are meaningless without a named machine. The contract applie
 - **OS:** Windows 11 or Ubuntu 22.04 or newer.
 - **Window:** 1440 × 900 CSS pixels at 100% zoom, one workbook per tab.
 
+**Maintainer ruling (2026-11-21).** The reference machine for v1 is the
+maintainer's own laptop: Intel Core i7-10610U, 4 physical cores, 15.7 GiB RAM,
+Windows 11. It counts as reference-class for every budget, including the
+single-threaded ones. This settles open decision 2 in research note 30 and the
+reference-machine question in ticket 36. The hardware check does not measure
+single-thread speed, so a future miss on this machine is a question about the
+budget or the code, never about the machine.
+
 A second **floor tier** — 2-core CPU, 8 GB RAM, older Chromium — must stay usable but may be up to 2× slower. It is not the contract.
 
 **Explicit cut:** Firefox opens and edits workbooks using the download-based file fallback, but is **not performance-tested and carries no performance claim.** Safari, macOS, mobile, tablet, touch and low-power devices are out of scope. A desktop wrapper is the only way to widen this later.

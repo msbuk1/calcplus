@@ -158,6 +158,19 @@ function arityErrorsFor(calls: readonly FormulaCall[]): ArityError[] {
 }
 
 /**
+ * A formula Excel refuses at entry because a call is outside its function's
+ * argument range (formula semantics §2 and §9). Excel shows "There's a problem
+ * with this formula" and keeps the cell's previous value.
+ *
+ * This is the single screen for that rule. `cell-set.ts` refuses it when the
+ * user types it, and the save path refuses to write it when it arrived inside
+ * a file instead — see `writtenCell` in the OOXML writer.
+ */
+export function formulaRefusedByExcel(formula: string): boolean {
+  return prepareFormula(formula).skip === 'invalid-arity';
+}
+
+/**
  * The function names a formula calls, uppercased and de-duplicated in source
  * order. Strings and quoted sheet names are ignored.
  */

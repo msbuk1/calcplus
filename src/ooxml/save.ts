@@ -16,6 +16,7 @@ import type {
   WorksheetSaveOptions,
 } from './patch/worksheet-patch';
 import { patchWorksheetXml } from './patch/worksheet-patch';
+import { findRefusedFormulaCells, writtenCell } from './patch/cell-xml';
 import {
   createSharedStringsAppender,
   type SharedStringsAppender,
@@ -199,10 +200,13 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
   // writes them.
   const dirtyCellsForSave = mergeDirtyCells(
     mergeDirtyCells(
-      input.dirtyCells,
-      sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+      mergeDirtyCells(
+        input.dirtyCells,
+        sheetPlan?.changed === true ? structuralFormulaDirtyCells(input, newSheetIds) : new Map(),
+      ),
+      recalculatedFormulaCells(input, input.dirtyCells, newSheetIds),
     ),
-    recalculatedFormulaCells(input, input.dirtyCells, newSheetIds),
+    refusedFormulaDirtyCells(input),
   );
   const dirtyCellSheetIds = [...dirtyCellsForSave.entries()]
     .filter(([, cells]) => cells.size > 0)
@@ -349,7 +353,13 @@ export function saveWorkbook(input: SaveWorkbookInput): SaveWorkbookResult {
     const requestedCells: DirtyCellInput[] = [...dirtyKeys]
       .map((key) => {
         const address = parseCellKey(key);
-        const cell = getCell(sheet, address.row, address.col);
+        const model = getCell(sheet, address.row, address.col);
+        // A formula Excel refuses is written as its cached value, never as `<f>`
+        // (file-compat §1). Applying it here rather than in the writer keeps
+        // `dropUnchangedCells` from matching the source cell and dropping the
+        // marker, which would leave the original bytes — and the bad formula —
+        // untouched.
+        const cell = writtenCell(model);
         return { row: address.row, col: address.col, cell };
       })
       .sort((a, b) => a.row - b.row || a.col - b.col);
@@ -1018,6 +1028,39 @@ function recalculatedFormulaCells(
       keys.add(key);
       dirty.set(sheet.id, keys);
     }
+  }
+  return dirty;
+}
+
+/**
+ * Cells whose formula Excel refuses are rewritten on every save, even when the
+ * user never touched them.
+ *
+ * The model keeps the formula so it stays visible and correctable, which means
+ * a no-op save would otherwise hand the source cell straight back to the
+ * position patch and leave `<f>SUM()</f>` in the file — the exact defect file-
+ * compat §1 forbids. Marking the cell dirty forces the rewrite, and
+ * `writtenCell` turns the formula into its cached value on the way out.
+ *
+ * This is the one deliberate break in no-op byte identity: a file carrying such
+ * a formula is not byte-identical after a no-op save. Every file without one
+ * still is, because this returns an empty map for them.
+ *
+ * The scan is a single pass over each sheet's sparse cell map. It parses no
+ * XML — cheaper than `structuralFormulaDirtyCells` and on par with the
+ * `hasEvaluatedFormula` probe `recalculatedFormulaCells` already makes.
+ *
+ * A cell inside a legacy array range is skipped: `arrayFormulaForCell` marks
+ * the range read-only, and forcing such a cell dirty would turn a preserved
+ * group into a refused save. Shared and array groups, and cells holding rich
+ * text, are excluded by `isRefusedFormulaCell` for the same reason.
+ */
+function refusedFormulaDirtyCells(input: SaveWorkbookInput): Map<SheetId, Set<string>> {
+  const dirty = new Map<SheetId, Set<string>>();
+  for (const found of findRefusedFormulaCells(input.workbook)) {
+    const keys = dirty.get(found.sheetId) ?? new Set<string>();
+    keys.add(found.key);
+    dirty.set(found.sheetId, keys);
   }
   return dirty;
 }

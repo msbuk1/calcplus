@@ -1,8 +1,97 @@
-import type { Cell, FormulaStorageKind } from '@model/types';
+import type { Cell, FormulaStorageKind, SheetId, Workbook } from '@model/types';
+import { formatCellRef, parseCellKey } from '@model/types';
+import { arrayFormulaForCell } from '@model/formula-ranges';
 import { textValue, type CellValue } from '@model/value';
+import { formulaRefusedByExcel } from '@engine/formula-text';
 import { WorkbookSaveError } from '../errors';
 import { escapeXmlAttribute, escapeXmlText } from '../xml';
 import type { SharedStringsAppender } from './shared-strings-patch';
+
+/**
+ * A formula Excel refuses at entry: a call outside its function's argument
+ * range (formula semantics §2 and §9). `cell-set.ts` refuses it when the user
+ * types it; this is the same screen at the write boundary, because a formula
+ * that arrives *inside* a file is loaded into the model untouched and would
+ * otherwise be written straight back out. Excel then repairs the file and
+ * strips the formula, which is the data loss file-compat §1 forbids and the
+ * reason M6 exit criterion 3 failed.
+ *
+ * Two kinds of cell are deliberately not screened:
+ *
+ * - A shared or legacy array group. They are read-only this milestone and
+ *   `serializeFormula` refuses to rewrite them, so screening here would turn a
+ *   preserved group into a blocked save.
+ * - A cell holding rich text. `dirtyCellsChangeFormula` refuses to rewrite rich
+ *   runs, for the same reason. Neither can coexist with a formula in a file
+ *   Excel produced.
+ */
+export function isRefusedFormulaCell(cell: Cell | null): boolean {
+  if (cell === null || cell.formula === null) return false;
+  if (cell.formulaSource !== undefined) return false;
+  if (cell.richText !== null && cell.richText !== undefined) return false;
+  return formulaRefusedByExcel(cell.formula);
+}
+
+/**
+ * The cell exactly as it is written. A formula Excel refuses becomes a plain
+ * value cell: the `<f>` is dropped and the cached result becomes the cell's
+ * value, which is what Excel's own repair leaves behind — it removes the
+ * Formula record and keeps `<v>`. The model is untouched, so the formula stays
+ * visible in the app and can be corrected; only the file omits it.
+ *
+ * Every other cell comes back unchanged, so callers can apply this
+ * unconditionally; `null` passes through so it composes with a null check.
+ */
+export function writtenCell(cell: Cell | null): Cell | null {
+  if (cell === null || !isRefusedFormulaCell(cell)) return cell;
+  return {
+    ...cell,
+    formula: null,
+    formulaDerived: false,
+    value: cell.savedResult ?? cell.value,
+    savedResult: null,
+  };
+}
+
+/** Where a refused formula sits, for the two reports (file-compat §7). */
+export interface RefusedFormulaRef {
+  readonly sheetId: SheetId;
+  readonly sheetName: string;
+  /** The sparse-cell key, `row:col`. */
+  readonly key: string;
+  /** The A1 reference, `F5`. */
+  readonly ref: string;
+  /** The authored formula text, `SUM()`. */
+  readonly formula: string;
+}
+
+/**
+ * Every cell in the workbook whose formula Excel refuses and whose write this
+ * save skips. Shared by the save path and both reports, so a report entry can
+ * never name a cell the writer does not actually handle.
+ *
+ * A cell inside a legacy array range is left out: the range is read-only this
+ * milestone, so its bytes are preserved as they stand and reporting the formula
+ * as dropped would be false.
+ */
+export function findRefusedFormulaCells(workbook: Workbook): RefusedFormulaRef[] {
+  const found: RefusedFormulaRef[] = [];
+  for (const sheet of workbook.sheets) {
+    for (const [key, cell] of sheet.cells) {
+      if (!isRefusedFormulaCell(cell)) continue;
+      const address = parseCellKey(key);
+      if (arrayFormulaForCell(sheet, address.row, address.col) !== null) continue;
+      found.push({
+        sheetId: sheet.id,
+        sheetName: sheet.name,
+        key,
+        ref: formatCellRef(address.row, address.col),
+        formula: cell.formula ?? '',
+      });
+    }
+  }
+  return found;
+}
 
 export interface CellWriteOptions {
   readonly sharedStrings: SharedStringsAppender | null;
@@ -20,9 +109,10 @@ export interface CellOriginal {
 export function cellToXml(
   prefix: string,
   ref: string,
-  cell: Cell | null,
+  input: Cell | null,
   options: CellWriteOptions,
 ): string | null {
+  const cell = writtenCell(input);
   if (cell === null) return serializeBlankOrNull(options.original, ref);
   const formula = cell.formula;
   const hasVisibleValue = cell.value.type !== 'blank';
