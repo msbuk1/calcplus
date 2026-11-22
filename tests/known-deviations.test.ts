@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DocumentSession } from '@commands/session';
 import { COMMAND_INVENTORY, inventoryCommand } from '@commands/inventory';
@@ -565,11 +566,13 @@ describe('known deviations (docs/known-deviations.md)', () => {
   // -------------------------------------------------------------------------
 
   it('pins known deviation D-9: a broken internal hyperlink is written as location="#REF!"', () => {
-    // The provisional convention from ticket 32 (open question 3): a target
-    // the edit removes is written as `location="#REF!"`. The exact bytes Excel
-    // writes for a broken internal target are still owed an oracle capture;
-    // this pin covers the current convention. The fixture side of the same
-    // convention is pinned in tests/ticket32-multi-part-saves.test.ts.
+    // calcplus's own convention (ticket 32, open question 3, settled
+    // 2026-11-22): a target the edit removes is written as
+    // `location="#REF!"`, matching formulas and names. Excel instead freezes
+    // the location verbatim; that oracle side is pinned in the next test and
+    // the difference is documented in docs/known-deviations.md D-9. The
+    // fixture side of the same convention is pinned in
+    // tests/ticket32-multi-part-saves.test.ts.
     const worksheet = `${HEADER}
 <worksheet xmlns="${NS}">
   <dimension ref="A1:B5"/>
@@ -601,6 +604,46 @@ describe('known deviations (docs/known-deviations.md)', () => {
     const afterXml = unzipPart(saved.bytes, 'xl/worksheets/sheet1.xml');
     expect(afterXml).toContain('location="#REF!"');
     expect(afterXml).toContain('ref="B4"');
+  });
+
+  it('pins the oracle side of D-9: Excel freezes internal hyperlink locations', () => {
+    // The Excel 365 capture of 2026-11-22
+    // (scripts/oracle/capture-broken-hyperlink.ps1, evidence in
+    // fixtures/oracle/d9-broken-hyperlink/) saved one workbook per case and
+    // read the bytes back: across a deleted target sheet, a deleted target
+    // name, a never-valid location, a deleted target row, rows inserted above
+    // the target and a shifted-up target cell, Excel wrote the authored
+    // location verbatim in every file and never wrote `#REF!`. The maintainer
+    // ruled the same day that calcplus keeps its marker as the deliberate
+    // difference D-9 documents.
+    const report = JSON.parse(
+      readFileSync(
+        new URL(
+          '../fixtures/oracle/d9-broken-hyperlink/broken-hyperlink-report.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ) as { cases: { case: string; hyperlinksXml: string }[] };
+    const byCase = new Map(report.cases.map((entry) => [entry.case, entry.hyperlinksXml]));
+    expect([...byCase.keys()].sort()).toEqual([
+      'deleted-cells-shift-up',
+      'deleted-name',
+      'deleted-row',
+      'deleted-sheet',
+      'inserted-rows',
+      'never-existed',
+      'valid',
+    ]);
+    expect(byCase.get('deleted-sheet')).toContain('location="Target!A1"');
+    expect(byCase.get('deleted-name')).toContain('location="GoneName"');
+    expect(byCase.get('never-existed')).toContain('location="NoSuchSheet!A1"');
+    expect(byCase.get('deleted-row')).toContain('location="Target!A5"');
+    // Rows inserted above the target moved it to A7; the location did not follow.
+    expect(byCase.get('inserted-rows')).toContain('location="Target!A5"');
+    for (const xml of byCase.values()) {
+      expect(xml).not.toContain('#REF!');
+    }
   });
 
   // -------------------------------------------------------------------------

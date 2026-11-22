@@ -113,12 +113,20 @@ structural command's one notice.
    the others move a comment while its cell survives). The Excel-oracle
    confirmation is deferred to the maintainer's demo run because Excel is not
    available in this environment.
-3. **Broken internal link file convention:** **deferred.** The provisional
-   marker is `location="#REF!"`, matching formulas and names, and
-   `broken-internal-link.xlsx` pins it. An Excel capture is needed before the
-   exact bytes Excel writes for a broken internal target can be confirmed; the
-   capture cannot be made here. The in-app behaviour required by this ticket
-   (target gone reads `#REF!`, edit applies) is implemented and tested.
+3. **Broken internal link file convention:** **settled 2026-11-22 by the
+   Excel-oracle capture** (`scripts/oracle/capture-broken-hyperlink.ps1`,
+   evidence in `fixtures/oracle/d9-broken-hyperlink/`). Excel 365 freezes an
+   internal hyperlink's `location` verbatim: after a deleted target sheet, a
+   deleted target name, a never-valid location, a deleted target row, rows
+   inserted above the target and a shifted-up target cell, every saved file
+   kept the authored location text and none wrote `#REF!`. The maintainer
+   ruled 2026-11-22: calcplus keeps its own convention — locations are
+   rewritten to track their targets and a removed target is marked
+   `location="#REF!"` — as a documented, pinned deliberate difference
+   ([known deviations](../../docs/known-deviations.md) D-9). It protects
+   against the silent wrong-target link Excel leaves behind; the cost is that
+   a file edited in calcplus can carry rewritten locations where Excel would
+   carry the authored text.
 
 ## Placement
 

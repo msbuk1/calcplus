@@ -337,10 +337,12 @@ const crossSheetPackage = packageEntries({
   },
 });
 
-// Ticket 32: the provisional broken-internal-link convention. The target is
-// gone and the author tool wrote `#REF!` in `location`; opening, saving and a
-// later structural edit must keep the marker rather than block the sheet. The
-// exact Excel convention is deferred until an Excel capture can confirm it.
+// Ticket 32: the broken-internal-link convention (known deviation D-9, settled
+// 2026-11-22). The target is gone and the author tool wrote `#REF!` in
+// `location`; opening, saving and a later structural edit must keep the marker
+// rather than block the sheet. The Excel-oracle capture in
+// fixtures/oracle/d9-broken-hyperlink/ records that Excel freezes the authored
+// location instead; calcplus keeps the marker as the deliberate difference.
 const brokenLinkWorkbookXml = `${XML_HEADER}
 <workbook xmlns="${SPREADSHEET_NS}" xmlns:r="${REL_NS}">
   <workbookPr date1904="0"/>

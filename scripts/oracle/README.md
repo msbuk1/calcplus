@@ -65,6 +65,18 @@ The script targets `fixtures/oracle/m1-values-errors.xlsx`, an Excel-openable
 fixture exercising the M1 value and error surface. The M1 chart fixture is a
 preservation fixture whose minimal chart package Excel 365 refuses to open.
 
+## Broken internal hyperlink capture
+
+`capture-broken-hyperlink.ps1` settles ticket 32's open question 3 (known
+deviations D-9). It creates one workbook per case with a COM-made internal
+hyperlink, breaks the target in the way each case names, saves through Excel,
+and reports the exact `<hyperlinks>` XML from each file. The 2026-11-22 run
+showed Excel 365 freezes an internal `location` verbatim in every case and
+never writes `#REF!`; the evidence is committed under
+`fixtures/oracle/d9-broken-hyperlink/` and pinned by
+`tests/known-deviations.test.ts`. The maintainer ruled the same day that
+calcplus keeps its own `#REF!` marker as a documented deliberate difference.
+
 ## Number-format differential oracle
 
 `ssf` is a differential oracle for number formats only (number-formats §1 and

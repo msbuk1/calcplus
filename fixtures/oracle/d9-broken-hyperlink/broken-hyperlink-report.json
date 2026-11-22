@@ -1,0 +1,56 @@
+{
+    "schemaVersion":  1,
+    "purpose":  "D-9 broken internal hyperlink capture (ticket 32, open question 3)",
+    "oracle":  {
+                   "product":  "Microsoft Excel 365",
+                   "version":  "16.0",
+                   "build":  17932,
+                   "os":  "Microsoft Windows NT 10.0.26300.0",
+                   "locale":  "en-GB"
+               },
+    "generatedAt":  "2026-11-22T20:38:05.7267505Z",
+    "cases":  [
+                  {
+                      "case":  "valid",
+                      "file":  "case-valid.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"Target!A1\" tooltip=\"the target\" display=\"Go to target\" xr:uid=\"{E5AA0D06-C9CA-4CCA-9067-0EAB15C6802A}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "deleted-sheet",
+                      "file":  "case-deleted-sheet.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"Target!A1\" tooltip=\"the target\" display=\"Go to target\" xr:uid=\"{087085FF-B79A-4FA8-BE3D-A6B901357EB9}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "deleted-name",
+                      "file":  "case-deleted-name.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"GoneName\" tooltip=\"the name\" display=\"Go to name\" xr:uid=\"{AD469B08-5F1A-46C7-AF5D-C7F30F85D30C}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "never-existed",
+                      "file":  "case-never-existed.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"NoSuchSheet!A1\" tooltip=\"nowhere\" display=\"Go nowhere\" xr:uid=\"{CF7451D1-AD3D-4251-B6F4-263FE900010A}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "deleted-row",
+                      "file":  "case-deleted-row.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"Target!A5\" tooltip=\"the target\" display=\"Go to target\" xr:uid=\"{7E3D0E5A-8A8A-4572-B3AC-3BEDA002EA31}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "inserted-rows",
+                      "file":  "case-inserted-rows.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"Target!A5\" tooltip=\"the target\" display=\"Go to target\" xr:uid=\"{8E008601-F8A5-4A34-BBAC-C6EE8C0C3053}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  },
+                  {
+                      "case":  "deleted-cells-shift-up",
+                      "file":  "case-deleted-cells-shift-up.xlsx",
+                      "hyperlinksXml":  "\u003chyperlinks\u003e\u003chyperlink ref=\"A1\" location=\"Target!A5\" tooltip=\"the target\" display=\"Go to target\" xr:uid=\"{E128333D-01ED-42FF-9FCD-A35379A24D51}\"/\u003e\u003c/hyperlinks\u003e",
+                      "sheetRelsXml":  "(none)"
+                  }
+              ]
+}
