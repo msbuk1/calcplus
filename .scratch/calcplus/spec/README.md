@@ -1,6 +1,6 @@
 # calcplus v1 — spec package
 
-This is the build-ready specification for **calcplus**, a browser-based, single-user clone of Excel desktop (Microsoft 365). It is assembled from the resolved decisions on the [map](../map.md) and is internally consistent: where a contract and a summary disagree, the contract wins.
+This is the build-ready specification for **calcplus**, a browser-based, single-user alternative to Excel desktop (Microsoft 365). It is assembled from the resolved decisions on the [map](../map.md) and is internally consistent: where a contract and a summary disagree, the contract wins.
 
 ## Reading order
 

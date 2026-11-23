@@ -8,7 +8,7 @@ Resolved by [17 — Stress-test the grid decision: custom vs Univer](../issues/1
 
 The spike does not overturn the grid research. It sharpens it:
 
-- Univer is the faster route to **a spreadsheet**. It is not the faster route to **an Excel clone**. Its chrome, model, formula engine and interaction model are Univer's, and replacing them is the product.
+- Univer is the faster route to **a spreadsheet**. It is not the faster route to **a faithful Excel alternative**. Its chrome, model, formula engine and interaction model are Univer's, and replacing them is the product.
 - The custom grid reached a usable, Excel-shaped grid in a throwaway spike and met the frame budget; Univer missed it at p95.
 - Univer's stock canvas exposes **zero grid cells** to assistive technology, so the mirror would still have to be built inside a renderer we do not own. Accessibility is v2 in either case, so this point no longer decides the choice.
 - Univer's open-source preset has **no `.xlsx` import or export**. That is a commercial Pro feature. The hardest part of the product, the OOXML layer from tickets 04 and 12, is not bought by adopting Univer.
@@ -83,7 +83,7 @@ The custom column is a 696-line sketch, not the finished grid. The missing items
 6. **Bundle and startup headroom.** 7.9 KB versus 1.78 MB gzip, and roughly 125 ms versus 300-400 ms warm to a visible grid. Both fit the ticket 11 budget, but the custom path leaves room for the model, the engine and the file layer.
 7. **Licence is not the blocker.** Univer's core is Apache-2.0 and compatible with GPLv3. The blocker is fit, not licence.
 
-**The honest counterpoint:** if the product were "a good spreadsheet" rather than "an Excel desktop clone", Univer would be the rational buy. It is maintained, capable and visually close. The destination decides the answer.
+**The honest counterpoint:** if the product were "a good spreadsheet" rather than "a faithful Excel desktop alternative", Univer would be the rational buy. It is maintained, capable and visually close. The destination decides the answer.
 
 ## 6. What changes in the grid plan
 
@@ -103,7 +103,7 @@ Re-open the buy decision only if one of these becomes true:
 - The v2 accessibility work finds the canvas mirror unusable and the DOM-cell fallback cannot meet the ticket 11 frame budget.
 - The custom grid cannot hold the 250k-cell guaranteed envelope in the ticket 11 harness after the first two milestones.
 - Univer ships an Apache-2.0 `.xlsx` exchange layer **and** a supported way to replace its chrome with Excel's, without forking its internals.
-- The product goal changes from an Excel clone to a general spreadsheet.
+- The product goal changes from a faithful Excel alternative to a general spreadsheet.
 
 ## 8. Acceptance criteria
 

@@ -1,8 +1,8 @@
 # calcplus
 
-A browser-based, single-user clone of Excel desktop (Microsoft 365): a core
-credible spreadsheet with grid editing, formatting, formulas, multi-sheet
-workbooks and high-fidelity `.xlsx` round-trip.
+A browser-based, single-user spreadsheet with close compatibility with Excel
+desktop (Microsoft 365) for core spreadsheet work: grid editing, formatting,
+formulas, multi-sheet workbooks and high-fidelity `.xlsx` round-trip.
 
 **Status: v1 released (version 0.1.0).** calcplus covers the full v1 feature
 matrix: grid editing, formatting, formulas and defined names, several sheets,

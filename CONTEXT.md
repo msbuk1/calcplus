@@ -1,6 +1,6 @@
 # calcplus
 
-The spreadsheet application this repo specifies: a browser-based, single-user clone of Excel desktop.
+The spreadsheet application this repo specifies: a browser-based, single-user alternative to Excel desktop.
 
 ## Language
 

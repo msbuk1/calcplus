@@ -2,7 +2,7 @@
   "name": "calcplus",
   "version": "0.1.0",
   "private": true,
-  "description": "A browser-based, single-user clone of Excel desktop. M3C model depth.",
+  "description": "A browser-based, single-user spreadsheet alternative to Excel desktop.",
   "license": "GPL-3.0-only",
   "author": "calcplus contributors",
   "homepage": "https://github.com/msbuk1/calcplus",

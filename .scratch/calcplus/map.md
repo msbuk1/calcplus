@@ -1,11 +1,11 @@
-# calcplus — Excel desktop clone spec
+# calcplus — Excel desktop alternative spec
 
 Type: map
 Status: resolved
 
 ## Destination
 
-A build-ready spec package for **calcplus**, a browser-based, single-user clone of Excel desktop (Microsoft 365): a core credible spreadsheet — grid and editing, formatting, formulas, multi-sheet workbooks, high-fidelity `.xlsx` round-trip — at functional, near-identical UI fidelity. The package is a PRD, a technical design (workbook model, architecture, ADRs) and phased milestones. No backend, but a data model that does not preclude co-authoring later.
+A build-ready spec package for **calcplus**, a browser-based, single-user alternative to Excel desktop (Microsoft 365): a core credible spreadsheet — grid and editing, formatting, formulas, multi-sheet workbooks, high-fidelity `.xlsx` round-trip — at functional, near-identical UI fidelity. The package is a PRD, a technical design (workbook model, architecture, ADRs) and phased milestones. No backend, but a data model that does not preclude co-authoring later.
 
 ## Notes
 

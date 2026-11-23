@@ -5,16 +5,17 @@ This page publishes the v1 product definition. Its source is
 fixed by the [feature matrix](../.scratch/calcplus/spec/feature-matrix.md). If
 this page and a contract disagree, the contract wins.
 
-Release status: the v1 build is in its last milestone (M7 — output and
-hardening). The four M7 exit criteria are the remaining gate
-([milestones](../.scratch/calcplus/spec/milestones.md) §4).
+Release status: v1 is released as version 0.1.0 on 2026-11-23. See the
+[release notes](release-notes.md) and the
+[release gate record](release-gate.md).
 
 ## 1. Product summary
 
-**calcplus** is a browser-based, single-user clone of Excel desktop (Microsoft
-365). It is a core credible spreadsheet: grid editing, formatting, formulas,
-multi-sheet workbooks and high-fidelity `.xlsx` round-trip, with near-identical
-UI fidelity.
+**calcplus** is a browser-based, single-user spreadsheet built as an
+alternative to Excel desktop (Microsoft 365) for core work. It offers close
+compatibility with Excel for grid editing, formatting, formulas, multi-sheet
+workbooks and high-fidelity `.xlsx` round-trip, with near-identical UI
+fidelity.
 
 It runs as a static web app, and as a per-OS launcher that serves the same
 build from `127.0.0.1`. There is no backend, no account and no telemetry.

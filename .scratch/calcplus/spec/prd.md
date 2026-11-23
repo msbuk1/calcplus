@@ -4,7 +4,7 @@ Assembled by [15 — Assemble the build-ready spec package](../issues/15-spec-as
 
 ## 1. Product summary
 
-**calcplus** is a browser-based, single-user clone of Excel desktop (Microsoft 365). It is a core credible spreadsheet: grid editing, formatting, formulas, multi-sheet workbooks and high-fidelity `.xlsx` round-trip, at functional, near-identical UI fidelity.
+**calcplus** is a browser-based, single-user spreadsheet built as an alternative to Excel desktop (Microsoft 365), with close compatibility for core work. It is a core credible spreadsheet: grid editing, formatting, formulas, multi-sheet workbooks and high-fidelity `.xlsx` round-trip, at functional, near-identical UI fidelity.
 
 It runs as a static web app and as a bundled per-OS launcher that serves the same build from `127.0.0.1`. There is no backend, no account and no telemetry.
 
