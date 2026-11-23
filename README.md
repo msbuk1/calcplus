@@ -11,7 +11,56 @@ round-trip, print and PDF, and the Windows and Linux launchers. The release
 gate passes in full. See the [release notes](docs/release-notes.md) for what is
 in the release, the downloads and first-run notes.
 
-## Run
+## Download and run
+
+Download from the [latest release](https://github.com/msbuk1/calcplus/releases/latest):
+
+| Platform | File |
+|---|---|
+| Windows x64 | [`calcplus.exe`](https://github.com/msbuk1/calcplus/releases/latest/download/calcplus.exe) (portable, unsigned), or `calcplus-<version>-windows-x64.zip` with the licence notices |
+| Linux x64 | `calcplus-<version>-linux-x64.tar.gz` (static binary and bundled app) |
+| Hosted | `calcplus-<version>-hosted.tar.gz` (static build to serve over HTTPS) |
+
+Every release also carries `SHA256SUMS`, the hosted build's checksum list and a
+SPDX software bill of materials.
+
+**Windows.** Double-click `calcplus.exe`. A console window opens, the browser
+opens the app, and closing the console stops the server. The build is not
+code-signed, so SmartScreen may show "Windows protected your PC" on the first
+launch: choose **More info**, check that the app is `calcplus.exe`, then choose
+**Run anyway**.
+
+**Linux.** Extract the tarball and run the binary:
+
+```bash
+tar -xzf calcplus-<version>-linux-x64.tar.gz
+cd calcplus-<version>-linux-x64
+./calcplus
+```
+
+Run `chmod +x calcplus` first if the file is not executable.
+
+The launcher serves the app from `http://127.0.0.1:47823/`, binds to loopback
+only, works offline, and needs no Node, Python or other runtime. Chrome or Edge
+can open and save a workbook in place; Firefox opens through a file picker and
+saves by download.
+
+**Verify a download.** Each release carries `SHA256SUMS` covering every
+artifact. Compare it with the value you compute locally:
+
+```powershell
+Get-FileHash .\calcplus.exe -Algorithm SHA256
+```
+
+```bash
+sha256sum calcplus-<version>-linux-x64.tar.gz
+```
+
+**Hosted.** The hosted tarball is the built static app. Serve it over HTTPS from
+any static host; the File System Access API needs a secure context. It is the
+same build the launcher embeds.
+
+## Run from source
 
 Requires Node 24 LTS and npm.
 
