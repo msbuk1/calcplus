@@ -69,6 +69,6 @@ Everything marked **V2** or **NEVER** in the [feature matrix](spec/feature-matri
 - **Authoring of read-only fidelity features**: conditional formatting, comments, hyperlinks, defined names, protection, themes and named styles.
 - **Assistive-technology support and WCAG conformance**: keyboard operation and visible focus stay; the claim does not.
 - **Paste Special, fill series, split view, full page setup, localization, dark mode.**
-- **Formula features deferred to v2**: R1C1 notation, 3D ranges, structured table references, external-link refresh, dynamic arrays/spill, iterative calculation, manual calculation mode, union/intersection operators, localized function names.
+- **Formula features deferred to v2**: R1C1 notation, 3D ranges, structured table references, external-link refresh, dynamic arrays/spill, iterative calculation, manual calculation mode, union/intersection operators, localized function names. The first v2 function tranche adds 37 functions in [formula semantics §12](spec/formula-semantics.md).
 - **Native desktop and mobile/touch apps** (the distribution launcher is in scope; a Tauri/Electron desktop app is not).
 - **Legacy `.xls` binary and ODS formats.**

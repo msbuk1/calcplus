@@ -101,5 +101,25 @@ Match Excel exactly.
 - A self-reference in a statically dead `IF` branch (for example `=IF(FALSE(),A1,0)` in A1) is flagged `#CIRC!` although Excel evaluates it to a number.
 - `INDEX` with `row=0` or `column=0` — Excel returns the whole row or column — returns `#VALUE!` in v1.
 - Empty-string coercion edge cases (`""+1` and kin) follow the error/coercion table (ticket 02); unlisted cases are tested against Excel and added to the table before release.
-- The 52-function set is curated, not a promised subset: omissions such as `COLUMNS`, `TEXT`, `SUMPRODUCT`, `FIND`, `SUBSTITUTE` and `TRUNC` are deliberate v2 cuts. A workbook that uses one behaves as the unsupported-function path in §1 (cached value shown stale, or `#NAME?`), never as a partial implementation.
+- The 52-function set is curated, not a promised subset: omissions such as `COLUMNS`, `TEXT`, `SUMPRODUCT`, `FIND`, `SUBSTITUTE` and `TRUNC` are deliberate v2 cuts, recorded with the rest of the v2 tranche in §12. A workbook that uses one behaves as the unsupported-function path in §1 (cached value shown stale, or `#NAME?`), never as a partial implementation.
 - No dynamic arrays/spill, R1C1, 3D ranges, structured table references, external-link refresh, iterative calculation, manual calculation mode, or union/intersection operators in v1.
+
+## 12. v2 function tranche
+
+The first v2 formula scope adds these 37 functions to the 52 in §2, taking the published set to 89. The order follows observed usage: Microsoft's featured top-10 list, the Enron/EUSES corpus study and modern workbook usage. The older corpora predate the `*IFS` family, so the conditional aggregates are ranked by current practice rather than the corpus counts.
+
+| Group | Functions |
+|---|---|
+| Conditional aggregates (6) | SUMIFS, COUNTIFS, AVERAGEIF, AVERAGEIFS, MAXIFS, MINIFS |
+| Text (10) | TEXT, FIND, SEARCH, SUBSTITUTE, REPLACE, TEXTJOIN, CONCAT, PROPER, CLEAN, VALUE |
+| Logic (2) | IFS, SWITCH |
+| Lookup (2) | XLOOKUP, LOOKUP |
+| Analysis (5) | SUMPRODUCT, LARGE, SMALL, RANK.EQ, SUBTOTAL |
+| Dates (7) | DAYS, DATEDIF, EDATE, EOMONTH, NETWORKDAYS, WEEKDAY, WEEKNUM |
+| Maths (5) | TRUNC, COLUMNS, MROUND, CEILING, FLOOR |
+
+`RANK.EQ` ships with the legacy `RANK` alias. `CEILING` and `FLOOR` are the legacy forms; the `.MATH` variants follow with them if the engine distinguishes them.
+
+Acceptance is §10 unchanged: one Excel golden per function plus the family's edge-case pins. Every function uses the §3 error/coercion rules and the §9 storage and round-trip rules. A call outside the published set keeps the §1 unsupported path; the tranche is a scope record, not a claim of full Excel parity.
+
+Recorded risks for the v2 plan: `TEXT` leans on the number-format engine; `SUMPRODUCT` needs array evaluation; `XLOOKUP` is the largest lookup item, and its array-return form stays limited to a scalar result until spill ships; `SUBTOTAL` and `NETWORKDAYS` carry argument edge cases. None needs dynamic arrays at the language level.

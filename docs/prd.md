@@ -58,7 +58,8 @@ where installing a desktop app is inconvenient or unwanted.
 - **Published formula contract:** the 52 functions in
   [formula semantics](../.scratch/calcplus/spec/formula-semantics.md), with
   Excel-exact errors, coercion and operator order. Full Excel function parity is
-  not claimed.
+  not claimed. The v2 scope adds 37 more functions; the list is in
+  [formula semantics §12](../.scratch/calcplus/spec/formula-semantics.md).
 - **Published file contract:** the three tiers in
   [file compatibility](../.scratch/calcplus/spec/file-compat.md). Modelled
   features round-trip; preserved features survive byte-for-byte; unsupported

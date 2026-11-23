@@ -135,6 +135,8 @@ Criteria are written against Excel desktop / Microsoft 365. "Round-trips" means 
 
 Paste Special · fill series · discontiguous selection · entry AutoComplete · hide/unhide rows and columns · reorder/move/copy/hide sheets · tab colours · grouping/outline · tables · data validation · filter by colour/Top 10/advanced filter · conditional-formatting authoring · theme and named-style authoring · Name Manager · Insert Function argument wizard · formula auditing · manual calculation · split view · page-break preview · custom views · full page setup · hyperlink authoring · comment authoring · protection authoring and enforcement · charts/images/shapes/sparklines · assistive-technology support and WCAG conformance · localization · dark mode/theming.
 
+The first v2 formula scope adds 37 functions to the v1 set: conditional aggregates (SUMIFS, COUNTIFS, AVERAGEIF, AVERAGEIFS, MAXIFS, MINIFS), text (TEXT, FIND, SEARCH, SUBSTITUTE, REPLACE, TEXTJOIN, CONCAT, PROPER, CLEAN, VALUE), logic (IFS, SWITCH), lookup (XLOOKUP, LOOKUP), analysis (SUMPRODUCT, LARGE, SMALL, RANK.EQ, SUBTOTAL), dates (DAYS, DATEDIF, EDATE, EOMONTH, NETWORKDAYS, WEEKDAY, WEEKNUM) and maths (TRUNC, COLUMNS, MROUND, CEILING, FLOOR). The contract is [formula semantics §12](formula-semantics.md).
+
 ## 10. Never / out of scope
 
 PivotTables and Power Query (as features) · Solver / Goal Seek / Scenario Manager · Data Analysis ToolPak · Consolidate · macro execution / Office Scripts / add-ins · native desktop and mobile/touch apps (the distribution launcher is in scope; a Tauri/Electron desktop app is not) · legacy `.xls` binary and ODS.

@@ -35,7 +35,7 @@ People who work in Excel desktop want a spreadsheet they can open in a browser w
 
 - **Reference:** Excel desktop / Microsoft 365.
 - **Near-identical, not pixel-perfect.** Chrome layout, colours, labels and interactions follow Excel; font and OS rendering differences are accepted.
-- **Published formula contract:** the 52 functions in [formula semantics](formula-semantics.md), with Excel-exact errors, coercion and operator order. Full Excel function parity is not claimed.
+- **Published formula contract:** the 52 functions in [formula semantics](formula-semantics.md), with Excel-exact errors, coercion and operator order. Full Excel function parity is not claimed. The v2 scope adds 37 more functions; the list is in [formula semantics §12](formula-semantics.md).
 - **Published file contract:** the three tiers in [file compatibility](file-compat.md). Modelled features round-trip; preserved features survive byte-for-byte; unsupported files are rejected with a clear message.
 - **Published performance contract:** the budgets in [performance](performance.md).
 - **Published accessibility contract:** the criteria in [accessibility](accessibility.md).
