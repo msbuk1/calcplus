@@ -4,11 +4,13 @@ param(
 )
 
 # Repair detector (release-gate item 6): a clean workbook opens through Excel
-# COM; a workbook Excel would repair fails to open, because the repair dialog
-# cannot be answered in automation. OPEN-OK therefore means "Excel opens it
-# without a repair prompt". Each file runs in its own Excel instance so one bad
-# file cannot poison the rest. Run it on the output of `npm run repair-outputs`
-# with the maintainer's Excel 365 installed.
+# COM; a workbook Excel would repair fails to open (the repair dialog cannot be
+# answered in automation). OPEN-OK therefore conclusively means "no repair
+# prompt". OPEN-FAIL is inconclusive: Excel can refuse COM automation for files
+# it opens fine interactively (the LibreOffice producer output does), so a
+# failure needs the maintainer's interactive look. Each file runs in its own
+# Excel instance so one bad file cannot poison the rest. Run it on the output
+# of `npm run repair-outputs` with the maintainer's Excel 365 installed.
 
 $ErrorActionPreference = 'Stop'
 

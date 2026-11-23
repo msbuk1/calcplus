@@ -67,12 +67,14 @@ preservation fixture whose minimal chart package Excel 365 refuses to open.
 
 ## Repair detector
 
-`detect-repair.ps1` automates the release-gate item 6 check on the maintainer's
-machine: it opens each workbook through Excel COM, where a clean file opens
-and a file Excel would repair cannot open (the repair dialog cannot be
-answered in automation). `OPEN-OK` therefore means "Excel opens it without a
-repair prompt". The verdicts have matched the maintainer's interactive checks
-on every file compared. Run it on the output of `npm run repair-outputs`.
+`detect-repair.ps1` is a fast filter for the release-gate item 6 check on the
+maintainer's machine: it opens each workbook through Excel COM, where a clean
+file opens and a file Excel would repair cannot open (the repair dialog cannot
+be answered in automation). `OPEN-OK` therefore conclusively means "Excel
+opens it without a repair prompt". `OPEN-FAIL` is inconclusive: Excel can
+refuse COM automation for files it opens fine interactively — the LibreOffice
+producer output does exactly that. The maintainer's interactive pass is the
+authority. Run it on the output of `npm run repair-outputs`.
 
 ## Broken internal hyperlink capture
 

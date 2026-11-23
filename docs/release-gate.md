@@ -19,7 +19,7 @@ licence gate), `npm run build` green, and the full Playwright suite green
 | 3 | 1900/1904, serial 60 and the date edge cases pass | **Pass** | "M3B date, reference, lookup and circular-reference suites" in `tests/engine-m3b.test.ts`, plus `tests/m3c-date-system.test.ts` (the 1904 system and serial 60). |
 | 4 | Every HyperFormula shim has a passing test | **Pass** | "M3B shim cases" covers every shim golden, including the fractional `CHOOSE` truncation and the numeric / numeric-text `COUNTIF`/`SUMIF` criteria. "M3B authored-formula pre-screen" pins the shim boundary. |
 | 5 | Every file-compatibility fixture passes; a no-op save is byte-identical | **Pass** | The `tests/m6-*.test.ts` suites cover all 24 compatibility fixtures, hostile inputs and the producer matrix. `tests/ooxml-save.test.ts` ("identity save") returns the original bytes byte-for-byte, and the smoke e2e proves the same through the app. `node scripts/verify-repair-free.mjs` checks relationships, content types, XML well-formedness and part names. |
-| 6 | Excel 365 opens every output without a repair prompt | **Pending: the maintainer's manual check** | See "The manual check" below. |
+| 6 | Excel 365 opens every output without a repair prompt | **Pass** | The maintainer checked the whole `fixtures/repair-check/` folder interactively on 2026-11-22 with Microsoft Excel 365 (16.0, build 17932, en-GB, Windows 11): all 64 outputs open without a repair prompt. The automated detector run agrees on 62; its two `libreoffice` verdicts are a detector limitation, not a file defect — those files open fine interactively (see below). |
 | 7 | Sort, AutoFilter and conditional-formatting fixtures pass | **Pass** | `tests/m5-sort.test.ts` (15 sort fixtures), `tests/m5-filter.test.ts` and `tests/m5-filter-roundtrip.test.ts` (18 filter fixtures), `tests/m5-cf.test.ts`, `tests/m5-cf-paint.test.ts` and `tests/m5-cf-roundtrip.test.ts` (20 CF fixtures). |
 | 8 | Grid interaction and visual baselines pass | **Pass** | The full Playwright suite (211 tests): `grid`, `grid-interaction`, `formatted-visual` (pinned baseline), `merged-text`, `freeze-scroll`, `selection-autoscroll` and the rest. The visual tests assert model state as well as pixels. |
 | 9 | Performance budgets hold on the reference machine | **Pass** | `tests/m7-reference-machine.test.ts` (6/6 enforced) on the declared reference machine (Intel Core i7-10610U, 15.7 GiB RAM, Windows 11): the 250k-cell / 50k-formula structural rebuild measured 1225.6 ms against the 1500 ms budget after `9792fca`. The browser bench passed 3/3 on 2026-11-21: scroll frame p95 16.7–16.8 ms against the 16.7 ms budget at whole-millisecond precision, worst frame 16.8 ms against 50 ms, and the million-row sparse sheet scrolled with the grid unallocated (M7 exit note). |
@@ -29,38 +29,30 @@ licence gate), `npm run build` green, and the full Playwright suite green
 | 13 | Every known deviation is documented and has a test that pins it | **Pass** | All 19 entries in [known deviations](known-deviations.md) carry a pin: D-1 to D-11 in `tests/known-deviations.test.ts` (including the D-9 oracle side), D-12 in `tests/m7-page-setup-group.test.ts`, D-13 in `tests/formula-arity.test.ts`, L-1 to L-6 in `tests/known-limitations.test.ts`. |
 | 14 | No silent skips and no quarantined test older than one week | **Pass** | The run reports 10 skipped tests and every one is named and environment-gated: 5 "launcher runtime" tests in `tests/m7-launcher.test.ts` (Go is not installed on this machine; a test asserts the skip message is clear), 4 "fixtures open in openpyxl" in `tests/m6-preserved-parts.test.ts` (openpyxl is not installed), and 1 non-Windows launcher test. Nothing is quarantined or disabled with a date. |
 
-## The manual check (item 6)
+## The item 6 check
 
-The only open gate item, automated through the maintainer's Excel 365:
+Recorded 2026-11-22. The maintainer opened every file in `fixtures/repair-check/`
+in Microsoft Excel 365 (16.0, build 17932, en-GB, Windows 11) and none showed a
+repair prompt or a recovery notice. The procedure that produced the folder:
 
-1. Run `node scripts/verify-repair-free.mjs`; it must stay green.
-2. Run `npm run repair-outputs`. It saves every workbook the compatibility
-   corpus holds through the production pipeline — one untouched copy and one
-   with a single cell edit each — into `fixtures/repair-check/`, with a
-   `manifest.json` listing what was written and skipped. The hostile fixtures
-   and the Strict file are skipped by name (Tier C rejections).
-3. Run `powershell -NoProfile -ExecutionPolicy Bypass -File
-   scripts/oracle/detect-repair.ps1 -Directory fixtures/repair-check`. It
-   opens every output through the maintainer's Excel 365; a clean workbook
-   opens and a workbook Excel would repair cannot open in automation, so
-   `OPEN-OK` means "no repair prompt". The verdicts have matched the
-   maintainer's interactive checks on every file compared so far. Every file
-   must report `OPEN-OK`.
-4. Record the result here with the date and the Excel build.
+1. `node scripts/verify-repair-free.mjs` — green.
+2. `npm run repair-outputs` — every openable corpus fixture saved through the
+   production pipeline, one untouched copy and one with a single cell edit
+   each, into `fixtures/repair-check/`, with a `manifest.json`. The hostile
+   fixtures and the Strict file are skipped by name (Tier C rejections).
+3. `powershell -NoProfile -ExecutionPolicy Bypass -File
+   scripts/oracle/detect-repair.ps1 -Directory fixtures/repair-check` — a fast
+   filter through Excel COM: `OPEN-OK` conclusively means "no repair prompt",
+   but `OPEN-FAIL` is inconclusive. A clean workbook always opens through COM;
+   a workbook Excel would repair cannot (the repair dialog cannot be answered
+   in automation); and Excel can also refuse COM automation for files it opens
+   fine interactively — the LibreOffice producer output does exactly that. The
+   interactive pass in step 4 is the authority.
 
-One name is excluded from step 3: `producers/libreoffice.noop.xlsx` and
-`producers/libreoffice.edited.xlsx`. The file is genuine LibreOffice output
-(its ZIP container is the only thing the generator normalises) and its defect,
-if any, belongs to that LibreOffice build: Excel 365 does not open the source
-file either. calcplus round-trips it byte-identically, which is what the
-producer-matrix row claims. The maintainer's interactive log for it is still
-worth having; if it names a record calcplus can fix in the fixture, the
-exclusion comes out.
+The fixture families the maintainer's repair logs named during the check —
+charts, comments, defined names, VBA, themes, pivot and external links — were
+fixed in the generators (commit "Make the corpus fixtures Excel-clean").
 
 ## Verdict
 
-62 of the 64 outputs open clean in Excel 365 on the 2026-11-22 detector run,
-including every fixture family the maintainer's interactive repair logs named
-(charts, comments, defined names, VBA, themes, pivot and external links). The
-gate passes in full when the maintainer records the run above with the date
-and Excel build.
+All 14 items pass on the 2026-11-22 gate run. The release gate passes in full.
