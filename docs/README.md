@@ -12,6 +12,7 @@ contract wins and the page is corrected.
 | [ADR index](adr/README.md) | Every recorded architecture decision, with status |
 | [Known deviations](known-deviations.md) | Deliberate differences from Excel and the current limitations, each traced to a contract or ticket |
 | [Release gate record](release-gate.md) | The M8 release-gate sweep: every testing-and-conformance §13 item, its status and its evidence |
+| [Release notes](release-notes.md) | The v1 release notes: what 0.1.0 contains, downloads and checksums, first-run notes, known differences and the licence |
 | [Development setup](dev-setup.md) | Repository layout, toolchain and local checks |
 | [Command inventory](command-inventory.md) | The generated map of commands and ribbon placement |
 | [M6 kickoff](m6-kickoff.md) | Handover notes for file fidelity |

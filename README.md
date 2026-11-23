@@ -4,14 +4,12 @@ A browser-based, single-user clone of Excel desktop (Microsoft 365): a core
 credible spreadsheet with grid editing, formatting, formulas, multi-sheet
 workbooks and high-fidelity `.xlsx` round-trip.
 
-**Status: Milestone 1 accepted.** The repository contains the walking skeleton:
-a canonical sparse workbook model, a preservation-first OOXML package layer
-with a cells-only part patch, one undoable `cell.set` command, a minimal canvas
-grid, New/Open/Save/Save As through File System Access or a download fallback,
-and an unsaved-change prompt. The Milestone 1 gate passed on local evidence.
-Later milestones (formulas, formatting, multi-sheet editing, structural
-transforms, persistence hardening, the accessibility mirror) are not
-implemented.
+**Status: v1 released (version 0.1.0).** calcplus covers the full v1 feature
+matrix: grid editing, formatting, formulas and defined names, several sheets,
+sort and AutoFilter, conditional-formatting rendering, high-fidelity `.xlsx`
+round-trip, print and PDF, and the Windows and Linux launchers. The release
+gate passes in full. See the [release notes](docs/release-notes.md) for what is
+in the release, the downloads and first-run notes.
 
 ## Run
 

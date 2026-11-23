@@ -478,6 +478,50 @@ recorded as not tested. M7 is closed.
 4. The launcher artifacts and checksums are published.
 5. The spec package is complete and internally consistent.
 
+**Exit note (added 2026-11-23).** The exit gate passed. Each criterion:
+
+1. **The ticket 13 release gate passes in full.** The [release gate
+   record](../../../docs/release-gate.md) walks all 14 items of [testing and
+   conformance §13](testing-conformance.md) and records a pass for each on the
+   2026-11-22 run, with named evidence. Item 6, the manual Excel repair check,
+   was run by the maintainer over all 64 outputs in `fixtures/repair-check/` in
+   Excel 365 (16.0, build 17932, en-GB, Windows 11); none showed a repair
+   prompt. The six fixture families the check named were fixed in the
+   generators, and the 2026-11-22 fixture run, `npm run check`, `npm run build`
+   and the 211-test Playwright suite were green.
+2. **No P0, P1 or data-loss bug remains.** All 49 issue records are
+   `Status: resolved`. The last data-loss defects were fixed and pinned in M7
+   and M8: the Format Cells border wipe (ticket 35, D-10), the `SUM()`
+   empty-argument gap and the formula Excel would repair (ticket 48). The one
+   remaining data-loss risk, an unresolvable function call preserved verbatim,
+   is documented as deviation D-13 with its pin.
+3. **Every known deviation is documented and pinned by a test.** All 19 entries
+   in [known deviations](../../../docs/known-deviations.md) carry a pin: D-1 to
+   D-11 in `tests/known-deviations.test.ts` (including the Excel-oracle side of
+   D-9), D-12 in `tests/m7-page-setup-group.test.ts`, D-13 in
+   `tests/formula-arity.test.ts`, and L-1 to L-6 in
+   `tests/known-limitations.test.ts`.
+4. **The launcher artifacts and checksums are published.** The Windows x64
+   portable `.exe` and the Linux x64 tarball were rebuilt from the release
+   commit with Go 1.27.4 (`go1.27.4 windows/amd64`) on 2026-11-23. Both were
+   verified: `release/SHA256SUMS` matches the artifacts, the Windows artifact
+   served the app on `127.0.0.1` (HTTP 200), and the launcher runtime tests ran
+   with `GO_BIN` set (19 passed, 1 skipped because it is a non-Windows test).
+   The release carries `release/SHA256SUMS` for the artifacts, a 31-file
+   `calcplus-0.1.0-hosted-SHA256SUMS` for the hosted build, and a SPDX 2.3 SBOM
+   with 24 packages. The `v0.1.0` GitHub release publishes them on 2026-11-23,
+   with the source tag and archive beside them.
+5. **The spec package is complete and internally consistent.** The PRD and
+   technical design were refreshed in M8 for the D-3 print scope, ADR 0008 got
+   its terminal-sheet-delete spec pass, every earlier milestone carries its
+   dated exit note, and the release notes join the published docs. The spec
+   README, feature matrix, command inventory and testing contracts agree with
+   the shipped app; the conformance checks in `npm run check` prove the
+   generated inventory and pins stay in step.
+
+M8 is closed. v1 is released as version 0.1.0 on 2026-11-23; the release notes
+are in [docs/release-notes.md](../../../docs/release-notes.md).
+
 ## 5. Dependency graph
 
 M6 gates after M5: the file-fidelity exit criterion (all 24 file-compat fixtures, including F13 validation + conditional-formatting round-trip) needs M5’s CF engine. Fixture authoring may start early; the M6 exit gate cannot run before M5 exits. In the graph below M6 is drawn beside M2/M3 for staffing, not for gating.
